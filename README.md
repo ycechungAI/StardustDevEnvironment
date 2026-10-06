@@ -1,55 +1,157 @@
-# StardustDevEnvironment
+# Stardust (Python)
 
-Development environment for creating AIs for StarCraft: Brood War
+A StarCraft: Brood War bot written in Python, built on [StardustDevEnvironment](https://github.com/bmnielsen/StardustDevEnvironment), the development environment of the [Stardust](https://github.com/bmnielsen/Stardust) bot.
 
-## Introduction
+The bot itself is Python (`python/stardust/`). A small C++ host embeds CPython in a BWAPI AI module and exposes the complete BWAPI API to it. Everything else from the dev environment is unchanged:
 
-This is the development environment used for developing [Stardust](https://github.com/bmnielsen/Stardust), stripped down to its bare components so it is suitable for use by other bots.
-
-It uses the following main components:
-
-- [BWAPI](https://github.com/bwapi/bwapi) as the interface between the bot and the game.
-- [OpenBW](http://www.openbw.com/) as the underlying game engine for local development.
+- [OpenBW](http://www.openbw.com/) as the game engine.
 - [Steamhammer](http://satirist.org/ai/starcraft/steamhammer/) and [Locutus](https://github.com/bmnielsen/Locutus) as test opponents.
-- CMake
-- Googletest
+- The googletest-based game harness.
+- [CherryVis](https://torchcraft.github.io/TorchCraftAI/blog/2019/02/20/releasing-cherryvis.html) instrumentation.
 
-## Build
+```
+test/tests (C++ harness: runs an OpenBW game, opponent in a forked process)
+ └─ StardustAI  (C++: PythonAIModule, a BWAPI::AIModule)
+     └─ embedded CPython
+         ├─ bwapi            BWAPI bindings (pybind11, generated from the BWAPI headers)
+         ├─ instrumentation  Log + CherryVis
+         └─ python/stardust  the bot
+```
 
-The following platforms have been tested by the author:
+## Setup
 
-- CLion on MacOS Mojave for OpenBW-based local development
-- Visual Studio 2019 for building Windows binaries
+You need:
 
-The CMake configuration reflects this, as on the MSVC platform it is configured to build a binary against standard BWAPILIB instead of OpenBW. It should however be possible to build the OpenBW-based configuration on Windows by modifying the CMake configuration.
+- CMake 3.25+ and a C++17 compiler.
+- Python 3.12+; [uv](https://docs.astral.sh/uv/) is recommended.
+- The three Brood War data files from StarCraft 1.16.1: `STARDAT.MPQ`, `BROODAT.MPQ` and `Patch_rt.mpq`.
 
-For Linux, you will probably need to change some paths to LLVM, but otherwise I expect no major changes are needed.
+```bash
+uv sync
+```
 
-## Run
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+```
 
-The environment comes with the following components:
+```bash
+cmake --build build -j
+```
 
-- A demo AI module (based on BWAPI's ExampleAIModule)
-- Instrumentation code from Stardust for logging and outputting data understandable by [CherryVis](https://torchcraft.github.io/TorchCraftAI/blog/2019/02/20/releasing-cherryvis.html)
-- A simple test framework for running scenarios and games
-- Maps from the SSCAIT, AIIDE and COG tournaments
-- Steamhammer and Locutus as test opponents
+`uv sync` creates `.venv`. CMake builds against that interpreter, and the bot can import any package installed in it (numpy etc.).
 
-In order to run the tests, you need to put the three Brood War MPQ files (STARDAT.MPQ, BROODAT.MPQ and patch_rt.mpq) into the same directory as the test binary.
+Copy the three MPQ files into `build/test/`, next to the `tests` binary. Without them, game tests fail with `failed to open ./Patch_rt.mpq`.
 
-Some example tests are provided: Steamhammer.cpp and Locutus.cpp contain some tests for running full games against those opponents, and RushDefense.cpp has an example test that sets up a specific scenario.
+Tested on macOS (Apple Silicon, Apple clang 21, CMake 4). The Windows/MSVC configuration from upstream has not been tried with the Python host.
+
+## Running games
+
+```bash
+cd build/test && ./tests --gtest_filter=Steamhammer.4PoolHard
+```
+
+The test harness, maps and opponents are described in `test/`: `Steamhammer.cpp`, `Locutus.cpp`, and `RushDefense.cpp` for a scripted scenario. Replays, CherryVis data and logs go to `build/test/replays/`.
+
+Python is loaded from `python/` in the source tree, so edits to the bot take effect on the next run without rebuilding. At the end of each game the host prints the bot's frame times against the usual tournament limits.
+
+## Tests without StarCraft
+
+```bash
+uv run pytest
+```
+
+```bash
+uv run mypy
+```
+
+```bash
+cd build/test && ./tests --gtest_filter='PythonHost.*'
+```
+
+- **pytest** runs against an offline build of the same bindings (`build/python/bwapi*.so`), so bot logic and BWAPI types (unit stats, positions, tech trees) can be tested without a game.
+- **mypy** type-checks the bot against `python/bwapi.pyi`. Editors use the same stub for completion.
+- **`PythonHost.*`** checks the C++ host: interpreter startup, callback forwarding and error handling.
+
+## Writing the bot
+
+`stardust.create_bot()` returns the bot object. The host calls its methods for each BWAPI event, using the names from `BWAPI::AIModule`: `onStart`, `onFrame`, `onUnitCreate`, and so on. Methods the bot doesn't define are skipped. The starting point in `python/stardust/bot.py` is the dev environment's demo bot ported to Python: it mines, trains workers and builds supply.
+
+The API mirrors the C++ BWAPI, so the [BWAPI documentation](https://bwapi.github.io/) and C++ bot code translate almost line for line:
+
+| C++ | Python |
+|---|---|
+| `BWAPI::Broodwar->self()->getUnits()` | `bwapi.Broodwar.self().getUnits()` |
+| `u->getType() == UnitTypes::Protoss_Probe` | `u.getType() == UnitTypes.Protoss_Probe` |
+| `Unitset`, `UnitType::set`, ... | Python `set` (any iterable is accepted as input) |
+| `u->getClosestUnit(IsMineralField)` | `u.getClosestUnit(lambda x: x.getType().isMineralField())` |
+| `nullptr` | `None` |
+| `Broodwar->drawTextMap(p, "%c%s", Text::Green, s)` | `Broodwar.drawTextMap(p, Text.Green + s)` |
+| `UnitTypes::None` | `UnitTypes.None_` (`None` is a Python keyword) |
+| `Position(tilePos)`, `if (pos)` | `Position(tilePos)`, `if pos:` (`isValid()`) |
+| `u->setClientInfo(...)` | not exposed: keep per-unit state in a dict keyed by unit or `u.getID()` |
+
+Differences from C++:
+
+- `Position`, `WalkPosition` and `TilePosition` are immutable and hashable, so `pos.x += 1` becomes `pos = pos + Position(1, 0)`. In exchange they work as dict keys.
+- Units, players and other game objects compare and hash by identity.
+- Always read the game through `bwapi.Broodwar`. A `from bwapi import Broodwar` at module import time would capture a stale value.
+
+Instrumentation:
+
+```python
+from instrumentation import CherryVis, Log
+Log.write("hello")                    # bwapi-data/write/Stardust_log_*.txt
+CherryVis.log("attacking", unit)      # per-unit log in the CherryVis replay viewer
+```
+
+Environment variables read by the host:
+
+| Variable | Default | |
+|---|---|---|
+| `STARDUST_BOT` | `stardust:create_bot` | `module:factory` that creates the bot |
+| `STARDUST_PYTHON_PATH` | `<repo>/python` | prepended to `sys.path` |
+| `VIRTUAL_ENV` | `<repo>/.venv` | its site-packages are importable |
+| `STARDUST_PY_ERRORS` | `raise` | `raise`: a Python exception ends the game, with its traceback printed. `log`: print and keep playing |
+
+### Performance
+
+Tournaments (SSCAIT, AIIDE, ...) forfeit a bot that has 320 frames over 55 ms, 10 frames over 1 s, or any frame over 10 s. A call into BWAPI from Python costs roughly 0.1–0.4 µs, measured on an Apple Silicon Mac. That is fine for per-unit logic, even across hundreds of units per frame. Heavy computation should stay out of pure Python: combat simulation, pathfinding and map analysis are what Stardust uses BWEM and FAP for in C++. Use numpy, or bind the C++ library next to `bwapi`.
+
+## Regenerating the bindings
+
+The generated `src/python/generated/*.cpp` and `python/bwapi.pyi` files are committed. Regenerate them after changing the BWAPI headers or the generator:
+
+```bash
+uv run python tools/gen_bwapi_bindings.py
+```
+
+On macOS this uses the Command Line Tools' libclang. It skips methods it can't convert safely and lists them; currently those are the `va_list` variants, harness-only setup calls, a raw framebuffer accessor and one deprecated method.
+
+To check that the stub matches the compiled module:
+
+```bash
+PYTHONPATH=build/python MYPYPATH=python uv run python -m mypy.stubtest bwapi instrumentation --allowlist tools/stubtest_allowlist.txt
+```
+
+## Changes from upstream StardustDevEnvironment
+
+- The C++ `DemoAIModule` is replaced by `PythonAIModule` (`src/python/`), and the demo is ported to `python/stardust/bot.py`.
+- Fixes for current toolchains:
+  - CMake 4 policy minimum for the vendored zstd and googletest.
+  - `operator""` spacing in `nlohmann/json.hpp`.
+  - `std::vector<const std::string>` in Steamhammer.
+  - Missing includes in `test/Maps.h`.
+  - Removed a hardcoded Homebrew LLVM 13 library path.
+- Added the missing definition of `CherryVis::log(BWAPI::Unit)`. It was declared but never defined.
+- The log file is now `Stardust_log_*.txt`.
 
 ## CherryVis
 
-The instrumentation is based around using [CherryVis](https://torchcraft.github.io/TorchCraftAI/blog/2019/02/20/releasing-cherryvis.html) to view replays.
-
-The demo AI module has examples of using a heatmap to mark buildable tiles and outputting unit-specific logs. For more ideas of what can be done, check out CherryVis.cpp or the CherryVis project itself.
-
-To run CherryVis, check out [cherryvis-docker](https://github.com/bmnielsen/cherryvis-docker).
+Replays are annotated for [CherryVis](https://torchcraft.github.io/TorchCraftAI/blog/2019/02/20/releasing-cherryvis.html). The bot shows a heatmap (buildable tiles) and per-unit logs. To run CherryVis, see [cherryvis-docker](https://github.com/bmnielsen/cherryvis-docker).
 
 ## Changes to OpenBW
 
-The OpenBW code has had a couple of notable modifications applied to help integrate it into the development environment:
+Upstream applied these modifications to OpenBW to integrate it into the environment:
 
-- The BWAPI 4.4 latcom changes have been applied to OpenBW's BWAPI fork
-- The CherryVis OpenBW patch has been applied to support unit creation by triggers
+- The BWAPI 4.4 latcom changes have been applied to OpenBW's BWAPI fork.
+- The CherryVis OpenBW patch has been applied to support unit creation by triggers.

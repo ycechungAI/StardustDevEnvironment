@@ -1,9 +1,14 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.24)
 project(tests)
+
+# The opponents (from Stardust's test environment) need C++20
+set(CMAKE_CXX_STANDARD 20)
 
 add_subdirectory(3rdparty/googletest)
 add_subdirectory(3rdparty/opponents/Steamhammer)
 add_subdirectory(3rdparty/opponents/Locutus)
+add_subdirectory(3rdparty/opponents/Iron)
+add_subdirectory(3rdparty/opponents/McRave)
 
 include_directories(${CMAKE_SOURCE_DIR}/3rdparty/googletest/include)
 
@@ -32,7 +37,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_definitions(tests PUBLIC DEBUG=1)
 endif()
 
-target_link_libraries(tests gtest gtest_main BWAPI BWAPILIB DemoAIModule Steamhammer Locutus)
+target_link_libraries(tests gtest gtest_main BWAPI BWAPILIB StardustAI Steamhammer Locutus Iron McRave)
 target_compile_options(tests PRIVATE -Wall -Werror)
 
 file(COPY ${CMAKE_SOURCE_DIR}/test/3rdparty/maps DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

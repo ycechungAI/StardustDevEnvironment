@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.24)
 
 option(OPENBW_ENABLE_UI "Enables support for the graphical user interface, requires SDL2")
 
@@ -22,8 +23,15 @@ include_directories(
   ${OPENBW_DIR}
 )
 
+#SET_SOURCE_FILES_PROPERTIES(BW/BWData.cpp PROPERTIES COMPILE_FLAGS -O0)
+
 add_library(OpenBWData SHARED
   BW/BWData.cpp
+  BWAPI/PrepareGatherPathOptions.cpp
+  BWAPI/PrepareGatherPathResult.cpp
+  BWAPI/SimulateGatherPathOptions.cpp
+  BWAPI/SimulateGatherPathResult.cpp
+  BWAPI/StateCopy.cpp
 )
 
 set_property(TARGET OpenBWData PROPERTY POSITION_INDEPENDENT_CODE ON)

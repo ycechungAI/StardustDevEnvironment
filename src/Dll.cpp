@@ -7,7 +7,7 @@
 #define DLLEXPORT
 #endif
 
-#include "DemoAIModule.h"
+#include "PythonAIModule.h"
 
 extern "C" DLLEXPORT void gameInit(BWAPI::Game *game) { BWAPI::BroodwarPtr = game; }
 #ifdef _WIN32
@@ -26,5 +26,5 @@ BOOL APIENTRY DllMain( HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
 extern "C" DLLEXPORT BWAPI::AIModule *newAIModule()
 {
-    return new DemoAIModule();
+    return new PythonAIModule();
 }

@@ -22,6 +22,8 @@
 #include <BWAPI/Flag.h>
 #include <BWAPI/UnaryFilter.h>
 
+#include <BWAPI/StateCopy.h>
+
 #include <BWAPI/Unitset.h>
 
 #include <BW/CheatType.h>
@@ -35,6 +37,21 @@
 
 namespace BWAPI
 {
+  std::vector<Unit> GameImpl::getVisibleUnits()
+  {
+    std::vector<Unit> result;
+    for (auto &bwUnit : bwgame.getVisibleUnits())
+    {
+      UnitImpl* u = getUnitFromBWUnit(bwUnit);
+      if (u)
+      {
+        u->updateInternalData();
+        result.emplace_back(u);
+      }
+    }
+    return result;
+  }
+
   //----------------------------------------------------------------------------------------------------------
   Force GameImpl::getForce(int forceID) const
   {
@@ -670,6 +687,10 @@ namespace BWAPI
     }
     setLastError(Errors::Invalid_Parameter);
   }
+  void GameImpl::enableMiningTraining()
+  {
+    bwgame.enableMiningTraining();
+  }
   //------------------------------------------ ISSUE COMMAND -------------------------------------------------
   bool GameImpl::issueCommand(const Unitset& units, UnitCommand command)
   {
@@ -1278,5 +1299,9 @@ namespace BWAPI
     return bwgame.drawGameScreen(x, y, width, height);
   }
 
+  StateCopy GameImpl::getStateCopy()
+  {
+    return bwgame.getStateCopy();
+  }
 }
 

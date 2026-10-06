@@ -43,6 +43,8 @@ namespace BWAPI
   class Unitset;
   class UpgradeType;
 
+  struct StateCopy;
+
   /// <summary>The abstract Game class is implemented by BWAPI and is the primary means of obtaining all
   /// game state information from Starcraft Broodwar.</summary> Game state information includes all units,
   /// resources, players, forces, bullets, terrain, fog of war, regions, etc.
@@ -76,6 +78,10 @@ namespace BWAPI
     ///
     /// @returns Unitset containing all known units in the game.
     virtual const Unitset& getAllUnits() const = 0;
+
+    // Helper to allow us to access the visible units list in tests
+    // Only implemented in OpenBW
+    virtual std::vector<Unit> getVisibleUnits() = 0;
 
     /// <summary>Retrieves the set of all accessible @minerals in the game.</summary>
     ///
@@ -1442,6 +1448,8 @@ namespace BWAPI
     /// @see setLocalSpeed
     virtual void setFrameSkip(int frameSkip) = 0;
 
+    virtual void enableMiningTraining() = 0;
+
     /// <summary>Checks if there is a path from source to destination.</summary> This only checks
     /// if the source position is connected to the destination position. This function does not
     /// check if all units can actually travel from source to destination. Because of this
@@ -1751,6 +1759,7 @@ namespace BWAPI
     virtual BWAPI::Position getScreenSize() const = 0;
     virtual std::tuple<int, int, uint32_t*> drawGameScreen(int x, int y, int width, int height) = 0;
 
+    virtual StateCopy getStateCopy() = 0;
   };
 
   extern Game *BroodwarPtr;

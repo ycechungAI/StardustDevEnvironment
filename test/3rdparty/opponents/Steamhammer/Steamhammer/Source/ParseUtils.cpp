@@ -182,6 +182,12 @@ void ParseUtils::ParseConfigFile(const std::string & filename)
         Config::Skills::RandomGasStealRate = 1.0;
     }
 
+    if (Config::StardustTestForceNoGasSteal)
+    {
+        Config::Skills::AutoGasSteal = false;
+        Config::Skills::RandomGasStealRate = 0.0;
+    }
+
     // Are we running under SCHNAIL?
     {
         // Do this in braces so the stream object gets destroyed right away.
@@ -218,7 +224,7 @@ void ParseUtils::ParseConfigFile(const std::string & filename)
 
 		// 0. Parse all the openings.
 		// Besides making them all available, this checks that they are syntatically valid.
-		std::vector<const std::string> openingNames;		// in case we want to make a random choice
+		std::vector<std::string> openingNames;		// in case we want to make a random choice
 		if (strategy.HasMember("Strategies") && strategy["Strategies"].IsObject())
 		{
 			const rapidjson::Value & strategies = strategy["Strategies"];

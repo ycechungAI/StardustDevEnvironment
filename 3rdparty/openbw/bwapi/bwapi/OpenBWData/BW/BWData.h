@@ -10,6 +10,16 @@
 #include <type_traits>
 #include <vector>
 
+// For some of our extensions we cheat and use the BWAPI types directly to avoid the need for conversions
+namespace BWAPI {
+  struct ExactPosition;
+  struct StateCopy;
+  struct PrepareGatherPathOptions;
+  struct PrepareGatherPathResult;
+  struct SimulateGatherPathOptions;
+  struct SimulateGatherPathResult;
+}
+
 namespace bwgame {
   struct unit_t;
   struct bullet_t;
@@ -190,6 +200,7 @@ struct Game {
   void nextFrame();
   void setGUI(bool enabled);
   void enableCheats() const;
+  void enableMiningTraining() const;
   void saveReplay(const std::string& filename);
   std::tuple<int, int, void*> GameScreenBuffer();
   void setOnDraw(std::function<void(uint8_t*, size_t)> onDraw);
@@ -234,6 +245,7 @@ struct Game {
   u8 bExploredFlags(int tile_x, int tile_y) const;
 
   Unit getUnit(size_t index) const;
+  std::vector<Unit> getVisibleUnits() const;
   Bullet getBullet(size_t index) const;
 
   bool triggersCanAllowGameplayForPlayer(int player) const;
@@ -278,6 +290,8 @@ struct Game {
 
   void sendCustomAction(const void* data, size_t size);
   void setCustomActionCallback(std::function<void(int player, const char* data, size_t size)> callback);
+
+  BWAPI::StateCopy getStateCopy();
 };
 
 struct Player {
@@ -417,6 +431,14 @@ struct Unit {
   void setHitPoints(int value);
   void setShields(int value);
   void setEnergy(int value);
+  void setResources(int value);
+  void setHeading(int value);
+  void setOrderProcessTimer(int value);
+
+  BWAPI::ExactPosition getExactPosition() const;
+  int getOrderProcessTimer() const;
+  std::unique_ptr<BWAPI::PrepareGatherPathResult> prepareGatherPath(const BWAPI::PrepareGatherPathOptions &options) const;
+  std::unique_ptr<BWAPI::SimulateGatherPathResult> simulateGatherPath(const BWAPI::SimulateGatherPathOptions &options) const;
 };
 
 struct Bullet {

@@ -11,3 +11,9 @@ cmake-build-relwithdebinfo
 msvc
 out
 CMakeSettings.json
+build/
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.reference/

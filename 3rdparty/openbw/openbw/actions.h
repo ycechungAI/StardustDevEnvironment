@@ -1330,6 +1330,15 @@ struct action_functions: state_functions {
 			} else if (subtype == 2) {
 				int value = r.template get<int32_t>();
 				set_unit_energy(target, fp8::integer(value));
+			} else if (subtype == 3) {
+				int value = r.template get<int32_t>();
+				set_unit_resources(target, value);
+			} else if (subtype == 4) {
+				int value = r.template get<int32_t>();
+                set_unit_heading(target, direction_t::from_raw((direction_t::raw_type)value));
+			} else if (subtype == 5) {
+				int value = r.template get<int32_t>();
+                target->order_process_timer = value;
 			} else error("unknown ext cheat unit subtype %d", subtype);
 		} else if (type == 1) {
 			int subtype = r.template get<uint8_t>();
@@ -1350,6 +1359,11 @@ struct action_functions: state_functions {
 				int value = r.template get<int32_t>();
 				st.current_gas.at(player) = value;
 			} else error("unknown ext cheat player subtype %d", subtype);
+		} else if (type == 2) {
+			int subtype = r.template get<uint8_t>();
+			if (subtype == 0) {
+                st.mining_training = true;
+			} else error("unknown ext cheat game subtype %d", subtype);
 		} else error("unknown ext cheat type %d", type);
 		return true;
 	}

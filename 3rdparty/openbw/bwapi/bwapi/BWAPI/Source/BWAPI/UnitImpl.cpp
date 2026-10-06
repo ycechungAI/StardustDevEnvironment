@@ -6,6 +6,11 @@
 #include <BWAPI/Player.h>
 #include <BWAPI/Order.h>
 #include <BWAPI/WeaponType.h>
+#include <BWAPI/ExactPosition.h>
+#include <BWAPI/PrepareGatherPathOptions.h>
+#include <BWAPI/PrepareGatherPathResult.h>
+#include <BWAPI/SimulateGatherPathOptions.h>
+#include <BWAPI/SimulateGatherPathResult.h>
 
 #include "Command.h"
 #include "Templates.h"
@@ -230,5 +235,40 @@ namespace BWAPI
   void UnitImpl::setEnergy(int value)
   {
     bwunit.setEnergy(value);
+  }
+
+  void UnitImpl::setResources(int value)
+  {
+    bwunit.setResources(value);
+  }
+
+  void UnitImpl::setHeading(int value)
+  {
+    bwunit.setHeading(value);
+  }
+
+  void UnitImpl::setOrderProcessTimer(int value)
+  {
+    bwunit.setOrderProcessTimer(value);
+  }
+
+  ExactPosition UnitImpl::getExactPosition() const
+  {
+    return bwunit.getExactPosition();
+  }
+
+  int UnitImpl::getOrderProcessTimer() const
+  {
+    return bwunit.getOrderProcessTimer();
+  }
+
+  std::unique_ptr<BWAPI::PrepareGatherPathResult> UnitImpl::prepareGatherPath(const BWAPI::PrepareGatherPathOptions &options) const
+  {
+    return bwunit.prepareGatherPath(options);
+  }
+
+  std::unique_ptr<SimulateGatherPathResult> UnitImpl::simulateGatherPath(const SimulateGatherPathOptions &options) const
+  {
+    return bwunit.simulateGatherPath(options);
   }
 };

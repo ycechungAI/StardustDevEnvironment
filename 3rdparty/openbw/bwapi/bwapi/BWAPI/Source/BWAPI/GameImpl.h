@@ -56,6 +56,8 @@ namespace BWAPI
   class UnitImpl;
   class Unitset;
 
+  struct StateCopy;
+
   struct Snapshot {
     BW::Snapshot bwsnapshot;
     struct Player {
@@ -80,6 +82,7 @@ namespace BWAPI
       virtual const Forceset&   getForces() const override;
       virtual const Playerset&  getPlayers() const override;
       virtual const Unitset&    getAllUnits() const override;
+      virtual std::vector<Unit> getVisibleUnits() override;
       virtual const Unitset&    getMinerals() const override;
       virtual const Unitset&    getGeysers() const override;
       virtual const Unitset&    getNeutralUnits() const override;
@@ -198,6 +201,8 @@ namespace BWAPI
       virtual bool setMap(const char *mapFileName) override;
       virtual void setFrameSkip(int frameSkip) override;
 
+      virtual void enableMiningTraining() override;
+
       virtual bool setAlliance(Player player, bool allied = true, bool alliedVictory = true) override;
       virtual bool setVision(Player player, bool enabled = true) override;
       virtual int  elapsedTime() const override;
@@ -233,6 +238,8 @@ namespace BWAPI
       virtual void disableTriggers() override;
       virtual BWAPI::Position getScreenSize() const override;
       virtual std::tuple<int, int, uint32_t*> drawGameScreen(int x, int y, int width, int height) override;
+
+      virtual StateCopy getStateCopy() override;
 
       //Internal BWAPI commands:
       GameImpl(BW::Game bwgame);

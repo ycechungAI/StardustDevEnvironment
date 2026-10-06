@@ -1,0 +1,17 @@
+# Expected differences between python/*.pyi and the pybind11 modules, for:
+#   PYTHONPATH=build/python MYPYPATH=python python -m mypy.stubtest bwapi instrumentation --allowlist tools/stubtest_allowlist.txt
+
+# pybind11 classes use pybind11's own metaclass
+bwapi\.[A-Z]\w*
+
+# BWAPI namespaces (UnitTypes, Positions, ...) and instrumentation's Log/CherryVis are submodules at
+# runtime but are stubbed as classes so editors complete `UnitTypes.Protoss_Probe`
+instrumentation\.(Log|CherryVis)
+
+# Units, players, the game etc. are created by BWAPI and cannot be constructed from Python
+bwapi\.(Game|Unit|Player|Force|Bullet|Region)\.__init__
+
+# bwem and fap: pybind11 metaclass, and BWEM objects are never constructed from Python
+bwem\.[A-Z]\w*(\.node)?
+bwem\.\w+\.__init__
+fap\.[A-Z]\w*
