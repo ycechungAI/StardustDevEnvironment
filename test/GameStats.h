@@ -42,6 +42,9 @@ struct PlayerStats
                                            const Losses &losses);
 };
 
+// Every unit type the player has (made or in production) with its count, e.g. " Opponent: Zerg_Drone=9 Zerg_Zergling=6"
+std::string ObserveUnitCounts(BW::Game game, const std::string &characterName, const std::string &name);
+
 // Elo ratings written by tools/elo.py to replays/ratings.json, by player name; empty if there are none yet
 std::map<std::string, double> ReadRatings();
 

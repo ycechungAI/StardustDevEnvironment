@@ -112,6 +112,26 @@ std::optional<PlayerStats> PlayerStats::read(BW::Game game, const std::string &c
     return std::nullopt;
 }
 
+std::string ObserveUnitCounts(BW::Game game, const std::string &characterName, const std::string &name)
+{
+    for (int owner = 0; owner < 12; owner++)
+    {
+        auto player = game.getPlayer(owner);
+        if (characterName != player.szName()) continue;
+
+        std::ostringstream out;
+        out << " " << name << ":";
+        for (auto type : BWAPI::UnitTypes::allUnitTypes())
+        {
+            if (type.getID() >= 228) continue;
+            int count = player.unitCountsAll(type.getID());
+            if (count > 0) out << " " << type.getName() << "=" << count;
+        }
+        return out.str();
+    }
+    return "";
+}
+
 std::map<std::string, double> ReadRatings()
 {
     std::map<std::string, double> ratings;

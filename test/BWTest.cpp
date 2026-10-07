@@ -424,6 +424,14 @@ void BWTest::runGame(bool opponent)
         {
             lastMyStats = PlayerStats::read(game, "Tests", myName, losses);
             lastOpponentStats = PlayerStats::read(game, "Opponent", opponentDisplayName, losses);
+
+            // STARDUST_OBSERVE=<frames> prints both players' unit counts at that interval, like watching the replay
+            static int observeInterval = std::getenv("STARDUST_OBSERVE") ? std::atoi(std::getenv("STARDUST_OBSERVE")) : 0;
+            if (observeInterval > 0 && h->getFrameCount() % observeInterval == 0)
+            {
+                std::cout << "OBSERVE " << h->getFrameCount() << ObserveUnitCounts(game, "Tests", myName)
+                          << " ||" << ObserveUnitCounts(game, "Opponent", opponentDisplayName) << std::endl;
+            }
         }
         if (showStats && lastMyStats && lastOpponentStats && std::get<0>(game.GameScreenBuffer()) > 0)
         {
