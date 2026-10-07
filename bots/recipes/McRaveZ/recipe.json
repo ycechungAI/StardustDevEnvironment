@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2025/bots/McRaveZ.zip",
+  "sha256": "dcaf0fc3484d62ff1abf27382f16bb8ed53e8a9942ef5c3f13c85940bc5a1418",
+  "strip": "McRaveAIIDE2024",
+  "race": "Zerg",
+  "license": "MIT (McRave), plus BWEM's and BWEB's",
+  "notes": "McRave (Zerg) as entered in AIIDE 2024/2025, by Christian McCrave"
+}

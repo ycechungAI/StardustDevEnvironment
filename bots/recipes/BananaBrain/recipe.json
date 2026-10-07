@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2025/bots/BananaBrain.zip",
+  "sha256": "3d68f16ca785665c56ef78148271c5a1e19d1df82cdd1cf4620f3090ca207549",
+  "strip": "BananaBrainAIIDE2025",
+  "race": "Protoss",
+  "license": "BananaBrain licence (MIT-style; no public tournament entry without the author's permission) and BWEM's",
+  "notes": "AIIDE 2025 champion, by Johan de Jong"
+}

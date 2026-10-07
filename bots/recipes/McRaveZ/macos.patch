@@ -1,0 +1,674 @@
+diff -ruN a/Source/BWEB/BWEB.h b/Source/BWEB/BWEB.h
+--- a/Source/BWEB/BWEB.h	2026-10-07 01:26:04
++++ b/Source/BWEB/BWEB.h	2026-10-07 01:26:04
+@@ -70,6 +70,9 @@
+     /// Returns two BWAPI::Positions perpendicular to a line at a given distance away in pixels.
+     std::pair<BWAPI::Position, BWAPI::Position> perpendicularLine(std::pair<BWAPI::Position, BWAPI::Position>, double);
+ 
++    template <class T>
++    double getAngle(T p1, T p2);
++
+     /// Returns the angle of a pair of BWAPI::Point in degrees.
+     template <class T>
+     double getAngle(std::pair<T, T> p) {
+diff -ruN a/Source/BWEM/area.cpp b/Source/BWEM/area.cpp
+--- a/Source/BWEM/area.cpp	2026-10-07 01:26:04
++++ b/Source/BWEM/area.cpp	2026-10-07 01:26:04
+@@ -18,7 +18,7 @@
+ #include "winutils.h"
+ #include "bwapiExt.h"
+ 
+-#include "BaseFinder\BaseFinder.h"
++#include "BaseFinder/BaseFinder.h"
+ 
+ using namespace BWAPI;
+ using namespace BWAPI::UnitTypes::Enum;
+diff -ruN a/Source/BWEM/graph.cpp b/Source/BWEM/graph.cpp
+--- a/Source/BWEM/graph.cpp	2026-10-07 01:26:04
++++ b/Source/BWEM/graph.cpp	2026-10-07 01:26:04
+@@ -15,6 +15,29 @@
+ #include <map>
+ #include <deque>
+ 
++namespace BWEM {
++namespace detail {
++
++const Area * Graph::GetNearestArea(BWAPI::TilePosition t) const
++{
++    if (const Area * area = GetArea(t)) return area;
++    t = GetMap()->BreadthFirstSearch(t,
++                    [this](const Tile & t, BWAPI::TilePosition) { return t.AreaId() > 0; },    // findCond
++                    [](const Tile &, BWAPI::TilePosition) { return true; });                 // visitCond
++    return GetArea(t);
++}
++
++const Area * Graph::GetNearestArea(BWAPI::WalkPosition w) const
++{
++    if (const Area * area = GetArea(w)) return area;
++    w = GetMap()->BreadthFirstSearch(w,
++                    [this](const MiniTile & t, BWAPI::WalkPosition) { return t.AreaId() > 0; },    // findCond
++                    [](const MiniTile &, BWAPI::WalkPosition) { return true; });                 // visitCond
++    return GetArea(w);
++}
++
++}} // namespace BWEM::detail
++
+ 
+ using namespace BWAPI;
+ using namespace BWAPI::UnitTypes::Enum;
+diff -ruN a/Source/BWEM/graph.h b/Source/BWEM/graph.h
+--- a/Source/BWEM/graph.h	2026-10-07 01:26:04
++++ b/Source/BWEM/graph.h	2026-10-07 01:26:04
+@@ -77,8 +77,10 @@
+     const Area *                        GetArea(BWAPI::TilePosition t) const;
+     Area *                                GetArea(BWAPI::TilePosition t)    { return const_cast<Area *>(static_cast<const Graph &>(*this).GetArea(t)); }
+ 
+-    template<class TPosition>const Area*GetNearestArea(TPosition p) const;
+-    template<class TPosition> Area *    GetNearestArea(TPosition p)        { return const_cast<Area *>(static_cast<const Graph &>(*this).GetNearestArea(p)); }
++    const Area*                         GetNearestArea(BWAPI::WalkPosition w) const;
++    Area *                              GetNearestArea(BWAPI::WalkPosition w) { return const_cast<Area *>(static_cast<const Graph &>(*this).GetNearestArea(w)); }
++    const Area*                         GetNearestArea(BWAPI::TilePosition t) const;
++    Area *                              GetNearestArea(BWAPI::TilePosition t) { return const_cast<Area *>(static_cast<const Graph &>(*this).GetNearestArea(t)); }
+ 
+ 
+     // Returns the list of all the ChokePoints in the Map.
+@@ -133,18 +135,7 @@
+ };
+ 
+ 
+-template<class TPosition>
+-const Area * Graph::GetNearestArea(TPosition p) const
+-{
+-    typedef typename TileOfPosition<TPosition>::type Tile_t;
+-    if (const Area * area = GetArea(p)) return area;
+ 
+-    p = GetMap()->BreadthFirstSearch(p,
+-                    [this](const Tile_t & t, TPosition) { return t.AreaId() > 0; },    // findCond
+-                    [](const Tile_t &,       TPosition) { return true; });            // visitCond
+-
+-    return GetArea(p);
+-}
+ 
+ 
+ Area * mainArea(MapImpl * pMap, BWAPI::TilePosition topLeft, BWAPI::TilePosition size);
+diff -ruN a/Source/BWEM/mapImpl.cpp b/Source/BWEM/mapImpl.cpp
+--- a/Source/BWEM/mapImpl.cpp	2026-10-07 01:26:04
++++ b/Source/BWEM/mapImpl.cpp	2026-10-07 01:26:04
+@@ -13,7 +13,7 @@
+ #include "bwapiExt.h"
+ #include "winutils.h"
+ 
+-#include "BaseFinder\BaseFinder.h"
++#include "BaseFinder/BaseFinder.h"
+ 
+ 
+ using namespace BWAPI;
+diff -ruN a/Source/Horizon/Horizon.cpp b/Source/Horizon/Horizon.cpp
+--- a/Source/Horizon/Horizon.cpp	2026-10-07 01:26:04
++++ b/Source/Horizon/Horizon.cpp	2026-10-07 01:26:04
+@@ -55,7 +55,7 @@
+         if (!unit.hasTarget())
+             return;
+ 
+-        auto &unitTarget = unit.getTarget().lock();
++        auto unitTarget = unit.getTarget().lock();
+ 
+         // Determine when to start tracking engagement times, if nothing is in range, it cannot count towards simulation time
+         const auto maxRange = max({ unit.getGroundRange(), unit.getAirRange(), unitTarget->getGroundRange(), unitTarget->getAirRange() });
+@@ -80,7 +80,7 @@
+             if (!addToSim(enemy))
+                 continue;
+ 
+-            auto &enemyTarget =                 enemy.getTarget().lock();
++            auto enemyTarget =                 enemy.getTarget().lock();
+             auto simRatio =                     0.0;
+             const auto distUnknown =            min(double(unit.getType().sightRange()), (Broodwar->getFrameCount() - enemy.getLastVisibleFrame()) * enemy.getSpeed());
+             const auto distTarget =             max(0.0, double(Util::boxDistance(enemy.getType(), enemy.getPosition(), unit.getType(), unit.getPosition())));
+@@ -125,7 +125,7 @@
+             if (!addToSim(self))
+                 continue;
+ 
+-            auto &selfTarget = self.getTarget().lock();
++            auto selfTarget = self.getTarget().lock();
+             const auto range = max(self.getAirRange(), self.getGroundRange());
+             const auto reach = max(self.getAirReach(), self.getGroundReach());
+             const auto distance = self.getEngDist() + targetDisplacement;
+@@ -157,7 +157,7 @@
+             if (!addToSim(ally))
+                 continue;
+ 
+-            auto &allyTarget = ally.getTarget().lock();
++            auto allyTarget = ally.getTarget().lock();
+             const auto range = max(ally.getAirRange(), ally.getGroundRange());
+             const auto reach = max(ally.getAirReach(), ally.getGroundReach());
+             const auto distance = double(Util::boxDistance(ally.getType(), ally.getPosition(), unit.getType(), unitTarget->getPosition()));
+diff -ruN a/Source/McRave/Builds/All/BuildOrder.cpp b/Source/McRave/Builds/All/BuildOrder.cpp
+--- a/Source/McRave/Builds/All/BuildOrder.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Builds/All/BuildOrder.cpp	2026-10-07 01:26:04
+@@ -252,7 +252,7 @@
+         vector<UnitType> checkedAlready;
+ 
+         // Add any buildable requisite buildings to make this unit
+-        std::function<void(UnitType)>addBuildableRequisites = [&](auto &type) {
++        std::function<void(UnitType)>addBuildableRequisites = [&](auto type) {
+             for (auto &[parent, _] : type.requiredUnits()) {
+                 if (parent == Zerg_Larva || parent.isWorker())
+                     continue;
+diff -ruN a/Source/McRave/Info/Resource/Resources.cpp b/Source/McRave/Info/Resource/Resources.cpp
+--- a/Source/McRave/Info/Resource/Resources.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Info/Resource/Resources.cpp	2026-10-07 01:26:04
+@@ -263,7 +263,7 @@
+ 
+     void removeResource(Unit unit)
+     {
+-        auto &resource = getResourceInfo(unit);
++        auto resource = getResourceInfo(unit);
+ 
+         if (resource) {
+ 
+diff -ruN a/Source/McRave/Info/Unit/Pathing.cpp b/Source/McRave/Info/Unit/Pathing.cpp
+--- a/Source/McRave/Info/Unit/Pathing.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Info/Unit/Pathing.cpp	2026-10-07 01:26:04
+@@ -155,7 +155,7 @@
+             for (auto &u : Units::getUnits(PlayerState::Self)) {
+                 UnitInfo& unit = *u;
+                 if (unit.hasTarget()) {
+-                    auto &target = *unit.getTarget().lock();
++                    auto target = *unit.getTarget().lock();
+                     getEngagePosition(unit, target);
+                     getInterceptPosition(unit, target);
+                 }
+diff -ruN a/Source/McRave/Info/Unit/Targeting.cpp b/Source/McRave/Info/Unit/Targeting.cpp
+--- a/Source/McRave/Info/Unit/Targeting.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Info/Unit/Targeting.cpp	2026-10-07 01:26:04
+@@ -575,7 +575,7 @@
+ 
+             // Enemy units are assumed targets or order targets
+             if (unit.getPlayer()->isEnemy(Broodwar->self())) {
+-                auto &targetInfo = unit.unit()->getOrderTarget() ? Units::getUnitInfo(unit.unit()->getOrderTarget()) : nullptr;
++                auto targetInfo = unit.unit()->getOrderTarget() ? Units::getUnitInfo(unit.unit()->getOrderTarget()) : nullptr;
+                 if (targetInfo) {
+                     unit.setTarget(&*targetInfo);
+                     targetInfo->getUnitsTargetingThis().push_back(unit.weak_from_this());
+@@ -617,8 +617,8 @@
+ 
+         void updateStatistics()
+         {
+-            auto &enemyStrength = Players::getStrength(PlayerState::Enemy);
+-            auto &myStrength = Players::getStrength(PlayerState::Self);
++            auto enemyStrength = Players::getStrength(PlayerState::Enemy);
++            auto myStrength = Players::getStrength(PlayerState::Self);
+ 
+             maxPriority = 1.0;
+             for (auto &u : Units::getUnits(PlayerState::Enemy)) {
+diff -ruN a/Source/McRave/Info/Unit/UnitInfo.cpp b/Source/McRave/Info/Unit/UnitInfo.cpp
+--- a/Source/McRave/Info/Unit/UnitInfo.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Info/Unit/UnitInfo.cpp	2026-10-07 01:26:04
+@@ -371,7 +371,7 @@
+             || !hasTarget())
+             return;
+ 
+-        auto &target = *target_.lock();
++        auto target = *target_.lock();
+ 
+         // Determine how close it is to strategic locations
+         const auto choke = Combat::isDefendNatural() ? Terrain::getNaturalChoke() : Terrain::getMainChoke();
+@@ -840,7 +840,7 @@
+         if (getType() == Terran_Ghost)
+             return !Terrain::inArea(mapBWEM.GetArea(TilePosition(getDestination())), getPosition());
+ 
+-        auto &unitTarget = getTarget().lock();
++        auto unitTarget = getTarget().lock();
+         auto range = unitTarget->isFlying() ? getAirRange() : getGroundRange();
+         auto cargoPickup = getType() == BWAPI::UnitTypes::Protoss_High_Templar ? (!canStartCast(BWAPI::TechTypes::Psionic_Storm, unitTarget->getPosition()) || Grids::getGroundThreat(getPosition(), PlayerState::Enemy) <= 0.1f) : !canStartAttack();
+ 
+@@ -997,7 +997,7 @@
+             return false;
+ 
+ 
+-        auto &target = *getTarget().lock();
++        auto target = *getTarget().lock();
+         if (target.isThreatening())
+             return false;
+         if (!target.getType().isWorker() && Util::getTime() < Time(4, 00) && Broodwar->getGameType() != GameTypes::Use_Map_Settings)
+diff -ruN a/Source/McRave/Info/Unit/UnitInfo.h b/Source/McRave/Info/Unit/UnitInfo.h
+--- a/Source/McRave/Info/Unit/UnitInfo.h	2026-10-07 01:26:04
++++ b/Source/McRave/Info/Unit/UnitInfo.h	2026-10-07 01:26:04
+@@ -297,11 +297,11 @@
+         void setSimState(SimState newState) { sState = newState; }
+         void setGlobalState(GlobalState newState) { gState = newState; }
+         void setLocalState(LocalState newState) { lState = newState; }
+-        void setResource(ResourceInfo* unit) { unit ? resource = unit->weak_from_this() : resource.reset(); }
+-        void setTransport(UnitInfo* unit) { unit ? transport = unit->weak_from_this() : transport.reset(); }
+-        void setTarget(UnitInfo* unit) { unit ? target_ = unit->weak_from_this() : target_.reset(); }
+-        void setCommander(UnitInfo* unit) { unit ? commander = unit->weak_from_this() : commander.reset(); }
+-        void setSimTarget(UnitInfo* unit) { unit ? simTarget = unit->weak_from_this() : simTarget.reset(); }
++        void setResource(ResourceInfo* unit) { if (unit) resource = unit->weak_from_this(); else resource.reset(); }
++        void setTransport(UnitInfo* unit) { if (unit) transport = unit->weak_from_this(); else transport.reset(); }
++        void setTarget(UnitInfo* unit) { if (unit) target_ = unit->weak_from_this(); else target_.reset(); }
++        void setCommander(UnitInfo* unit) { if (unit) commander = unit->weak_from_this(); else commander.reset(); }
++        void setSimTarget(UnitInfo* unit) { if (unit) simTarget = unit->weak_from_this(); else simTarget.reset(); }
+         void setRole(Role newRole) { role = newRole; }
+         void setGoalType(GoalType newGoalType) { gType = newGoalType; }
+         void setBuildingType(BWAPI::UnitType newType) { buildingType = newType; }
+@@ -311,7 +311,7 @@
+         void setNavigation(BWAPI::Position newPosition) { navigation = newPosition; }
+         void setGoal(BWAPI::Position newPosition) { goal = newPosition; }
+         void setBuildPosition(BWAPI::TilePosition newPosition) { buildPosition = newPosition; }
+-        void setDestinationPath(BWEB::Path& newPath) { destinationPath = newPath; }
++        void setDestinationPath(const BWEB::Path& newPath) { destinationPath = newPath; }
+ 
+         void setInterceptPosition(BWAPI::Position p) { interceptPosition = p; }
+         void setSurroundPosition(BWAPI::Position p) { surroundPosition = p; }
+diff -ruN a/Source/McRave/Info/Unit/UnitMath.cpp b/Source/McRave/Info/Unit/UnitMath.cpp
+--- a/Source/McRave/Info/Unit/UnitMath.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Info/Unit/UnitMath.cpp	2026-10-07 01:26:04
+@@ -19,7 +19,7 @@
+             double cnt = 0.0;
+             for (auto &i : unit.unit()->getInterceptors()) {
+                 if (i && !i->exists()) {
+-                    auto &interceptor = Units::getUnitInfo(i);
++                    auto interceptor = Units::getUnitInfo(i);
+                     if (interceptor)
+                         cnt += interceptor->getMaxGroundStrength();
+                 }
+@@ -48,7 +48,7 @@
+             double cnt = 0.0;
+             for (auto &i : unit.unit()->getInterceptors()) {
+                 if (i && !i->exists()) {
+-                    auto &interceptor = Units::getUnitInfo(i);
++                    auto interceptor = Units::getUnitInfo(i);
+                     if (interceptor)
+                         cnt += interceptor->getMaxAirStrength();
+                 }
+diff -ruN a/Source/McRave/Macro/Expanding/Expanding.cpp b/Source/McRave/Macro/Expanding/Expanding.cpp
+--- a/Source/McRave/Macro/Expanding/Expanding.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Macro/Expanding/Expanding.cpp	2026-10-07 01:26:04
+@@ -15,9 +15,9 @@
+             // Check if any base goes through enemy territory currently
+             dangerousStations.clear();
+             for (auto &station : BWEB::Stations::getStations()) {
+-                auto& path = Stations::getPathBetween(Terrain::getMyMain(), &station);
++                auto path = Stations::getPathBetween(Terrain::getMyMain(), &station);
+                 if (!path.getTiles().empty()) {
+-                    auto danger = Util::findPointOnPath(path, [&](auto &p) {
++                    auto danger = Util::findPointOnPath(path, [&](auto p) {
+                         return Terrain::inTerritory(PlayerState::Enemy, p);
+                     });
+ 
+@@ -46,7 +46,7 @@
+             // Create a map of blocking neutrals per station
+             blockingNeutrals.clear();
+             for (auto &[station, path] : Stations::getStationNetwork(Terrain::getMyMain())) {
+-                Util::testPointOnPath(path, [&](Position &p) {
++                Util::testPointOnPath(path, [&](Position p) {
+                     auto type = BWEB::Map::isUsed(TilePosition(p));
+                     if (type != UnitTypes::None) {
+                         const auto closestNeutral = Util::getClosestUnit(p, PlayerState::Neutral, [&](auto &u) {
+diff -ruN a/Source/McRave/Macro/Planning/Planning.cpp b/Source/McRave/Macro/Planning/Planning.cpp
+--- a/Source/McRave/Macro/Planning/Planning.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Macro/Planning/Planning.cpp	2026-10-07 01:26:04
+@@ -36,7 +36,7 @@
+ 
+         bool creepOrPowerReadyOnArrival(UnitType building, TilePosition here, UnitInfo& builder)
+         {
+-            const auto adjacentToHatch = [&](auto &hatch) {
++            const auto adjacentToHatch = [&](auto hatch) {
+                 return (here.x - hatch.x >= -2 && here.x - hatch.x <= 4 && here.y - hatch.y >= -2 && here.y - hatch.y <= 3);
+             };
+ 
+@@ -835,7 +835,7 @@
+             auto start = Position(Terrain::getMainChoke()->Center());
+ 
+             // TODO: Assumes a main wall only for now
+-            const auto inWallPiece = [&](auto &t, BWEB::Wall * wall) {
++            const auto inWallPiece = [&](auto t, const BWEB::Wall * wall) {
+                 for (auto &piece : wall->getLargeTiles()) {
+                     if (t.x >= piece.x && t.x < piece.x + 4 && t.y >= piece.y && t.y < piece.y + 3)
+                         return true;
+diff -ruN a/Source/McRave/Main/Util.h b/Source/McRave/Main/Util.h
+--- a/Source/McRave/Main/Util.h	2026-10-07 01:26:04
++++ b/Source/McRave/Main/Util.h	2026-10-07 01:26:04
+@@ -32,7 +32,7 @@
+     double log10(int);
+ 
+     /// Log a thing
+-    static void debug(std::string& stuff)
++    static void debug(const std::string& stuff)
+     {
+         auto frameString = "[" + std::to_string(BWAPI::Broodwar->getFrameCount()) + "]";
+         std::ofstream writeFile;
+diff -ruN a/Source/McRave/Map/Stations.h b/Source/McRave/Map/Stations.h
+--- a/Source/McRave/Map/Stations.h	2026-10-07 01:26:04
++++ b/Source/McRave/Map/Stations.h	2026-10-07 01:26:04
+@@ -50,7 +50,7 @@
+ 
+     template<typename F>
+     const BWEB::Station * getClosestStationAir(BWAPI::Position here, PlayerState player, F &&pred) {
+-        auto &list = getStations(player);
++        const auto &list = getStations(player);
+         auto distBest = DBL_MAX;
+         const BWEB::Station * closestStation = nullptr;
+         for (auto &station : list) {
+@@ -71,7 +71,7 @@
+ 
+     template<typename F>
+     const BWEB::Station * getClosestStationGround(BWAPI::Position here, PlayerState player, F &&pred) {
+-        auto &list = getStations(player);
++        const auto &list = getStations(player);
+         auto distBest = DBL_MAX;
+         const BWEB::Station * closestStation = nullptr;
+         for (auto &station : list) {
+diff -ruN a/Source/McRave/Micro/All/Commands.cpp b/Source/McRave/Micro/All/Commands.cpp
+--- a/Source/McRave/Micro/All/Commands.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/All/Commands.cpp	2026-10-07 01:26:04
+@@ -170,7 +170,7 @@
+     {
+         if (!unit.hasTarget())
+             return false;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+ 
+         if (!target.unit()->exists()
+             || target.isHidden()
+@@ -218,7 +218,7 @@
+     {
+         if (!unit.hasTarget())
+             return false;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+ 
+         const auto shouldApproach = [&]() {
+             // Don't approach if
+@@ -290,7 +290,7 @@
+ 
+             // Special case: Mutalisks want to maintain attack angle to maintain speed
+             if (unit.hasTarget()) {
+-                auto &target = *unit.getTarget().lock();
++                auto target = *unit.getTarget().lock();
+                 if (unit.getType() == Zerg_Mutalisk && unit.canStartAttack() && !unit.isWithinAngle(target))
+                     return true;
+             }
+@@ -302,7 +302,7 @@
+                     return true;
+ 
+                 if (unit.hasTarget()) {
+-                    auto &target = *unit.getTarget().lock();
++                    auto target = *unit.getTarget().lock();
+                     auto doNothing = !unit.targetsFriendly() && target.unit()->exists() && unit.isWithinRange(target);
+ 
+                     if (doNothing && !unit.attemptingSurround() && !unit.isLightAir() && !unit.isSuicidal())
+@@ -317,7 +317,7 @@
+ 
+                 auto hasMineableResource = false;
+                 if (unit.hasResource()) {
+-                    auto &resource = unit.getResource().lock();
++                    auto resource = unit.getResource().lock();
+                     hasMineableResource = resource->getResourceState() == ResourceState::Mineable;
+                 }
+ 
+@@ -378,14 +378,14 @@
+         // If we don't have a target, we can't kite it
+         if (!unit.hasTarget())
+             return false;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+ 
+         // Find the best possible position to kite towards
+         auto kiteTowards = Positions::Invalid;
+         if (unit.isLightAir() && Grids::getAirThreat(unit.getPosition(), PlayerState::Enemy) > 0.0) {
+             auto maxRange = max(unit.getAirRange(), unit.getGroundRange());
+             const auto kiteRange = unit.getType().groundWeapon().damageCooldown() * unit.getType().topSpeed() + 64.0;
+-            const auto threatCalc = [&](auto &p) {
++            const auto threatCalc = [&](auto p) {
+                 return double(Grids::getAirThreat(p, PlayerState::Enemy));
+             };
+             auto calcPair = Util::findPointOnCircle(unit.getPosition(), target.getPosition(), maxRange, threatCalc);
+@@ -664,7 +664,7 @@
+                 score = 1.0 / (dist);
+ 
+             for (auto &c : unit.getAssignedCargo()) {
+-                if (auto &cargo = c.lock()) {
++                if (auto cargo = c.lock()) {
+ 
+                     // If we're trying to load
+                     if (unit.getTransportState() == TransportState::Loading)
+diff -ruN a/Source/McRave/Micro/All/Specials.cpp b/Source/McRave/Micro/All/Specials.cpp
+--- a/Source/McRave/Micro/All/Specials.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/All/Specials.cpp	2026-10-07 01:26:04
+@@ -78,7 +78,7 @@
+ 
+             if (bunker) {
+                 if (unit.hasTarget()) {
+-                    auto &target = *unit.getTarget().lock();
++                    auto target = *unit.getTarget().lock();
+                     auto close = target.isWithinReach(unit) && target.isWithinReach(*bunker);
+                     loadBunker = alwaysLoad || close;
+                     unloadBunker = !alwaysLoad && !close;
+@@ -378,7 +378,7 @@
+     {
+         if (!unit.hasTarget())
+             return false;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+ 
+         // Battlecruiser - Yamato
+         if (unit.getType() == Terran_Battlecruiser && Broodwar->self()->hasResearched(Yamato_Gun)) {
+diff -ruN a/Source/McRave/Micro/Combat/Simulation.cpp b/Source/McRave/Micro/Combat/Simulation.cpp
+--- a/Source/McRave/Micro/Combat/Simulation.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/Combat/Simulation.cpp	2026-10-07 01:26:04
+@@ -42,7 +42,7 @@
+         auto belowGrdtoAirLimit = false;
+         auto belowAirtoAirLimit = false;
+         auto belowAirtoGrdLimit = false;
+-        auto &unitTarget = unit.getTarget().lock();
++        auto unitTarget = unit.getTarget().lock();
+         auto selfEngaged = false;
+         auto enemyEngaged = false;
+         auto allyEngaged = false;
+@@ -115,7 +115,7 @@
+         // Can't have incentives without a target for now
+         if (!unit.hasTarget())
+             return;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+ 
+         // Adjust winrates if we have static defense that would make the fight easier and we're at home
+         if (Util::getTime() < Time(8, 00) && !unit.isFlying() && com(Zerg_Sunken_Colony) > 0 && Combat::State::isStaticRetreat(unit.getType())) {
+diff -ruN a/Source/McRave/Micro/Combat/State.cpp b/Source/McRave/Micro/Combat/State.cpp
+--- a/Source/McRave/Micro/Combat/State.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/Combat/State.cpp	2026-10-07 01:26:04
+@@ -167,7 +167,7 @@
+     {
+         if (!unit.hasTarget())
+             return false;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+ 
+         auto countDefensesInRange = 0.0;
+         if (unit.getType() == Zerg_Mutalisk) {
+@@ -224,7 +224,7 @@
+         // ... Medic with no energy
+         // ... Zergling with low health targeting a worker
+         if (unit.hasTarget()) {
+-            auto &target = *unit.getTarget().lock();
++            auto target = *unit.getTarget().lock();
+             const auto slowZealotVsVulture = unit.getType() == Protoss_Zealot && Broodwar->self()->getUpgradeLevel(UpgradeTypes::Leg_Enhancements) == 0 && target.getType() == Terran_Vulture;
+             const auto sparseCorsairVsScourge = unit.getType() == Protoss_Corsair && target.isSuicidal() && com(Protoss_Corsair) < 6; // TODO: Check density instead
+             const auto lowShieldFlyer = false;// (unit.isLightAir() && unit.getType().maxShields() > 0 && target.getType() == Zerg_Overlord && Grids::getAirThreat(unit.getEngagePosition(), PlayerState::Enemy) * 5.0 > (double)unit.getShields());
+@@ -242,7 +242,7 @@
+     {
+         if (!unit.hasTarget())
+             return false;
+-        auto &target = *unit.getTarget().lock();
++        auto target = *unit.getTarget().lock();
+         const auto atHome = Terrain::inTerritory(PlayerState::Self, target.getPosition());
+ 
+         const auto nearEnemyStation = [&]() {
+@@ -302,7 +302,7 @@
+     bool forceGlobalRetreat(UnitInfo& unit)
+     {
+         if (unit.hasTarget()) {
+-            auto &target = *unit.getTarget().lock();
++            auto target = *unit.getTarget().lock();
+ 
+             // Try to save Mutas that are low hp when the firepower isn't needed
+             const auto mutaSavingRequired = unit.getType() == Zerg_Mutalisk &&
+@@ -342,8 +342,8 @@
+         if (!unit.hasSimTarget() || !unit.hasTarget() || unit.getLocalState() != LocalState::None)
+             return;
+ 
+-        auto &simTarget = *unit.getSimTarget().lock();
+-        auto &target = *unit.getTarget().lock();
++        auto simTarget = *unit.getSimTarget().lock();
++        auto target = *unit.getTarget().lock();
+         const auto atHome = Terrain::inTerritory(PlayerState::Self, target.getPosition());
+ 
+         const auto distSim = (unit.isFlying() || simTarget.isFlying() || unit.isWithinRange(simTarget) || simTarget.isWithinRange(unit))
+diff -ruN a/Source/McRave/Micro/Scout/Scouts.cpp b/Source/McRave/Micro/Scout/Scouts.cpp
+--- a/Source/McRave/Micro/Scout/Scouts.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/Scout/Scouts.cpp	2026-10-07 01:26:04
+@@ -476,7 +476,7 @@
+             // Army scouting between my natural and enemy natural
+             BWEB::Path newPath(start, end, Zerg_Zergling);
+             newPath.generateJPS([&](auto t) {return newPath.terrainWalkable(t); });
+-            auto safeTarget = Util::findPointOnPath(newPath, [&](auto &t) {
++            auto safeTarget = Util::findPointOnPath(newPath, [&](auto t) {
+                 return Grids::getGroundThreat(t, PlayerState::Enemy) <= 0.1;
+             });
+ 
+diff -ruN a/Source/McRave/Micro/Support/Support.cpp b/Source/McRave/Micro/Support/Support.cpp
+--- a/Source/McRave/Micro/Support/Support.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/Support/Support.cpp	2026-10-07 01:26:04
+@@ -109,7 +109,7 @@
+                     if (dist < distBest) {
+                         auto position = commander->getPosition();
+                         if (commander->getSimState() == SimState::Win && commander->hasTarget()) {
+-                            auto &commanderTarget = commander->getTarget().lock();
++                            auto commanderTarget = commander->getTarget().lock();
+                             if ((commanderTarget->cloaked || commanderTarget->isBurrowed()) && commander->isWithinReach(*commanderTarget))
+                                 position = commanderTarget->getPosition();
+                         }
+diff -ruN a/Source/McRave/Micro/Transport/Transports.cpp b/Source/McRave/Micro/Transport/Transports.cpp
+--- a/Source/McRave/Micro/Transport/Transports.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/Transport/Transports.cpp	2026-10-07 01:26:04
+@@ -62,7 +62,7 @@
+ 
+             // Calculate cargo size allocated (but not necessarily loaded)
+             for (auto &c : cargoList) {
+-                if (auto &cargo = c.lock())
++                if (auto cargo = c.lock())
+                     cargoSize += cargo->getType().spaceRequired();
+             }
+ 
+@@ -179,10 +179,10 @@
+             };
+ 
+             for (auto &c : unit.getAssignedCargo()) {
+-                auto &cargo = *c.lock();
++                auto cargo = *c.lock();
+                 if (!cargo.hasTarget())
+                     continue;
+-                auto &cargoTarget = *cargo.getTarget().lock();
++                auto cargoTarget = *cargo.getTarget().lock();
+ 
+                 if (readyToLoad(cargo, cargoTarget))
+                     setState(TransportState::Loading);
+@@ -225,7 +225,7 @@
+             UnitInfo * closestCargo = nullptr;
+             auto distBest = DBL_MAX;
+             for (auto &c : unit.getAssignedCargo()) {
+-                auto &cargo = c.lock();
++                auto cargo = c.lock();
+ 
+                 auto dist = cargo->getPosition().getDistance(unit.getPosition());
+                 if (dist < distBest && !cargo->unit()->isLoaded()) {
+@@ -237,7 +237,7 @@
+             // If list isn't empty, our destination is the first valid one
+             auto engageDestination = unit.getPosition();
+             for (auto &c : unit.getAssignedCargo()) {
+-                auto &cargo = c.lock();
++                auto cargo = c.lock();
+                 if (cargo->getDestination().isValid()) {
+                     engageDestination = cargo->getDestination();
+                     break;
+@@ -314,7 +314,7 @@
+         // If unit has a transport, remove it from the transports cargo, then set transport to nullptr
+         if (unit.hasTransport()) {
+             auto &cargoList = unit.getTransport().lock()->getAssignedCargo();
+-            for (auto &cargo = cargoList.begin(); cargo != cargoList.end(); cargo++) {
++            for (auto cargo = cargoList.begin(); cargo != cargoList.end(); cargo++) {
+                 if (cargo->lock() && cargo->lock() == unit.shared_from_this()) {
+                     cargoList.erase(cargo);
+                     break;
+@@ -325,7 +325,7 @@
+ 
+         // If unit is a transport, set the transport of all cargo to nullptr
+         for (auto &c : unit.getAssignedCargo()) {
+-            if (auto &cargo = c.lock())
++            if (auto cargo = c.lock())
+                 cargo->setTransport(nullptr);
+         }
+     }
+diff -ruN a/Source/McRave/Micro/Worker/Workers.cpp b/Source/McRave/Micro/Worker/Workers.cpp
+--- a/Source/McRave/Micro/Worker/Workers.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Micro/Worker/Workers.cpp	2026-10-07 01:26:04
+@@ -102,8 +102,8 @@
+                     safeStations.push_back(station);
+ 
+                 else {
+-                    auto &path = Stations::getPathBetween(closestStation, station);
+-                    auto threatPos = Util::findPointOnPath(path, [&](auto &t) {
++                    auto path = Stations::getPathBetween(closestStation, station);
++                    auto threatPos = Util::findPointOnPath(path, [&](auto t) {
+                         return Grids::getGroundThreat(t, PlayerState::Enemy) > 0.0;
+                     });
+                     if (!threatPos)
+diff -ruN a/Source/McRave/Strategy/Goals/Goals.cpp b/Source/McRave/Strategy/Goals/Goals.cpp
+--- a/Source/McRave/Strategy/Goals/Goals.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Strategy/Goals/Goals.cpp	2026-10-07 01:26:04
+@@ -347,7 +347,7 @@
+             }
+ 
+             // Before we have a spore, we need to defend overlords            
+-            auto &stations = Stations::getStations(PlayerState::Self);
++            auto stations = Stations::getStations(PlayerState::Self);
+             auto mainStations = int(count_if(stations.begin(), stations.end(), [&](auto& s) { return s->isMain(); }));
+ 
+             // Before Hydras have upgrades, defend vulnerable bases, put lings on defense too
+diff -ruN a/Source/McRave/Strategy/Spy/SpyGeneral.cpp b/Source/McRave/Strategy/Spy/SpyGeneral.cpp
+--- a/Source/McRave/Strategy/Spy/SpyGeneral.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Strategy/Spy/SpyGeneral.cpp	2026-10-07 01:26:04
+@@ -1,4 +1,4 @@
+-#include "Main\McRave.h"
++#include "Main/McRave.h"
+ 
+ using namespace BWAPI;
+ using namespace std;
+diff -ruN a/Source/McRave/Strategy/Spy/SpyProtoss.cpp b/Source/McRave/Strategy/Spy/SpyProtoss.cpp
+--- a/Source/McRave/Strategy/Spy/SpyProtoss.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Strategy/Spy/SpyProtoss.cpp	2026-10-07 01:26:04
+@@ -1,4 +1,4 @@
+-#include "Main\McRave.h"
++#include "Main/McRave.h"
+ 
+ using namespace BWAPI;
+ using namespace std;
+diff -ruN a/Source/McRave/Strategy/Spy/SpyTerran.cpp b/Source/McRave/Strategy/Spy/SpyTerran.cpp
+--- a/Source/McRave/Strategy/Spy/SpyTerran.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Strategy/Spy/SpyTerran.cpp	2026-10-07 01:26:04
+@@ -1,4 +1,4 @@
+-#include "Main\McRave.h"
++#include "Main/McRave.h"
+ 
+ using namespace BWAPI;
+ using namespace std;
+diff -ruN a/Source/McRave/Strategy/Spy/SpyZerg.cpp b/Source/McRave/Strategy/Spy/SpyZerg.cpp
+--- a/Source/McRave/Strategy/Spy/SpyZerg.cpp	2026-10-07 01:26:04
++++ b/Source/McRave/Strategy/Spy/SpyZerg.cpp	2026-10-07 01:26:04
+@@ -1,4 +1,4 @@
+-#include "Main\McRave.h"
++#include "Main/McRave.h"
+ 
+ using namespace BWAPI;
+ using namespace std;

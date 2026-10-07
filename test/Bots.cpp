@@ -1,0 +1,86 @@
+#include "BWTest.h"
+#include "BotRegistry.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+
+const RegisteredBot *FindBot(const std::string &name)
+{
+    auto lower = [](std::string s)
+    {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+        return s;
+    };
+    for (const auto &bot : RegisteredBots())
+    {
+        if (lower(bot.name) == lower(name)) return &bot;
+    }
+    return nullptr;
+}
+
+namespace
+{
+    std::string botList()
+    {
+        std::ostringstream list;
+        for (const auto &bot : RegisteredBots())
+        {
+            list << "  " << bot.name << " (" << bot.race << ")" << std::endl;
+        }
+        return list.str();
+    }
+}
+
+// Lists the opponent bots that can be played with Bots.Play
+TEST(Bots, List)
+{
+    std::cout << "Opponent bots:" << std::endl << botList();
+}
+
+// Plays STARDUST_OPPONENT=<bot name> for STARDUST_GAMES games (default 1), on STARDUST_TEST_MAP or random SSCAIT
+// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST.
+TEST(Bots, Play)
+{
+    auto opponentName = std::getenv("STARDUST_OPPONENT");
+    if (!opponentName || !*opponentName)
+    {
+        FAIL() << "Set STARDUST_OPPONENT to one of:" << std::endl << botList();
+    }
+    auto bot = FindBot(opponentName);
+    if (!bot)
+    {
+        FAIL() << "No bot named " << opponentName << ". Available:" << std::endl << botList();
+    }
+
+    int games = 1;
+    if (auto gamesSetting = std::getenv("STARDUST_GAMES"); gamesSetting && *gamesSetting)
+    {
+        games = std::max(1, std::atoi(gamesSetting));
+    }
+
+    int count = 0;
+    int lost = 0;
+    while (count < games)
+    {
+        BWTest test;
+        test.opponentRace = bot->race;
+        test.opponentModule = bot->create;
+        test.onEndMine = [&](bool won)
+        {
+            std::ostringstream replayName;
+            replayName << bot->name << "_" << test.map->shortname() << "_" << test.randomSeed
+                       << (won ? "_WON" : "_LOST");
+            test.replayName = replayName.str();
+            if (!won) lost++;
+
+            count++;
+            std::cout << "---------------------------------------------" << std::endl;
+            std::cout << "VS " << bot->name << " AFTER " << count << " GAME" << (count == 1 ? "" : "S") << ": "
+                      << (count - lost) << " won; " << lost << " lost" << std::endl;
+            std::cout << "---------------------------------------------" << std::endl;
+        };
+        test.expectWin = false;
+        test.run();
+    }
+}

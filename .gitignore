@@ -25,3 +25,12 @@ __pycache__/
 *.MPQ
 # (except BWAPI's own network plugin file)
 !3rdparty/openbw/bwapi/bwapi/SNP_DirectIP/SNP/caps.mpq
+
+# Bots dropped into bots/ come from elsewhere, with their own licences, so they stay out of git; only the
+# framework and the example are tracked
+bots/*
+!bots/README.md
+!bots/StardustBots.cmake
+!bots/WorkerRush/
+!bots/recipes/
+!bots/compat/
