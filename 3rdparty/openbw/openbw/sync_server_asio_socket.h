@@ -213,6 +213,28 @@ struct sync_server_asio_socket {
 		new_clients.push_back(c);
 	}
 
+	~sync_server_asio_socket() {
+		// Pending reads and writes hold async handles to their clients. Left queued, they would be destroyed by the
+		// io_service's destructor after the clients (declared later, so destroyed first) are gone, releasing handles on
+		// freed memory. So abort them and let them run now, while the clients still exist, without calling back into
+		// the (possibly already destroyed) game.
+		for (auto& c : clients) {
+			c.on_kill = {};
+			c.on_message = {};
+			try {
+				c.socket.close();
+			} catch (...) {
+			}
+		}
+		asio::error_code ec;
+		timer.cancel(ec);
+		try {
+			io_service.reset();
+			io_service.poll();
+		} catch (...) {
+		}
+	}
+
 	void kill_client(const void* h) {
 		client_t* c = (client_t*)h;
 		c->is_dead = true;
