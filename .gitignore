@@ -25,3 +25,26 @@ __pycache__/
 *.MPQ
 # (except BWAPI's own network plugin file)
 !3rdparty/openbw/bwapi/bwapi/SNP_DirectIP/SNP/caps.mpq
+
+# Bots dropped into bots/ come from elsewhere, with their own licences, so they stay out of git; tracked are the
+# framework, the example, and the recipe bots whose licences allow sharing them (patched, without their DLLs).
+# SAIDA states no licence, so it stays a recipe: tools/fetch_bot.py SAIDA
+bots/*
+!bots/README.md
+!bots/StardustBots.cmake
+!bots/WorkerRush/
+!bots/recipes/
+!bots/ClaudeOpus55/
+!bots/genai/
+!bots/compat/
+!bots/BananaBrain/
+!bots/McRaveZ/
+!bots/Microwave/
+!bots/Steamhammer2025/
+!bots/Stardust2025/
+bots/*/**/*.dll
+# Stardust's mining-training folder is a copy of its author's whole dev environment, only needed to retrain
+bots/Stardust2025/mining-training/
+
+# Personal Claude Code settings
+.claude/settings.local.json

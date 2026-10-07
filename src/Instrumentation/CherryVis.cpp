@@ -1,6 +1,7 @@
 #include "CherryVis.h"
 
 #include <nlohmann/json.hpp>
+#include <climits>
 #include <utility>
 #include <zstdstream/zstdstream.hpp>
 #include <filesystem>

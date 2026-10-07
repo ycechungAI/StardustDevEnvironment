@@ -6,6 +6,8 @@
 
 
 #include "common.h"
+
+#include <functional>
 #include "../bwgame.h"
 #include "../replay.h"
 
@@ -2026,6 +2028,10 @@ struct ui_functions: ui_util_functions {
 	bool is_moving_minimap = false;
 	bool is_moving_replay_slider = false;
 	bool is_paused = false;
+
+	// Called with each key pressed in the window, after the built-in keys are handled (added for the Stardust test
+	// harness: replay saving and the stats screen)
+	std::function<void(int)> on_key_down;
 	bool is_drag_selecting = false;
 	bool is_dragging_screen = false;
 	int drag_select_from_x = 0;
@@ -2218,6 +2224,7 @@ struct ui_functions: ui_util_functions {
 						else replay_frame -= t;
 					}
 #endif
+					if (on_key_down) on_key_down(e.sym);
 					break;
 				}
 			}

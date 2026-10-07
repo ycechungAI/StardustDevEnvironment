@@ -1,0 +1,16 @@
+Environment Setup:
+- Visual Studio 2017
+- BWAPI 4.4
+- Uses Windows environment variable BWAPI440_DIR which points to BWAPI 4.4 folder
+
+To Compile:
+- Open src/Microwave/VisualStudio/UAlbertaBot.sln in VS2017
+- Select Release mode
+- Build the Microwave project
+- Output will go to src/Microwave/bin/Microwave.dll
+
+Tournament Setup:
+- For testing, copy dll/Microwave.dll to the Microwave/AI folder
+- After compiling, copy src/Microwave/bin/Microwave.dll to the tournament Microwave/AI folder
+- Copy dll/Microwave_Config.json to the tournament Microwave/AI folder
+- Copy dll/Training to the tournament Microwave/AI folder

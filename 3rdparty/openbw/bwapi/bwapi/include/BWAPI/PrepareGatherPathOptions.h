@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "ExactPosition.h"
 
 // Forwards

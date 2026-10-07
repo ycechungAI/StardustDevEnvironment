@@ -1,0 +1,28 @@
+--- a/src/src/Instrumentation/Timer.cpp
++++ b/src/src/Instrumentation/Timer.cpp
+@@ -38,7 +38,7 @@
+     {
+         overallLabel = label;
+         checkpoints.clear();
+-        startPoint = lastCheckpoint = std::chrono::high_resolution_clock::now();
++        startPoint = lastCheckpoint = std::chrono::steady_clock::now();
+     }
+ 
+     void checkpoint(const std::string &label)
+@@ -46,14 +46,14 @@
+ #if DEBUG_LOG_EACH_CHECKPOINT
+         Log::Debug() << label;
+ #endif
+-        auto now = std::chrono::high_resolution_clock::now();
++        auto now = std::chrono::steady_clock::now();
+         checkpoints.emplace_back(label, std::chrono::duration_cast<std::chrono::microseconds>(now - lastCheckpoint).count());
+         lastCheckpoint = now;
+     }
+ 
+     void stop(bool forceOutput)
+     {
+-        long long overall = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startPoint).count();
++        long long overall = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startPoint).count();
+ 
+         if (forceOutput || overall > DEBUG_CUTOFF)
+         {

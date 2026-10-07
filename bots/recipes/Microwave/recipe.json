@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2025/bots/Microwave.zip",
+  "sha256": "384a755fd3417347386b53b8d4e4b0d2827a5a7a0d124c29f9ec1ab48899cbaf",
+  "strip": "",
+  "race": "Zerg",
+  "license": "MIT (Microwave, Steamhammer, UAlbertaBot); see src/Licenses",
+  "notes": "Microwave (Zerg) for AIIDE 2025, by Micky Holdorf"
+}

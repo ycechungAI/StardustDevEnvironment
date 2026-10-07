@@ -1,0 +1,254 @@
+diff --git a/src/BWEM-community/src/area.cpp b/src/BWEM-community/src/area.cpp
+index a7611ae..b0542fa 100644
+--- a/src/BWEM-community/src/area.cpp
++++ b/src/BWEM-community/src/area.cpp
+@@ -18,7 +18,7 @@
+ #include "winutils.h"
+ #include "bwapiExt.h"
+ 
+-#include "BaseFinder\BaseFinder.h"
++#include "BaseFinder/BaseFinder.h"
+ 
+ using namespace BWAPI;
+ using namespace BWAPI::UnitTypes::Enum;
+diff --git a/src/BWEM-community/src/mapImpl.cpp b/src/BWEM-community/src/mapImpl.cpp
+index 5f69c1b..b56e205 100644
+--- a/src/BWEM-community/src/mapImpl.cpp
++++ b/src/BWEM-community/src/mapImpl.cpp
+@@ -13,7 +13,7 @@
+ #include "bwapiExt.h"
+ #include "winutils.h"
+ 
+-#include "BaseFinder\BaseFinder.h"
++#include "BaseFinder/BaseFinder.h"
+ 
+ 
+ using namespace BWAPI;
+diff --git a/src/BwapiAutoObs/src/AutoObs.h b/src/BwapiAutoObs/src/AutoObs.h
+index 29e77d9..8a2b8b5 100644
+--- a/src/BwapiAutoObs/src/AutoObs.h
++++ b/src/BwapiAutoObs/src/AutoObs.h
+@@ -102,7 +102,7 @@ private:
+     /**
+     * returns a position in the middle of the given positions
+     */
+-    BWAPI::Position AutoObs::_getPositionsCenter(BWAPI::Position pos1, BWAPI::Position pos2);
++    BWAPI::Position _getPositionsCenter(BWAPI::Position pos1, BWAPI::Position pos2);
+ 
+ 
+     /**
+diff --git a/src/Microwave/Source/BuildingData.cpp b/src/Microwave/Source/BuildingData.cpp
+index a3cbe6e..aec3268 100644
+--- a/src/Microwave/Source/BuildingData.cpp
++++ b/src/Microwave/Source/BuildingData.cpp
+@@ -8,7 +8,7 @@ BuildingData::BuildingData()
+ 
+ void BuildingData::removeBuilding(const Building & b)
+ {
+-    auto & building = std::find(_buildings.begin(), _buildings.end(), b);
++    auto building = std::find(_buildings.begin(), _buildings.end(), b);
+ 
+     if (building != _buildings.end())
+     {
+diff --git a/src/Microwave/Source/BuildingManager.cpp b/src/Microwave/Source/BuildingManager.cpp
+index 64a4634..bd7bc45 100644
+--- a/src/Microwave/Source/BuildingManager.cpp
++++ b/src/Microwave/Source/BuildingManager.cpp
+@@ -1028,7 +1028,7 @@ void BuildingManager::removeBuildings(const std::vector< std::reference_wrapper<
+ {
+ 	for (Building & b : toRemove)
+ 	{
+-		auto & it = std::find(_buildings.begin(), _buildings.end(), b);
++		auto it = std::find(_buildings.begin(), _buildings.end(), b);
+ 
+ 		if (it != _buildings.end())
+ 		{
+diff --git a/src/Microwave/Source/CombatCommander.cpp b/src/Microwave/Source/CombatCommander.cpp
+index 67cae9e..ce1d1cd 100644
+--- a/src/Microwave/Source/CombatCommander.cpp
++++ b/src/Microwave/Source/CombatCommander.cpp
+@@ -58,7 +58,7 @@ void CombatCommander::initializeSquads()
+ 
+ 	// The recon squad carries out reconnaissance in force to deny enemy bases.
+ 	// It is filled in when enough units are available.
+-	Squad & reconSquad = Squad("Recon", idleOrder, ReconPriority);
++	Squad reconSquad = Squad("Recon", idleOrder, ReconPriority);
+ 	reconSquad.setCombatSimRadius(200);  // combat sim includes units in a smaller radius than for a combat squad
+ 	reconSquad.setFightVisible(true);    // combat sim sees only visible enemy units (not all known enemies)
+ 	_squadData.addSquad(reconSquad);
+diff --git a/src/Microwave/Source/CombatData.h b/src/Microwave/Source/CombatData.h
+index 54483f4..e5b56eb 100644
+--- a/src/Microwave/Source/CombatData.h
++++ b/src/Microwave/Source/CombatData.h
+@@ -3,10 +3,10 @@
+ #include "Common.h"
+ #include "BWAPI.h"
+ #include "GameCommander.h"
+-#include "..\..\AdversarialSearch\source\Timer.h"
+-#include "..\..\AdversarialSearch\source\GameState.h"
+-#include "..\..\AdversarialSearch\source\Player.h"
+-#include "..\..\AdversarialSearch\source\TranspositionTable.h"
++#include "../../AdversarialSearch/source/Timer.h"
++#include "../../AdversarialSearch/source/GameState.h"
++#include "../../AdversarialSearch/source/Player.h"
++#include "../../AdversarialSearch/source/TranspositionTable.h"
+ 
+ #include <boost/shared_ptr.hpp>
+ 
+diff --git a/src/Microwave/Source/InformationManager.cpp b/src/Microwave/Source/InformationManager.cpp
+index 9f8ddbb..f457058 100644
+--- a/src/Microwave/Source/InformationManager.cpp
++++ b/src/Microwave/Source/InformationManager.cpp
+@@ -503,7 +503,7 @@ const BWEM::Base * InformationManager::getClosestOtherBaseLocation(BWAPI::TilePo
+ const UnitInfo & InformationManager::getClosestGroundUnit(BWAPI::TilePosition tilePosition)
+ {
+ 	int bestScore = 0;
+-	UnitInfo & bestUnit = UnitInfo();
++	UnitInfo bestUnit = UnitInfo();
+ 
+ 	for (auto & kv : getUnitData(_enemy).getUnits())
+ 	{
+diff --git a/src/Microwave/Source/MacroAct.cpp b/src/Microwave/Source/MacroAct.cpp
+index afdbc2c..d4bc966 100644
+--- a/src/Microwave/Source/MacroAct.cpp
++++ b/src/Microwave/Source/MacroAct.cpp
+@@ -5,7 +5,7 @@
+ 
+ using namespace UAlbertaBot;
+ 
+-MacroLocation MacroAct::getMacroLocationFromString(std::string & s)
++MacroLocation MacroAct::getMacroLocationFromString(const std::string & s)
+ {
+ 	if (s == "macro")
+ 	{
+@@ -365,7 +365,7 @@ int MacroAct::gasPrice() const
+ BWAPI::UnitType MacroAct::whatBuilds() const
+ {
+ 	if (isCommand()) {
+-		return BWAPI::UnitType::UnitType(BWAPI::UnitTypes::None);
++		return BWAPI::UnitType(BWAPI::UnitTypes::None);
+ 	}
+ 	return isUnit() ? _unitType.whatBuilds().first : (isTech() ? _techType.whatResearches() : _upgradeType.whatUpgrades());
+ }
+diff --git a/src/Microwave/Source/MacroAct.h b/src/Microwave/Source/MacroAct.h
+index 60f983c..638e29f 100644
+--- a/src/Microwave/Source/MacroAct.h
++++ b/src/Microwave/Source/MacroAct.h
+@@ -47,7 +47,7 @@ namespace UAlbertaBot
+ 
+ 		std::shared_ptr<MacroAct> _then;
+ 
+-		MacroLocation		getMacroLocationFromString(std::string & s);
++		MacroLocation		getMacroLocationFromString(const std::string & s);
+ 
+ 	public:
+ 
+diff --git a/src/Microwave/Source/ParseUtils.cpp b/src/Microwave/Source/ParseUtils.cpp
+index 3364423..76bc1b6 100644
+--- a/src/Microwave/Source/ParseUtils.cpp
++++ b/src/Microwave/Source/ParseUtils.cpp
+@@ -662,7 +662,7 @@ bool ParseUtils::_ParseStrategy(
+ 		return _LookUpStrategyCombo(item, stratName, mapWeightString, objectString, strategyCombos);
+ 	}
+ 
+-	auto& strategyWeightFactors = StrategyManager::Instance().getStrategyWeightFactors();
++	auto strategyWeightFactors = StrategyManager::Instance().getStrategyWeightFactors();
+ 
+ 	if (item.IsObject() && item.HasMember(objectString.c_str()))
+ 	{
+diff --git a/src/Microwave/Source/ParseUtils.h b/src/Microwave/Source/ParseUtils.h
+index 48d799e..f9d0000 100644
+--- a/src/Microwave/Source/ParseUtils.h
++++ b/src/Microwave/Source/ParseUtils.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ #include "Common.h"
+-#include "rapidjson\document.h"
++#include "rapidjson/document.h"
+ 
+ namespace UAlbertaBot
+ {
+diff --git a/src/Microwave/Source/SquadData.cpp b/src/Microwave/Source/SquadData.cpp
+index 0d49032..d561303 100644
+--- a/src/Microwave/Source/SquadData.cpp
++++ b/src/Microwave/Source/SquadData.cpp
+@@ -38,7 +38,7 @@ void SquadData::clearSquadData()
+ 
+ void SquadData::removeSquad(const std::string & squadName)
+ {
+-    auto & squadPtr = _squads.find(squadName);
++    auto squadPtr = _squads.find(squadName);
+ 
+     UAB_ASSERT_WARNING(squadPtr != _squads.end(), "Trying to clear a squad that didn't exist: %s", squadName.c_str());
+     if (squadPtr == _squads.end())
+@@ -200,7 +200,7 @@ bool SquadData::canAssignUnitToSquad(BWAPI::Unit unit, const Squad & squad) cons
+ 
+ Squad & SquadData::getSquad(const std::string & squadName)
+ {
+-    UAB_ASSERT_WARNING(squadExists(squadName), "Trying to access squad that doesn't exist: %s", squadName);
++    UAB_ASSERT_WARNING(squadExists(squadName), "Trying to access squad that doesn't exist: %s", squadName.c_str());
+     if (!squadExists(squadName))
+     {
+         int a = 10;
+@@ -211,7 +211,7 @@ Squad & SquadData::getSquad(const std::string & squadName)
+ 
+ const Squad & SquadData::getSquad(const std::string & squadName) const
+ {
+-	UAB_ASSERT_WARNING(squadExists(squadName), "Trying to access squad that doesn't exist: %s", squadName);
++	UAB_ASSERT_WARNING(squadExists(squadName), "Trying to access squad that doesn't exist: %s", squadName.c_str());
+ 	if (!squadExists(squadName))
+ 	{
+ 		int a = 10;
+diff --git a/src/Microwave/Source/StrategyBossZerg.h b/src/Microwave/Source/StrategyBossZerg.h
+index 9a6892a..b7a7114 100644
+--- a/src/Microwave/Source/StrategyBossZerg.h
++++ b/src/Microwave/Source/StrategyBossZerg.h
+@@ -7,7 +7,7 @@ namespace UAlbertaBot
+ 
+ class StrategyBossZerg
+ {
+-	StrategyBossZerg::StrategyBossZerg();
++	StrategyBossZerg();
+ 
+ 	// Values that cannot or should not be exceeded.
+ 	const int absoluteMaxSupply = 400;
+diff --git a/src/Microwave/Source/StrategyManager.cpp b/src/Microwave/Source/StrategyManager.cpp
+index 83a028a..c2a5140 100644
+--- a/src/Microwave/Source/StrategyManager.cpp
++++ b/src/Microwave/Source/StrategyManager.cpp
+@@ -127,7 +127,7 @@ const bool StrategyManager::shouldExpandNow() const
+ 	return false;
+ }
+ 
+-void StrategyManager::addStrategy(const std::string & name, Strategy & strategy)
++void StrategyManager::addStrategy(const std::string & name, const Strategy & strategy)
+ {
+     _strategies[name] = strategy;
+ }
+diff --git a/src/Microwave/Source/StrategyManager.h b/src/Microwave/Source/StrategyManager.h
+index 4ddd9b2..3421ad0 100644
+--- a/src/Microwave/Source/StrategyManager.h
++++ b/src/Microwave/Source/StrategyManager.h
+@@ -228,7 +228,7 @@ public:
+ 
+ 			void					update();
+ 			void				    onEnd(const bool isWinner);
+-            void                    addStrategy(const std::string & name, Strategy & strategy);
++            void                    addStrategy(const std::string & name, const Strategy & strategy);
+ 			void                    addStrategyMatchup(const std::string & name, int weight);
+ 			void	                setBestRandomStrategy();
+ 			void	                setRandomStrategy();
+diff --git a/src/Microwave/Source/UAlbertaBotModule.h b/src/Microwave/Source/UAlbertaBotModule.h
+index 1f242ac..7f206ad 100644
+--- a/src/Microwave/Source/UAlbertaBotModule.h
++++ b/src/Microwave/Source/UAlbertaBotModule.h
+@@ -11,7 +11,7 @@
+ #include "HardCodedInfo.h"
+ #include "Config.h"
+ 
+-#include "rapidjson\document.h"
++#include "rapidjson/document.h"
+ 
+ namespace UAlbertaBot
+ {

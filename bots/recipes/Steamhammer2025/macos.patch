@@ -1,0 +1,52 @@
+diff --git a/src/Steamhammer/Source/GameRecord.cpp b/src/Steamhammer/Source/GameRecord.cpp
+index 63bd90c..7130e53 100644
+--- a/src/Steamhammer/Source/GameRecord.cpp
++++ b/src/Steamhammer/Source/GameRecord.cpp
+@@ -694,7 +694,7 @@ void GameRecord::setSkillInfo(Skill * skill, int i, const std::vector<int> & inf
+ 
+ void GameRecord::debugLog()
+ {
+-    BWAPI::Broodwar->printf("best %s %s", mapName, openingName);
++    BWAPI::Broodwar->printf("best %s %s", mapName.c_str(), openingName.c_str());
+ 
+     std::stringstream msg;
+ 
+diff --git a/src/Steamhammer/Source/MapGrid.h b/src/Steamhammer/Source/MapGrid.h
+index 0bc9b72..1a7f41e 100644
+--- a/src/Steamhammer/Source/MapGrid.h
++++ b/src/Steamhammer/Source/MapGrid.h
+@@ -61,7 +61,7 @@ public:
+     GridCell & getCell(BWAPI::Position pos) { return getCellByIndex(pos.y / cellSize, pos.x / cellSize); }
+     GridCell & getCell(BWAPI::Unit unit)    { return getCell(unit->getPosition()); }
+ 
+-	bool MapGrid::hasBeenScouted(const BWAPI::Position & pos);
++	bool hasBeenScouted(const BWAPI::Position & pos);
+ 	int lastSeenFrame(const BWAPI::Position & pos);
+ 	
+ 	// Track comsat scans so we don't scan the same place again too soon.
+diff --git a/src/Steamhammer/Source/ParseUtils.h b/src/Steamhammer/Source/ParseUtils.h
+index 4493578..33771cd 100644
+--- a/src/Steamhammer/Source/ParseUtils.h
++++ b/src/Steamhammer/Source/ParseUtils.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ #include "Common.h"
+-#include "rapidjson\document.h"
++#include "rapidjson/document.h"
+ 
+ namespace UAlbertaBot
+ {
+diff --git a/src/Steamhammer/Source/StrategyBossZerg.h b/src/Steamhammer/Source/StrategyBossZerg.h
+index 7587192..9575aab 100644
+--- a/src/Steamhammer/Source/StrategyBossZerg.h
++++ b/src/Steamhammer/Source/StrategyBossZerg.h
+@@ -24,7 +24,7 @@ enum class TechUnit : int
+ 
+ class StrategyBossZerg
+ {
+-    StrategyBossZerg::StrategyBossZerg();
++    StrategyBossZerg();
+ 
+     const int absoluteMaxSupply = 400;     // 200 game supply max = 400 BWAPI supply
+ 

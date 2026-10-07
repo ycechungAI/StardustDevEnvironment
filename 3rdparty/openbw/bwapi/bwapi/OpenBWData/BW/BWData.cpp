@@ -177,6 +177,9 @@ struct ui_wrapper {
   int screen_pos_x = 0;
   int screen_pos_y = 0;
   std::function<void(uint8_t*, size_t)> on_draw;
+  // Keys pressed in the window, collected on the UI thread and taken by the game thread
+  std::mutex keys_mut;
+  std::vector<int> keys;
   bwgame::game_player get_player(bwgame::state& st) {
     bwgame::game_player player;
     player.set_st(st);
@@ -190,6 +193,10 @@ struct ui_wrapper {
 
       ui.exit_on_close = false;
       ui.global_volume = 0;
+      ui.on_key_down = [this](int key) {
+        std::lock_guard<std::mutex> keys_lock(keys_mut);
+        keys.push_back(key);
+      };
       auto load_data_file = bwgame::data_loading::data_files_directory(mpq_path.c_str());
       ui.load_data_file = [&](bwgame::a_vector<uint8_t>& data, bwgame::a_string filename) {
         load_data_file(data, std::move(filename));
@@ -261,6 +268,12 @@ struct ui_wrapper {
   uint8_t* screen_buffer() {
     return m_screen_buffer;
   }
+  std::vector<int> take_keys() {
+    std::lock_guard<std::mutex> keys_lock(keys_mut);
+    std::vector<int> result;
+    result.swap(keys);
+    return result;
+  }
 };
 
 struct draw_ui_wrapper {
@@ -322,6 +335,9 @@ struct ui_wrapper {
   uint8_t* screen_buffer() {
     return nullptr;
   }
+  std::vector<int> take_keys() {
+    return {};
+  }
 };
 struct draw_ui_wrapper {
   draw_ui_wrapper(bwgame::state& st, std::string mpq_path) {}
@@ -354,6 +370,10 @@ struct game_vars {
   bool is_multi_player = false;
 
   std::unordered_map<std::string, std::string> override_env_var;
+
+  // Called when the engine kills a unit (damage, suicide, a cancelled build...), not when it just removes one
+  // (e.g. a drone becoming an extractor)
+  std::function<void(bwgame::unit_t*)> on_kill_unit;
 };
 
 void g_global_init_if_necessary(const bwgame::global_state& global_st, std::string mpq_path);
@@ -782,6 +802,10 @@ struct openbwapi_functions: F {
 
   template<typename... args_T>
   openbwapi_functions(game_vars& vars, args_T&&... args) : F(std::forward<args_T>(args)...), vars(vars) {}
+
+  virtual void on_kill_unit(bwgame::unit_t* u) override {
+    if (vars.on_kill_unit) vars.on_kill_unit(u);
+  }
 
 };
 
@@ -1536,6 +1560,12 @@ void Game::saveReplay(const std::string& filename)
   }
 }
 
+std::vector<int> Game::takeKeyPresses()
+{
+  if (impl->ui) return impl->ui->take_keys();
+  return {};
+}
+
 std::tuple<int, int, void*> Game::GameScreenBuffer()
 {
   if (impl->ui) return std::make_tuple(impl->ui->width(), impl->ui->height(), impl->ui->screen_buffer());
@@ -1546,6 +1576,19 @@ void Game::setOnDraw(std::function<void (uint8_t*, size_t)> onDraw)
 {
   impl->on_draw = onDraw;
   impl->on_draw_changed = true;
+}
+
+void Game::setOnKillUnit(std::function<void(Unit)> onKillUnit)
+{
+  if (!onKillUnit)
+  {
+    impl->vars.on_kill_unit = nullptr;
+    return;
+  }
+  auto *gameImpl = impl;
+  impl->vars.on_kill_unit = [gameImpl, onKillUnit = std::move(onKillUnit)](bwgame::unit_t* u) {
+    onKillUnit(Unit{u, gameImpl});
+  };
 }
 
 std::tuple<int, int, uint32_t*> Game::drawGameScreen(int x, int y, int width, int height)

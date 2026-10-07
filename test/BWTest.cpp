@@ -1,12 +1,15 @@
 #include "BWTest.h"
 
 #include "BW/BWData.h"
+#include "GameStats.h"
 #include "PythonAIModule.h"
 #include <chrono>
 #include <thread>
 #include <csignal>
 #include <execinfo.h>
 #include <filesystem>
+#include <iomanip>
+#include <sstream>
 #include <random>
 
 #include "Log.h"
@@ -374,7 +377,59 @@ void BWTest::runGame(bool opponent)
     frameLimit += initialUnitFrames;
 
     bool leftGame = false;
+    bool reachedLimit = false;
     auto startTime = std::chrono::high_resolution_clock::now();
+
+    // The stats as of the last frame played (once a player has left the game, the engine has removed its units)
+    std::optional<PlayerStats> lastMyStats, lastOpponentStats;
+
+    // Both players' losses, counted from every kill the engine makes (whoever can see it)
+    Losses losses;
+    if (!opponent)
+    {
+        gameOwner.getGame().setOnKillUnit([&losses, &leftGame](BW::Unit unit)
+                                          {
+                                              if (!leftGame) losses.count(unit);
+                                          });
+    }
+
+    // In the game window: [s] toggles the stats screen, [r] saves the replay so far
+    bool showStats = true;
+    auto ratings = ReadRatings();
+    auto opponentDisplayName = opponentName.empty() ? std::string("Opponent") : opponentName;
+    auto handleWindow = [&]()
+    {
+        auto game = gameOwner.getGame();
+        for (int key : game.takeKeyPresses())
+        {
+            if (key == 's')
+            {
+                showStats = !showStats;
+            }
+            else if (key == 'r')
+            {
+                std::ostringstream replayFilename;
+                auto tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                replayFilename << "replays/" << myName << "_vs_" << opponentDisplayName << "_" << map->shortname()
+                               << "_" << randomSeed << "_frame" << h->getFrameCount() << "_"
+                               << std::put_time(std::localtime(&tt), "%Y%m%d_%H%M%S") << ".rep";
+                std::filesystem::create_directories("replays");
+                game.saveReplay(replayFilename.str());
+                std::cout << "Saved replay " << replayFilename.str() << std::endl;
+                h->printf("Saved replay %s", replayFilename.str().c_str());
+            }
+        }
+
+        if (!leftGame)
+        {
+            lastMyStats = PlayerStats::read(game, "Tests", myName, losses);
+            lastOpponentStats = PlayerStats::read(game, "Opponent", opponentDisplayName, losses);
+        }
+        if (showStats && lastMyStats && lastOpponentStats && std::get<0>(game.GameScreenBuffer()) > 0)
+        {
+            DrawStatsScreen(BWAPI::BroodwarPtr, *lastMyStats, *lastOpponentStats, ratings);
+        }
+    };
     while (!gameOwner.getGame().gameOver())
     {
         try
@@ -393,10 +448,12 @@ void BWTest::runGame(bool opponent)
                 }
             }
 
+            if (!opponent) handleWindow();
+
             if (!leftGame && h->getFrameCount() == frameLimit)
             {
                 std::cout << "Frame limit reached; leaving game" << std::endl;
-                leftGame = true;
+                leftGame = reachedLimit = true;
                 h->leaveGame();
             }
 
@@ -406,7 +463,7 @@ void BWTest::runGame(bool opponent)
                 if (std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count() > timeLimit)
                 {
                     std::cout << "Time limit reached; leaving game" << std::endl;
-                    leftGame = true;
+                    leftGame = reachedLimit = true;
                     h->leaveGame();
                 }
             }
@@ -426,6 +483,7 @@ void BWTest::runGame(bool opponent)
     }
 
     std::cout << "Game over " << (opponent ? "(opponent) " : "") << "after " << h->getFrameCount() << " frames" << std::endl;
+    if (!opponent) gameOwner.getGame().setOnKillUnit(nullptr);
 
     h->update();
 
@@ -476,6 +534,22 @@ void BWTest::runGame(bool opponent)
         else
         {
             gameId << "_PASS";
+        }
+
+        // Print the game's stats, and record it in the results history if we know who the opponent was
+        auto &me = lastMyStats;
+        auto &them = lastOpponentStats;
+        if (me && them)
+        {
+            std::cout << "STATS " << StatsSummary(*me, *them) << std::endl;
+            // STARDUST_NO_RESULTS=1 keeps practice games out of the results history (and so the Elo ratings)
+            auto noResults = std::getenv("STARDUST_NO_RESULTS");
+            if (!opponentName.empty() && !(noResults && *noResults && std::string(noResults) != "0"))
+            {
+                std::string result = gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST");
+                AppendResult(*me, *them, result, h->getFrameCount(), map->shortname(), randomSeed,
+                             gameId.str() + ".rep");
+            }
         }
 
         // If enabled, write the replay file

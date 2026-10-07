@@ -26,3 +26,6 @@ target_link_libraries(BWEM PUBLIC BWAPILIB)
 
 target_include_directories(BWEM SYSTEM PUBLIC ${PROJECT_SOURCE_DIR})
 target_compile_options(BWEM PRIVATE -w)
+
+# Linked into the Python extension modules, which are shared libraries
+set_target_properties(BWEM PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2025/bots/Steamhammer.zip",
+  "sha256": "b389875faca07cc02faed16cfc5b6b13d5f0daec85731a664498436033f93b3b",
+  "strip": "Steamhammer-aiide-2025",
+  "race": "Zerg",
+  "license": "MIT (UAlbertaBot/Steamhammer); see src/licenses",
+  "notes": "Steamhammer 5.3.6 for AIIDE 2025, by Jay Scott"
+}

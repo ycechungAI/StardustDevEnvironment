@@ -52,6 +52,8 @@ cd build/test && ./tests --gtest_filter=Steamhammer.4PoolHard
 
 The test harness, maps and opponents are described in `test/`: `Steamhammer.cpp`, `Locutus.cpp`, and `RushDefense.cpp` for a scripted scenario. Replays, CherryVis data and logs go to `build/test/replays/`.
 
+To play other bots, put them in `bots/` (see [bots/README.md](bots/README.md)) and run `.venv/bin/python tools/run_games.py --opponent <bot>`. Steamhammer, Locutus, Iron, McRave, the `WorkerRush` example and five recent tournament bots, among them the original C++ Stardust (`Stardust2025`), are available out of the box. `--bot <name>` plays as one of them instead of the Python port.
+
 `tools/run_games.py` runs the same tests with a time estimate up front and a progress line (elapsed time, frame, time left) every 30 seconds:
 
 ```bash
@@ -84,6 +86,27 @@ cmake --build build-ui -j
 ```
 
 Put the MPQ files in `build-ui/test/` as well, then run games from there (or with `tools/run_games.py ... --build build-ui`). Only our bot's game gets a window, not the opponent's. Drawing the window slows the game a little.
+
+Keys in the game window:
+
+| Key | |
+|---|---|
+| `s` | show or hide the stats screen: both players' Elo, race, minerals, gas, supply, workers, resources mined, units killed and lost |
+| `r` | save the replay so far, to `replays/<us>_vs_<opponent>_<map>_<seed>_frame<N>_<time>.rep` (the full replay is still saved when the game ends) |
+| `space`/`p` | pause |
+| `a`/`z` | speed up/slow down |
+
+### Results and Elo
+
+Every game against a named opponent (`Bots.Play`, and the Steamhammer and Locutus tests) is added to `build/test/replays/results.csv` when it ends: who played whom, the result (`WON`, `LOST`, or `DRAW` when the frame or time limit ended it), the map and seed, and both sides' resources mined and units killed and lost. A one-line `STATS` summary is printed at the end of each game too.
+
+`tools/elo.py` rates that history (everyone starts at 1500; K = 32), writes `replays/ratings.json` for the stats screen and prints a leaderboard:
+
+```bash
+.venv/bin/python tools/elo.py
+```
+
+`tools/run_games.py` does this after every game, printing each game's rating changes and the leaderboard at the end. The Python port is rated as `StardustPy`.
 
 Python is loaded from `python/` in the source tree, so edits to the bot take effect on the next run without rebuilding. At the end of each game the host prints the bot's frame times against the usual tournament limits.
 

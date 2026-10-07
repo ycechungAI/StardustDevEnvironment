@@ -1,0 +1,346 @@
+diff --git a/src/Source/BananaBrain.h b/src/Source/BananaBrain.h
+index b3677dc..481cc95 100644
+--- a/src/Source/BananaBrain.h
++++ b/src/Source/BananaBrain.h
+@@ -18,7 +18,9 @@
+ 
+ using namespace BWAPI;
+ 
++#ifndef M_PI
+ static constexpr auto M_PI = 3.14159265358979323846;
++#endif
+ 
+ #include "FastPosition.h"
+ #include "UnitUtils.h"
+diff --git a/src/Source/BaseState.h b/src/Source/BaseState.h
+index 28f4b5f..a2d6f73 100644
+--- a/src/Source/BaseState.h
++++ b/src/Source/BaseState.h
+@@ -48,7 +48,7 @@ public:
+ 	int controlled_geyser_count() const;
+ 	int mining_base_count() const;
+ 	int mineable_mineral_count() const;
+-	std::set<const BWEM::Base*> BaseState::undiscovered_starting_bases(bool overlord=false) const;
++	std::set<const BWEM::Base*> undiscovered_starting_bases(bool overlord=false) const;
+ 	void draw();
+ 	
+ 	bool skip_mineral_only() const { return skip_mineral_only_; }
+diff --git a/src/Source/Configuration.cpp b/src/Source/Configuration.cpp
+index 35ea798..e2ae5cf 100644
+--- a/src/Source/Configuration.cpp
++++ b/src/Source/Configuration.cpp
+@@ -25,7 +25,7 @@ void Configuration::read_configuration_file(const char* path)
+ 			if (fgets(line, sizeof(line), f) == nullptr) break;
+ 			char key[512];
+ 			char value[512];
+-			int ret = sscanf_s(line, "%[^=]=%[^\n]\n", key, sizeof(key), value, sizeof(value));
++			int ret = sscanf(line, "%511[^=]=%511[^\n]\n", key, value);
+ 			if (ret == 2) apply_key_value(key, value);
+ 		}
+ 		
+diff --git a/src/Source/Grids.h b/src/Source/Grids.h
+index d61f2d2..ad5688a 100644
+--- a/src/Source/Grids.h
++++ b/src/Source/Grids.h
+@@ -134,7 +134,7 @@ public:
+ 	Iterator end() const {
+ 		return Iterator(*this, FastPosition(center_.x + Size, center_.y + Size));
+ 	}
+-private:
++public:
+ 	class Iterator
+ 	{
+ 	public:
+@@ -156,7 +156,7 @@ private:
+ 		const SparsePositionGrid& grid_;
+ 		FastPosition position_;
+ 	};
+-	
++private:
+ 	FastPosition center_;
+ 	std::array<T,Count*Count> data_;
+ };
+@@ -254,7 +254,7 @@ private:
+ 	void apply_splash(TileGrid<int>& grid,const InformationUnit& information_unit,WeaponType weapon_type);
+ 	
+ 	template <typename Grid>
+-	void calculate_component(Grid& threat_grid,TileGrid<int>& component_grid)
++	void calculate_component(Grid&& threat_grid,TileGrid<int>& component_grid)
+ 	{
+ 		component_grid.clear();
+ 		int component_counter = 1;
+diff --git a/src/Source/Macro.cpp b/src/Source/Macro.cpp
+index 4598121..cd11593 100644
+--- a/src/Source/Macro.cpp
++++ b/src/Source/Macro.cpp
+@@ -735,7 +735,7 @@ void BuildingManager::repair_damaged_buildings()
+ 			}
+ 		}
+ 	}
+-	std::sort(damaged_buildings.begin(), damaged_buildings.end(), [](auto& a,auto& b) {
++	std::sort(damaged_buildings.begin(), damaged_buildings.end(), [](const auto& a,const auto& b) {
+ 		return std::make_tuple(hitpoint_fraction(a.first), a.first->getID()) < std::make_tuple(hitpoint_fraction(b.first), b.first->getID());
+ 	});
+ 	for (auto [unit,repair_always] : damaged_buildings) {
+diff --git a/src/Source/Micro.cpp b/src/Source/Micro.cpp
+index 81a53ad..dde7c14 100644
+--- a/src/Source/Micro.cpp
++++ b/src/Source/Micro.cpp
+@@ -3008,7 +3008,7 @@ std::vector<std::pair<std::vector<Unit>,FastPosition>> MicroManager::group_mutal
+ 		center.x /= count;
+ 		center.y /= count;
+ 		
+-		std::sort(cluster_units.begin(), cluster_units.end(), [center](auto& a,auto& b){ return a->getDistance(center) < b->getDistance(center); });
++		std::sort(cluster_units.begin(), cluster_units.end(), [center](const auto& a,const auto& b){ return a->getDistance(center) < b->getDistance(center); });
+ 		result.emplace_back(cluster_units, center);
+ 	}
+ 	
+@@ -4288,7 +4288,7 @@ bool MicroManager::dark_templar_path_based_order(Unit combat_unit,const DarkTemp
+ 	prev[start_position] = start_position;
+ 	Q.emplace(start_distance, start_position);
+ 	
+-	for (auto& position : detected) {
++	for (auto position : detected) {
+ 		int detection_completion = INT_MAX;
+ 		for (auto [enemy_unit,completion] : enemy_detector_units) {
+ 			if (calculate_distance(UnitTypes::Protoss_Dark_Templar, position, enemy_unit->type, enemy_unit->position) <= enemy_unit->detection_range()) {
+@@ -4930,7 +4930,7 @@ Unit MicroManager::select_enemy_unit_for_combat_unit(Unit combat_unit,const std:
+ 	if (combat_unit->getType() == UnitTypes::Zerg_Scourge) {
+ 		remove_elements_in_place(possible_targets, [this,combat_unit](Unit unit){
+ 			DPF dpf = calculate_damage_per_frame(combat_unit, unit);
+-			unsigned int number_of_scourge = unsigned int(std::ceil(unit->getShields() / dpf.shield + unit->getHitPoints() / dpf.hp + 0.5));
++			unsigned int number_of_scourge = (unsigned int)(std::ceil(unit->getShields() / dpf.shield + unit->getHitPoints() / dpf.hp + 0.5));
+ 			auto& scourges = scourge_target_map_[unit];
+ 			return scourges.size() >= number_of_scourge && std::find(scourges.begin(), scourges.end(), combat_unit) == scourges.end();
+ 		});
+diff --git a/src/Source/Micro.h b/src/Source/Micro.h
+index 590efcb..5de33f2 100644
+--- a/src/Source/Micro.h
++++ b/src/Source/Micro.h
+@@ -486,7 +486,7 @@ private:
+ 	bool dark_swarm(Unit defiler_unit);
+ 	bool should_emergency_dark_swarm(Unit defiler_unit);
+ 	std::pair<int,int> dark_swarm_score(Position position,const std::vector<std::pair<Unit,int>>& unit_scores);
+-	bool MicroManager::unit_is_fighting(Unit unit);
++	bool unit_is_fighting(Unit unit);
+ 	bool plague(Unit defiler_unit);
+ 	std::pair<int,int> plague_score(Position position,const std::vector<std::pair<Unit,int>>& unit_scores);
+ 	bool should_emergency_plague(Unit defiler_unit);
+diff --git a/src/Source/Results.cpp b/src/Source/Results.cpp
+index 9739023..33842b8 100644
+--- a/src/Source/Results.cpp
++++ b/src/Source/Results.cpp
+@@ -46,13 +46,13 @@ void ResultStore::read_file(FILE *f)
+ 		int opponent_mutalisk_frame;
+ 		int opponent_lurker_frame;
+ 		int is_win;
+-		int ret = fscanf_s(f, "%[^,],%d,%d,%d,%[^,],%[^,],%[^,],%[^,],%d,%d,%d,%d,%d\n",
+-						   timestamp, sizeof(timestamp),
++		int ret = fscanf(f, "%511[^,],%d,%d,%d,%511[^,],%511[^,],%511[^,],%511[^,],%d,%d,%d,%d,%d\n",
++						   timestamp,
+ 						   &start_positions, &start_clock_position, &opponent_clock_position,
+-						   map, sizeof(map),
+-						   strategy, sizeof(strategy),
+-						   late_game_strategy, sizeof(late_game_strategy),
+-						   opponent_strategy, sizeof(opponent_strategy),
++						   map,
++						   strategy,
++						   late_game_strategy,
++						   opponent_strategy,
+ 						   &duration, &opponent_dark_templar_frame, &opponent_mutalisk_frame, &opponent_lurker_frame,
+ 						   &is_win);
+ 		if (ret == EOF) break;
+diff --git a/src/Source/Strategy.cpp b/src/Source/Strategy.cpp
+index 4842fc7..50fbbb4 100644
+--- a/src/Source/Strategy.cpp
++++ b/src/Source/Strategy.cpp
+@@ -509,7 +509,7 @@ void Strategy::apply_stage_block_chokepoint()
+ 	
+ 	std::sort(unit_distance_pairs.begin(),
+ 			  unit_distance_pairs.end(),
+-			  [](auto& a,auto& b){
++			  [](const auto& a,const auto& b){
+ 				  return std::make_tuple(!is_melee_or_worker(a.first->getType()), a.second, a.first->getID()) < std::make_tuple(!is_melee_or_worker(b.first->getType()), b.second, b.first->getID());
+ 			  });
+ 	std::vector<UnitType> types;
+@@ -522,8 +522,8 @@ void Strategy::apply_stage_block_chokepoint()
+ 		
+ 		std::sort(unit_distance_pairs.begin(),
+ 				  unit_distance_pairs.begin() + positions.size(),
+-				  [&d1](auto& a,auto& b){
+-					  const auto inner_product = [&d1](auto& a)
++				  [&d1](const auto& a,const auto& b){
++					  const auto inner_product = [&d1](const auto& a)
+ 					  {
+ 						  return d1.x * a.x + d1.y * a.y;
+ 					  };
+@@ -629,7 +629,7 @@ bool Strategy::apply_stage_block_ffe()
+ 			{
+ 				std::sort(unit_distance_pairs.begin(),
+ 						  unit_distance_pairs.end(),
+-						  [](auto& a,auto& b){
++						  [](const auto& a,const auto& b){
+ 							  return std::make_tuple(!is_melee(a.first->getType()), a.second, a.first->getID()) < std::make_tuple(!is_melee(b.first->getType()), b.second, b.first->getID());
+ 						  });
+ 			}
+@@ -659,8 +659,8 @@ bool Strategy::apply_stage_block_ffe()
+ 				
+ 				std::sort(unit_distance_pairs.begin(),
+ 						  unit_distance_pairs.begin() + positions.size(),
+-						  [&d1](auto& a,auto& b){
+-							  const auto inner_product = [&d1](auto& a)
++						  [&d1](const auto& a,const auto& b){
++							  const auto inner_product = [&d1](const auto& a)
+ 							  {
+ 								  return d1.x * a.x + d1.y * a.y;
+ 							  };
+diff --git a/src/Source/Tactics.cpp b/src/Source/Tactics.cpp
+index 2d7b30b..9728c75 100644
+--- a/src/Source/Tactics.cpp
++++ b/src/Source/Tactics.cpp
+@@ -177,7 +177,7 @@ void EnemyCluster::determine_friendly_units()
+ 			friendly_units_distance_[unit] = engagement_distance;
+ 		}
+ 	}
+-	std::sort(friendly_units_ascending_distance_.begin(), friendly_units_ascending_distance_.end(), [](auto& a,auto& b){
++	std::sort(friendly_units_ascending_distance_.begin(), friendly_units_ascending_distance_.end(), [](const auto& a,const auto& b){
+ 		return (std::make_tuple(a.second, a.first->getID()) <
+ 				std::make_tuple(b.second, b.first->getID()));
+ 	});
+diff --git a/src/Source/UnitUtils.cpp b/src/Source/UnitUtils.cpp
+index 97311b4..3099370 100644
+--- a/src/Source/UnitUtils.cpp
++++ b/src/Source/UnitUtils.cpp
+@@ -1301,7 +1301,7 @@ Gap::Gap(const BWEM::ChokePoint* chokepoint)
+ 		a_ = Position{ wa.x * 8, wa.y * 8 };
+ 		b_ = { wb.x * 8 + 7, wb.y * 8 + 7 };
+ 	} else {
+-		auto& pos = [](int c,int c_other){
++		auto pos = [](int c,int c_other){
+ 			return c < c_other ? c * 8 : c * 8 + 7;
+ 		};
+ 		type_ = Type::Diagonal;
+diff --git a/src/Source/UnitUtils.h b/src/Source/UnitUtils.h
+index 679e274..cbce5f9 100644
+--- a/src/Source/UnitUtils.h
++++ b/src/Source/UnitUtils.h
+@@ -187,7 +187,7 @@ public:
+ 	class Iterator;
+ 	Iterator begin() { return Iterator(*this, horizontal ? a_.x : a_.y); }
+ 	Iterator end() { return Iterator(*this, (horizontal ? b_.x : b_.y) + 1); }
+-private:
++public:
+ 	class Iterator
+ 	{
+ 	public:
+@@ -208,7 +208,7 @@ private:
+ 		const Line& line_;
+ 		int pos_;
+ 	};
+-	
++private:
+ 	T a_;
+ 	T b_;
+ 	bool horizontal;
+diff --git a/src/Source/Utils.h b/src/Source/Utils.h
+index fe035ea..9507e6c 100644
+--- a/src/Source/Utils.h
++++ b/src/Source/Utils.h
+@@ -95,7 +95,7 @@ std::vector<K> keys_sorted(const std::map<K,V>& map)
+ }
+ 
+ template <typename V,typename Func>
+-const V smallest_priority(const std::vector<V>& vector,Func& priority_function,const V& default_value = V())
++const V smallest_priority(const std::vector<V>& vector,Func&& priority_function,const V& default_value = V())
+ {
+ 	auto it = std::min_element(vector.begin(), vector.end(), [&priority_function](const V& a,const V& b){
+ 		return priority_function(a) < priority_function(b);
+@@ -104,7 +104,7 @@ const V smallest_priority(const std::vector<V>& vector,Func& priority_function,c
+ }
+ 
+ template <typename V,typename Func>
+-const V smallest_priority(const std::set<V>& set,Func& priority_function,const V& default_value = V())
++const V smallest_priority(const std::set<V>& set,Func&& priority_function,const V& default_value = V())
+ {
+ 	auto it = std::min_element(set.begin(), set.end(), [&priority_function](const V& a,const V& b){
+ 		return priority_function(a) < priority_function(b);
+@@ -132,6 +132,9 @@ void remove_duplicates(std::vector<T>& vector)
+ 	vector.erase(std::unique(vector.begin(), vector.end()), vector.end());
+ }
+ 
++template <typename T>
++bool contains(const std::set<T>& set, const T& value);
++
+ template <typename K,typename V>
+ void remove_missing_keys(std::map<K,V>& map,const std::vector<K>& keep)
+ {
+diff --git a/src/Source/WallPlacement.cpp b/src/Source/WallPlacement.cpp
+index 28a65b0..82d8cdf 100644
+--- a/src/Source/WallPlacement.cpp
++++ b/src/Source/WallPlacement.cpp
+@@ -1475,7 +1475,7 @@ namespace WallPlacement
+ 		UnitType center_type = Broodwar->self()->getRace().getResourceDepot();
+ 		Gap gap(Rect(center_type, base->Location(), true), Rect(neutral->Type(), neutral->TopLeft()));
+ 		auto line = gap.line();
+-		for (auto& position : Line<TilePosition>(TilePosition(line.first), TilePosition(line.second))) {
++		for (auto position : Line<TilePosition>(TilePosition(line.first), TilePosition(line.second))) {
+ 			tiles.set(position, false);
+ 		}
+ 	}
+diff --git a/src/Source/WallPlacement.h b/src/Source/WallPlacement.h
+index 145de76..c8d04d9 100644
+--- a/src/Source/WallPlacement.h
++++ b/src/Source/WallPlacement.h
+@@ -244,7 +244,7 @@ namespace WallPlacement
+ 		UnitType tight_for_unit_type_;
+ 		bool place_bunker_;
+ 		
+-		std::pair<const BWEM::ChokePoint*,const BWEM::Base*> TerranNaturalWallPlacer::determine_chokepoint_and_base();
++		std::pair<const BWEM::ChokePoint*,const BWEM::Base*> determine_chokepoint_and_base();
+ 		bool place_using_graph_base(const TileGrid<bool>& tiles,const GraphBase& graph_base,FastTilePosition top_left,FastTilePosition bottom_right);
+ 		std::vector<TerranNaturalWallPosition> place_barracks_and_supply_depots(const TileGrid<bool>& in_tiles,TilePosition top_left,TilePosition bottom_right,const GraphBase& graph_base);
+ 		void place_stage_point(TerranNaturalWallPosition& wall_position,const GraphBase& graph_base);
+diff --git a/src/Source/Worker.cpp b/src/Source/Worker.cpp
+index 39b32d3..cb032ff 100644
+--- a/src/Source/Worker.cpp
++++ b/src/Source/Worker.cpp
+@@ -1459,7 +1459,7 @@ void WorkerManager::defend_base_with_workers_if_needed()
+ 				}
+ 				if (hostile_position_count != 0) {
+ 					Position hostile_position_average = Position{hostile_position_sum.x / hostile_position_count, hostile_position_sum.y / hostile_position_count};
+-					std::sort(available_workers.begin(), available_workers.end(), [hostile_position_average](auto& a,auto& b){
++					std::sort(available_workers.begin(), available_workers.end(), [hostile_position_average](const auto& a,const auto& b){
+ 						return std::make_tuple(!is_less_than_half_damaged(a->unit()), a->unit()->getDistance(hostile_position_average)) < std::make_tuple(!is_less_than_half_damaged(b->unit()), b->unit()->getDistance(hostile_position_average));
+ 					});
+ 				}
+@@ -1876,7 +1876,7 @@ bool WorkerManager::should_scout_map_center() {
+ 	if (!scout_map_center_) {
+ 		return false;
+ 	}
+-	FastTilePosition center = bwem_map.Center();
++	FastTilePosition center = FastPosition(bwem_map.Center());
+ 	const auto can_build_at = [](FastTilePosition tile_position){
+ 		for (int dy = 0; dy < UnitTypes::Terran_Barracks.tileHeight(); dy++) {
+ 			for (int dx = 0; dx < UnitTypes::Terran_Barracks.tileWidth(); dx++) {
+@@ -2063,7 +2063,7 @@ void WorkerManager::init_optimal_mining_data()
+ 			int position_y;
+ 			int velocity_x;
+ 			int velocity_y;
+-			int ret = fscanf_s(f, "%d,%d,%d,%d,%d,%d", &mineral_x, &mineral_y, &position_x, &position_y, &velocity_x, &velocity_y);
++			int ret = fscanf(f, "%d,%d,%d,%d,%d,%d", &mineral_x, &mineral_y, &position_x, &position_y, &velocity_x, &velocity_y);
+ 			if (ret == EOF) break;
+ 			if (ret == 6) {
+ 				FastTilePosition mineral_position(mineral_x, mineral_y);
+diff --git a/src/Source/Worker.h b/src/Source/Worker.h
+index 61637c5..9d43ba9 100644
+--- a/src/Source/Worker.h
++++ b/src/Source/Worker.h
+@@ -14,7 +14,7 @@ public:
+ 	std::vector<Unit> minerals_with_worker_count(int worker_count,Unit worker_unit);
+ 	Unit pick_refinery_for_worker(const Worker& worker);
+ 	std::vector<Unit> unsaturated_refineries(Unit worker_unit);
+-	Unit WorkerAllocation::closest_unit(const std::vector<Unit>& units,Unit target_unit);
++	Unit closest_unit(const std::vector<Unit>& units,Unit target_unit);
+ 	int max_workers() const;
+ 	double average_workers_per_mineral() const;
+ 	int count_refinery_workers() const;

@@ -42,6 +42,11 @@ public:
 
     std::string replayName;
 
+    // Names for the stats screen and replays/results.csv (the Elo history). Games are only recorded there when the
+    // opponent has a name.
+    std::string myName = "StardustPy";
+    std::string opponentName;
+
     std::function<BWAPI::AIModule *()> myModule = nullptr;
     BWAPI::Race myRace = BWAPI::Races::Protoss;
 

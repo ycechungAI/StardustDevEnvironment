@@ -4,6 +4,7 @@
 TEST(Locutus, RunOne)
 {
     BWTest test;
+    test.opponentName = "Locutus";
     test.maps = Maps::Get("aiide");
     test.opponentRace = BWAPI::Races::Protoss;
     test.opponentModule = []()
@@ -37,6 +38,7 @@ TEST(Locutus, RunTwenty)
     while (count < 20)
     {
         BWTest test;
+        test.opponentName = "Locutus";
         test.maps = Maps::Get("aiide");
         test.opponentRace = BWAPI::Races::Protoss;
         test.opponentModule = []()
@@ -75,6 +77,7 @@ TEST(Locutus, RunTwenty)
 TEST(Locutus, 4GateGoon)
 {
     BWTest test;
+    test.opponentName = "Locutus";
     test.opponentRace = BWAPI::Races::Protoss;
     test.opponentModule = []()
     {
@@ -88,6 +91,7 @@ TEST(Locutus, 4GateGoon)
 TEST(Locutus, GasSteal4GateGoon)
 {
     BWTest test;
+    test.opponentName = "Locutus";
     test.opponentRace = BWAPI::Races::Protoss;
     test.opponentModule = []()
     {

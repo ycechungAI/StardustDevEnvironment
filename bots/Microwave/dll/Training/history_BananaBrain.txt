@@ -1,0 +1,6 @@
+v2.7;1729195293;4;(4)Polypoid1.65.scx;Microwave;Zerg;BananaBrain;Protoss;0;1;6PoolSpeed;SafeExpand;Unknown
+v2.7;1729325199;3;(3)PowerBond1.00.scx;Microwave;Zerg;BananaBrain;Protoss;0;1;3HatchMuta;SafeExpand;SafeExpand
+v2.7;1729193857;4;(4)Gladiator1.1.scx;Microwave;Zerg;BananaBrain;Protoss;0;1;9PoolHatchGasSpeed8D;SafeExpand;Unknown
+v2.7;1729251618;4;(4)VermeerSE2.1.scm;Microwave;Zerg;BananaBrain;Protoss;0;1;9PoolHatchGasSpeed8D;SafeExpand;NakedExpand
+v2.7;1729596460;2;(2)MatchPoint1.3.scx;Microwave;Zerg;BananaBrain;Protoss;0;1;9PoolHatchGasSpeed7D;HeavyRush;HeavyRush
+v2.7;1729549280;3;(3)NeoSylphid2.0.scx;Microwave;Zerg;BananaBrain;Protoss;0;1;9PoolHatchGasSpeed7D;NakedExpand;HeavyRush

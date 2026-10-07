@@ -202,8 +202,12 @@ struct Game {
   void enableCheats() const;
   void enableMiningTraining() const;
   void saveReplay(const std::string& filename);
+  // Keys pressed in the game window since the last call (empty without a window)
+  std::vector<int> takeKeyPresses();
   std::tuple<int, int, void*> GameScreenBuffer();
   void setOnDraw(std::function<void(uint8_t*, size_t)> onDraw);
+  // Calls onKillUnit (with the unit still as it was) whenever the engine kills a unit, whatever the visibility
+  void setOnKillUnit(std::function<void(Unit)> onKillUnit);
   std::tuple<int, int, uint32_t*> drawGameScreen(int x, int y, int width, int height);
 
   template<typename T, typename... args_T>
