@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2021/bots/WillyT.zip",
+  "sha256": "4f5a049b7120ac20dc58d192b1d7dc0165bf7d3d7058d9382a6d68fad760f1e6",
+  "strip": "WillyT",
+  "race": "Terran",
+  "license": "None stated. Keep it to local testing",
+  "notes": "WillyT (Terran) as entered in AIIDE 2021, by Nico Klausner: bio and mech builds with per-opponent opening learning"
+}

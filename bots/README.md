@@ -28,7 +28,35 @@ These come with the repository, already patched to build here (each folder's lic
 | `Microwave` | Zerg | AIIDE 2025 |
 | `McRaveZ` | Zerg | McRave as entered in AIIDE 2024/2025 |
 
-`SAIDA` (Terran, AIIDE 2018 champion) states no licence, so only its recipe is included. To get it: `.venv/bin/python tools/fetch_bot.py SAIDA`, then re-run CMake. (Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that.)
+These are included only as recipes (`bots/recipes/<Name>/`), either because their source states no licence or because it's large. Fetch them, then re-run CMake:
+
+```bash
+.venv/bin/python tools/fetch_bot.py SAIDA WillyT Dragon
+```
+
+| Bot | Race | Notes |
+|-----|------|-------|
+| `SAIDA` | Terran | AIIDE 2018 champion. States no licence. Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that. |
+| `Dragon` | Terran | AIIDE 2021, built on Facebook's CherryPi (MIT). 37 MB download. It thinks on its own thread and waits up to 30 ms a frame for it, so its games don't repeat exactly from a seed. Set `DRAGON_LOG=1` for its (very long) logs. |
+| `WillyT` | Terran | AIIDE 2021. States no licence. Learns openings per opponent in `bwapi-data/write/WillyT_<opponent>.txt`. |
+
+With Iron built in, that's four Terran opponents to go with the three Zerg ones above.
+
+### How strong they are
+
+Wins, losses and draws (frame limit) for each Terran and Zerg bot against the three Protoss bots: 4 games per pairing, on the harness's random maps, with a limit of 24,000 frames (October 2026):
+
+| Bot | vs Stardust2025 | vs BananaBrain | vs Locutus | Total |
+|-----|-----------------|----------------|------------|-------|
+| `SAIDA` | 0-2-2 | 3-1-0 | 2-1-1 | 5-4-3 |
+| `McRaveZ` | 1-3-0 | 2-1-1 | 2-1-1 | 5-5-2 |
+| `Microwave` | 0-4-0 | 1-3-0 | 1-3-0 | 2-10-0 |
+| `Dragon` | 0-4-0 | 0-1-3 | 1-2-1 | 1-7-4 |
+| `Steamhammer2025` | 0-4-0 | 0-2-2 | 0-3-1 | 0-9-3 |
+| `Iron` | 0-4-0 | 0-3-1 | 0-2-2 | 0-9-3 |
+| `WillyT` | 0-3-1 | 0-4-0 | 0-3-1 | 0-10-2 |
+
+None of them is a match for the Protoss bots, and no stronger ones exist to add: Microwave, McRaveZ and Steamhammer have been the best Zerg bots in every AIIDE and CoG tournament from 2023 to 2026, and the only newer Terran entrants (insanitybot, VOID) score below Dragon. The one bot that beats the Protoss ones, CoG 2026 winner Pluto (Random, a neural network), is a closed Windows binary.
 
 ## Playing as another bot
 

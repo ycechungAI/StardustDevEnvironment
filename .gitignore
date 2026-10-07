@@ -28,7 +28,7 @@ __pycache__/
 
 # Bots dropped into bots/ come from elsewhere, with their own licences, so they stay out of git; tracked are the
 # framework, the example, and the recipe bots whose licences allow sharing them (patched, without their DLLs).
-# SAIDA states no licence, so it stays a recipe: tools/fetch_bot.py SAIDA
+# SAIDA and WillyT state no licence and Dragon is 37 MB, so they stay recipes: tools/fetch_bot.py SAIDA WillyT Dragon
 bots/*
 !bots/README.md
 !bots/StardustBots.cmake
