@@ -1,0 +1,8 @@
+v2.7;1696229509;2;(2)PolarisRhapsody.scx;Microwave;Zerg;UAlbertaBot;Terran;1;1;9PoolGasHatchSpeed8D;FastRush;Factory
+v2.7;1729636184;3;(3)PowerBond1.00.scx;Microwave;Zerg;UAlbertaBot;Zerg;1;1;9PoolGasHatchSpeed8D;HeavyRush;HeavyRush
+v2.7;1729584616;3;(3)NeoSylphid2.0.scx;Microwave;Zerg;UAlbertaBot;Protoss;1;1;OverpoolTurtle;HeavyRush;HeavyRush
+v2.7;1729629258;2;(2)EclipseBW1.16.1.scx;Microwave;Zerg;UAlbertaBot;Zerg;1;1;9HatchTurtleHydra;HeavyRush;FastRush
+v2.7;1729614496;2;(2)MatchPoint1.3.scx;Microwave;Zerg;UAlbertaBot;Terran;1;1;9HatchTurtleHydra;HeavyRush;HeavyRush
+v2.7;1729587876;4;(4)ArcadiaII2.02.scx;Microwave;Zerg;UAlbertaBot;Zerg;1;1;9PoolSpeed;HeavyRush;FastRush
+v2.7;1758825282;2;(2)Benzene.scx;Microwave;Zerg;Dave_Churchill;Zerg;0;1;9PoolSunken;FastRush;HeavyRush
+v2.7;1756835998;4;(4)Andromeda.scx;Microwave;Zerg;Dave_Churchill;Zerg;0;1;9PoolSunken;FastRush;FastRush

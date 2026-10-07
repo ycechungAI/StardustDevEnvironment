@@ -1,0 +1,205 @@
+--- a/src/SAIDA/BWEM/src/area.cpp
++++ b/src/SAIDA/BWEM/src/area.cpp
+@@ -14,6 +14,10 @@
+ #include "neutral.h"
+ #include "winutils.h"
+ #include <map>
++#include <set>
++#include <set>
++#include <set>
++#include <set>
+ 
+ 
+ using namespace BWAPI;
+--- a/src/SAIDA/Common.h
++++ b/src/SAIDA/Common.h
+@@ -22,7 +22,6 @@
+ #include <ctime>
+ #include <iomanip>
+ 
+-#include <winsock2.h>
+ #include <windows.h>
+ 
+ #include <BWAPI.h>
+--- a/src/SAIDA/Config.h
++++ b/src/SAIDA/Config.h
+@@ -80,7 +80,6 @@
+ 		/// 자원 측정시에 사용되는 measure duration 정보이며 단위는 seconds
+ 		extern int duration;
+ 		extern bool recoring;
+-		extern enum columns;
+ 
+ 	}
+ 
+--- a/src/SAIDA/ConstructionManager.cpp
++++ b/src/SAIDA/ConstructionManager.cpp
+@@ -51,7 +51,7 @@
+ {
+ 	for (auto &b : toRemove)
+ 	{
+-		auto &it = find(constructionQueue.begin(), constructionQueue.end(), b);
++		auto it = find(constructionQueue.begin(), constructionQueue.end(), b);
+ 
+ 		if (it != constructionQueue.end())
+ 		{
+@@ -69,7 +69,7 @@
+ void ConstructionManager::cancelNotUnderConstructionTasks(const vector<ConstructionTask> &toRemove) {
+ 	for (auto &b : toRemove)
+ 	{
+-		auto &it = find(constructionQueue.begin(), constructionQueue.end(), b);
++		auto it = find(constructionQueue.begin(), constructionQueue.end(), b);
+ 
+ 		if (it != constructionQueue.end())
+ 		{
+@@ -298,7 +298,7 @@
+ 				toRemove.push_back(b);
+ 			}
+ 
+-			auto &iter = find(cancelBuildings.begin(), cancelBuildings.end(), b.buildingUnit);
++			auto iter = find(cancelBuildings.begin(), cancelBuildings.end(), b.buildingUnit);
+ 
+ 			if (iter != cancelBuildings.end()) {
+ 				toRemove.push_back(b);
+--- a/src/SAIDA/ConstructionManager.h
++++ b/src/SAIDA/ConstructionManager.h
+@@ -5,7 +5,7 @@
+ #include "ConstructionPlaceFinder.h"
+ #include "InformationManager.h"
+ #include "StrategyManager.h"
+-#include "UnitManager\ScvManager.h"
++#include "UnitManager/ScvManager.h"
+ 
+ #define CM ConstructionManager::Instance()
+ 
+--- a/src/SAIDA/GameCommander.h
++++ b/src/SAIDA/GameCommander.h
+@@ -9,17 +9,17 @@
+ #include "EnemyStrategyManager.h"
+ #include "TrainManager.h"
+ #include "UXManager.h"
+-#include "UnitManager\ComsatStationManager.h"
+-#include "UnitManager\EngineeringBayManager.h"
+-#include "UnitManager\MarineManager.h"
+-#include "UnitManager\ScvManager.h"
+-#include "UnitManager\TankManager.h"
+-#include "UnitManager\VultureManager.h"
+-#include "UnitManager\GoliathManager.h"
+-#include "UnitManager\WraithManager.h"
+-#include "UnitManager\VessleManager.h"
+-#include "UnitManager\DropshipManager.h"
+-#include "DeepLearning\SharedMemoryManager.h"
++#include "UnitManager/ComsatStationManager.h"
++#include "UnitManager/EngineeringBayManager.h"
++#include "UnitManager/MarineManager.h"
++#include "UnitManager/ScvManager.h"
++#include "UnitManager/TankManager.h"
++#include "UnitManager/VultureManager.h"
++#include "UnitManager/GoliathManager.h"
++#include "UnitManager/WraithManager.h"
++#include "UnitManager/VessleManager.h"
++#include "UnitManager/DropshipManager.h"
++#include "DeepLearning/SharedMemoryManager.h"
+ 
+ namespace MyBot
+ {
+--- a/src/SAIDA/StrategyManager.cpp
++++ b/src/SAIDA/StrategyManager.cpp
+@@ -1,9 +1,9 @@
+ ﻿#include "StrategyManager.h"
+-#include "UnitManager\TankManager.h"
+-#include "UnitManager\GoliathManager.h"
++#include "UnitManager/TankManager.h"
++#include "UnitManager/GoliathManager.h"
+ #include "TrainManager.h"
+-#include "DeepLearning\Supervised.h"
+-#include "DeepLearning\SharedMemoryManager.h"
++#include "DeepLearning/Supervised.h"
++#include "DeepLearning/SharedMemoryManager.h"
+ 
+ #define PERIOD 24 * 5                // 주기
+ #define BASE_WINNING_RATE 65.00      // 베이스 승률						
+--- a/src/SAIDA/StrategyManager.h
++++ b/src/SAIDA/StrategyManager.h
+@@ -10,8 +10,8 @@
+ #include "ScoutManager.h"
+ #include "EnemyStrategyManager.h"
+ #include "BasicBuildStrategy.h"
+-#include "UnitManager\ScvManager.h"
+-#include "UnitManager\ComsatStationManager.h"
++#include "UnitManager/ScvManager.h"
++#include "UnitManager/ComsatStationManager.h"
+ 
+ #define SM StrategyManager::Instance()
+ #define ATTACKPOS SM.getMainAttackPosition()
+--- a/src/SAIDA/TrainManager.h
++++ b/src/SAIDA/TrainManager.h
+@@ -5,10 +5,10 @@
+ #include "UnitData.h"
+ #include "InformationManager.h"
+ #include "StrategyManager.h"
+-#include "UnitState\CommandCenterState.h"
+-#include "UnitState\BarrackState.h"
+-#include "UnitState\FactoryState.h"
+-#include "UnitState\StarportState.h"
++#include "UnitState/CommandCenterState.h"
++#include "UnitState/BarrackState.h"
++#include "UnitState/FactoryState.h"
++#include "UnitState/StarportState.h"
+ 
+ namespace MyBot
+ {
+--- a/src/SAIDA/UXManager.h
++++ b/src/SAIDA/UXManager.h
+@@ -8,8 +8,8 @@
+ #include "ConstructionManager.h"
+ #include "ScoutManager.h"
+ #include "StrategyManager.h"
+-#include "UnitManager\ScvManager.h"
+-#include "DeepLearning\SharedMemoryManager.h"
++#include "UnitManager/ScvManager.h"
++#include "DeepLearning/SharedMemoryManager.h"
+ 
+ namespace MyBot
+ {
+--- a/src/SAIDA/UnitInfo.cpp
++++ b/src/SAIDA/UnitInfo.cpp
+@@ -2,7 +2,7 @@
+ #include "Common.h"
+ #include "GameCommander.h"
+ #include "UnitInfo.h"
+-#include "UnitState\State.h"
++#include "UnitState/State.h"
+ #include "InformationManager.h"
+ 
+ using namespace MyBot;
+--- a/src/SAIDA/UnitInfo.h
++++ b/src/SAIDA/UnitInfo.h
+@@ -1,7 +1,7 @@
+ ﻿#pragma once
+ 
+ #include "Common.h"
+-#include "UnitState\State.h"
++#include "UnitState/State.h"
+ 
+ namespace MyBot
+ {
+--- a/src/SAIDA/UnitManager/GoliathManager.cpp
++++ b/src/SAIDA/UnitManager/GoliathManager.cpp
+@@ -409,7 +409,7 @@
+ 	if (defenceUnitSize < goliathDefenceSet.size()) {
+ 		uList sorted = goliathDefenceSet.getSortedUnitList(INFO.getMainBaseLocation(S)->getPosition(), true);
+ 
+-		for (word i = 0, size = min(sorted.size(), goliathDefenceSet.size() - defenceUnitSize); i < size; i++) {
++		for (word i = 0, size = min<size_t>(sorted.size(), goliathDefenceSet.size() - defenceUnitSize); i < size; i++) {
+ 			setStateToGoliath(sorted.at(i), new GoliathIdleState());
+ 		}
+ 	}
+@@ -440,7 +440,7 @@
+ 			return a.first < b.first;
+ 		});
+ 
+-		for (word i = 0, size = min(sortList.size(), defenceUnitSize - goliathDefenceSet.size()); i < size; i++) {
++		for (word i = 0, size = min<size_t>(sortList.size(), defenceUnitSize - goliathDefenceSet.size()); i < size; i++) {
+ 
+ 			UnitInfo *unit = sortList.at(i).second;
+ 

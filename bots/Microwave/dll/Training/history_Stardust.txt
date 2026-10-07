@@ -1,0 +1,4 @@
+v2.7;1666082853;2;(4)Python.scx;Microwave;Zerg;Stardust;Protoss;0;1;Overpool11GasMuta;Unknown;Unknown
+v2.7;1666082853;2;(4)Python.scx;Microwave;Zerg;Stardust;Protoss;0;1;11Pool11GasMuta;Unknown;Unknown
+v2.7;1694922570;4;(4)Jade.scx;Microwave;Zerg;Stardust;Protoss;0;1;3HatchHydraExpo;SafeExpand;NakedExpand
+v2.7;1738021423;4;(4)Python.scx;Microwave;Zerg;Stardust;Protoss;0;1;OverpoolSpeed;HeavyRush;Unknown

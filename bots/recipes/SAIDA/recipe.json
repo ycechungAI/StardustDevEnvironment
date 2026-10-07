@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2018/bots/SAIDA.zip",
+  "sha256": "8767b5680384032e7e791c852a1195cc7f1cfa138dc99a594c97f6fcc0870670",
+  "strip": "",
+  "race": "Terran",
+  "license": "None stated (neither the zip nor github.com/TeamSAIDA/SAIDA has a licence); BWEM's for src/SAIDA/BWEM. Keep it to local testing",
+  "notes": "SAIDA (Terran), AIIDE 2018 champion, by Samsung SDS; source from the AIIDE 2018 results (the GitHub repo has none)"
+}

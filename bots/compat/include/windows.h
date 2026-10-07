@@ -3,7 +3,10 @@
 #pragma once
 
 #include <chrono>
+#include <climits>
+#include <cstdio>
 #include <cstdint>
+#include <filesystem>
 #include <thread>
 
 typedef int BOOL;
@@ -66,4 +69,60 @@ inline int GetWindowText(HWND, char *text, int size)
 {
     if (size > 0) text[0] = '\0';
     return 0;
+}
+
+typedef const char *LPCSTR;
+#define INVALID_HANDLE_VALUE ((HANDLE) (intptr_t) -1)
+#define PAGE_READWRITE 0x04
+#define FILE_MAP_ALL_ACCESS 0xF001F
+
+// No other process shares memory with a bot here: opening or creating a mapping fails, as if it were unavailable
+inline HANDLE OpenFileMapping(DWORD, BOOL, LPCSTR)
+{
+    return nullptr;
+}
+inline HANDLE CreateFileMapping(HANDLE, void *, DWORD, DWORD, DWORD, LPCSTR)
+{
+    return nullptr;
+}
+inline LPVOID MapViewOfFile(HANDLE, DWORD, DWORD, DWORD, size_t)
+{
+    return nullptr;
+}
+inline BOOL UnmapViewOfFile(const void *)
+{
+    return FALSE;
+}
+inline BOOL CloseHandle(HANDLE)
+{
+    return TRUE;
+}
+
+inline BOOL CreateDirectory(LPCSTR path, void *)
+{
+    std::error_code error;
+    return std::filesystem::create_directory(path, error) ? TRUE : FALSE;
+}
+
+// Structured exceptions are MSVC-only: there are none to translate into C++ exceptions
+typedef struct _CONTEXT
+{
+    void *Eip;
+} CONTEXT;
+typedef struct _EXCEPTION_POINTERS
+{
+    CONTEXT *ContextRecord;
+} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
+typedef void (*_se_translator_function)(unsigned int, EXCEPTION_POINTERS *);
+inline _se_translator_function _set_se_translator(_se_translator_function)
+{
+    return nullptr;
+}
+
+#define MAXINT INT_MAX
+
+template<class... Args>
+inline int wsprintf(char *buffer, const char *format, Args... args)
+{
+    return std::sprintf(buffer, format, args...);
 }

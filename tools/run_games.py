@@ -2,6 +2,7 @@
 
 Usage: python tools/run_games.py <gtest filter> [--games N] [--parallel N] [--interval SECONDS] [--build DIR]
        python tools/run_games.py --opponent <bot> [--games N] ...   (plays Bots.Play against a bot from bots/)
+       python tools/run_games.py --bot Stardust2025 --opponent <bot> ... (plays as that bot instead of the Python port)
 
 Headless games are as fast as the bots' own computation allows, so more games per minute comes from running several
 at once: by default up to 4 (--parallel), each in its own folder under <build>/test/parallel/<n>/ with its own
@@ -105,6 +106,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("filter", nargs="?", help="gtest filter (default Bots.Play with --opponent)")
     parser.add_argument("--opponent", help="bot to play with Bots.Play (see bots/README.md)")
+    parser.add_argument("--bot", help="bot to play as with --opponent, instead of the Python port "
+                                      "(e.g. Stardust2025, the original C++ Stardust)")
     parser.add_argument("--games", type=int, default=0,
                         help="number of games (default: 20 for *RunTwenty, else 1)")
     parser.add_argument("--parallel", type=int, default=0,
@@ -115,6 +118,8 @@ def main() -> int:
     args = parser.parse_args()
     test_dir = ROOT / args.build / "test"
 
+    if args.bot and not args.opponent:
+        parser.error("--bot needs --opponent")
     if args.opponent:
         args.filter = args.filter or "Bots.Play"
     if not args.filter:
@@ -149,6 +154,8 @@ def main() -> int:
         if args.opponent:
             env["STARDUST_OPPONENT"] = args.opponent
             env["STARDUST_GAMES"] = str(worker.games)
+            if args.bot:
+                env["STARDUST_BOT"] = args.bot
         elif splittable and worker.games > 1:
             command.append(f"--gtest_repeat={worker.games}")
         if socket_root is not None:

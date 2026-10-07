@@ -1,0 +1,6 @@
+v2.7;1666082853;2;(4)Python.scx;Microwave;Zerg;PurpleWave;Protoss;0;1;Overpool11GasMuta;Unknown;Unknown
+v2.7;1729581029;2;(2)MatchPoint1.3.scx;Microwave;Zerg;PurpleWave;Protoss;0;1;11Pool11GasMuta;HeavyRush;Unknown
+v2.7;1729586144;3;(3)PowerBond1.00.scx;Microwave;Zerg;PurpleWave;Protoss;0;1;11Pool11GasMuta;HeavyRush;Unknown
+v2.7;1729634376;3;(3)NeoSylphid2.0.scx;Microwave;Zerg;PurpleWave;Protoss;0;1;Overpool11GasMuta;HeavyRush;Unknown
+v2.7;1760392968;4;(4)Python.scx;Microwave;Zerg;PurpleWave;Protoss;0;1;3HatchLingBust;HeavyRush;Unknown
+v2.7;1760928307;2;(2)HeartbreakRidge.scx;Microwave;Zerg;PurpleWave;Protoss;0;1;9PoolHatchGasSpeed8D;HeavyRush;HeavyRush

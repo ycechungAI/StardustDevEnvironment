@@ -39,6 +39,13 @@ namespace stardust_compat
     }
 }
 
+// MSVC's inline form of #pragma, used for warning settings
+#define __pragma(x)
+
+#ifndef __APPLE__
+typedef int errno_t;  // macOS declares it already
+#endif
+
 inline FILE *stardust_compat_fopen(const char *path, const char *mode)
 {
     return ::fopen(stardust_compat::path(path).c_str(), mode);

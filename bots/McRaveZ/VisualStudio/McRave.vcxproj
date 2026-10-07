@@ -1,0 +1,304 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\Source\BWEB\PathFind.cpp" />
+    <ClCompile Include="..\Source\BWEB\Block.cpp" />
+    <ClCompile Include="..\Source\BWEB\BWEB.cpp" />
+    <ClCompile Include="..\Source\BWEB\Station.cpp" />
+    <ClCompile Include="..\Source\BWEB\Wall.cpp" />
+    <ClCompile Include="..\Source\BWEM\area.cpp" />
+    <ClCompile Include="..\Source\BWEM\base.cpp" />
+    <ClCompile Include="..\Source\BWEM\BaseFinder\BaseFinder.cpp" />
+    <ClCompile Include="..\Source\BWEM\bwapiExt.cpp" />
+    <ClCompile Include="..\Source\BWEM\bwem.cpp" />
+    <ClCompile Include="..\Source\BWEM\cp.cpp" />
+    <ClCompile Include="..\Source\BWEM\examples.cpp" />
+    <ClCompile Include="..\Source\BWEM\exampleWall.cpp" />
+    <ClCompile Include="..\Source\BWEM\graph.cpp" />
+    <ClCompile Include="..\Source\BWEM\gridMap.cpp" />
+    <ClCompile Include="..\Source\BWEM\map.cpp" />
+    <ClCompile Include="..\Source\BWEM\mapDrawer.cpp" />
+    <ClCompile Include="..\Source\BWEM\mapImpl.cpp" />
+    <ClCompile Include="..\Source\BWEM\neutral.cpp" />
+    <ClCompile Include="..\Source\BWEM\tiles.cpp" />
+    <ClCompile Include="..\Source\BWEM\utils.cpp" />
+    <ClCompile Include="..\Source\BWEM\winutils.cpp" />
+    <ClCompile Include="..\Source\Horizon\Horizon.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\All\BuildOrder.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\All\Learning.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\ProtossBuildOrder.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvFFA\PvFFA.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvFFA\PvFFA_1GateCore.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvP\PvP.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvP\PvP_1GateCore.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvP\PvP_2Gate.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT_1GateCore.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT_2Base.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT_2Gate.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ_1GateCore.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ_FFE.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ_2Gate.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TerranBuildOrder.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvFFA\TvA.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvP\TvP.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvP\TvP_RaxFact.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvZ\TvZ.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvZ\TvZ_2Rax.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZergBuildOrder.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvFFA\ZvFFA.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvFFA\ZvFFA_HatchPool.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvP\ZvP.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvP\ZvP_HatchPool.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvP\ZvP_PoolHatch.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvT\ZvT.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvT\ZvT_HatchPool.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvT\ZvT_PoolHatch.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ_HatchPool.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ_PoolHatch.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ_PoolLair.cpp" />
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\Z_RetiredBuilds.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Building\Buildings.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Player\PlayerInfo.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Player\Players.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Resource\ResourceInfo.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Resource\Resources.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Roles.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Unit\Pathing.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Unit\Targeting.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Unit\UnitInfo.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Unit\UnitMath.cpp" />
+    <ClCompile Include="..\Source\McRave\Info\Unit\Units.cpp" />
+    <ClCompile Include="..\Source\McRave\Macro\Expanding\Expanding.cpp" />
+    <ClCompile Include="..\Source\McRave\Macro\Planning\Planning.cpp" />
+    <ClCompile Include="..\Source\McRave\Macro\Planning\Pylons.cpp" />
+    <ClCompile Include="..\Source\McRave\Macro\Producing\Producing.cpp" />
+    <ClCompile Include="..\Source\McRave\Macro\Researching\Researching.cpp" />
+    <ClCompile Include="..\Source\McRave\Macro\Upgrading\Upgrading.cpp" />
+    <ClCompile Include="..\Source\McRave\Main\Dll.cpp" />
+    <ClCompile Include="..\Source\McRave\Main\McRave.cpp" />
+    <ClCompile Include="..\Source\McRave\Main\Util.cpp" />
+    <ClCompile Include="..\Source\McRave\Main\Visuals.cpp" />
+    <ClCompile Include="..\Source\McRave\Map\Grids.cpp" />
+    <ClCompile Include="..\Source\McRave\Map\Stations.cpp" />
+    <ClCompile Include="..\Source\McRave\Map\Terrain.cpp" />
+    <ClCompile Include="..\Source\McRave\Map\Walls\Walls.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\All\Commands.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\All\Specials.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\All\Spells.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Clusters.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Combat.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Decision.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Bearings.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Formations.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Navigation.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Simulation.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Combat\State.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Defender\Defender.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Scout\Scouts.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Support\Support.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Transport\Transports.cpp" />
+    <ClCompile Include="..\Source\McRave\Micro\Worker\Workers.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Actions\Actions.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Goals\Goals.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\Spy.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyGeneral.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyProtoss.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyTerran.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyZerg.cpp" />
+    <ClCompile Include="..\Source\McRave\Strategy\Zones\Zones.cpp" />
+    <ClInclude Include="..\Source\Horizon\Horizon.h" />
+    <ClInclude Include="..\Source\McRave\Builds\All\BuildOrder.h" />
+    <ClInclude Include="..\Source\McRave\Builds\All\Learning.h" />
+    <ClInclude Include="..\Source\McRave\Builds\Protoss\ProtossBuildOrder.h" />
+    <ClInclude Include="..\Source\McRave\Builds\Terran\TerranBuildOrder.h" />
+    <ClInclude Include="..\Source\McRave\Builds\Zerg\ZergBuildOrder.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Source\BWEB\Block.h" />
+    <ClInclude Include="..\Source\BWEB\BWEB.h" />
+    <ClInclude Include="..\Source\BWEB\JPS.h" />
+    <ClInclude Include="..\Source\BWEB\PathFind.h" />
+    <ClInclude Include="..\Source\BWEB\Station.h" />
+    <ClInclude Include="..\Source\BWEB\Wall.h" />
+    <ClInclude Include="..\Source\BWEM\area.h" />
+    <ClInclude Include="..\Source\BWEM\base.h" />
+    <ClInclude Include="..\Source\BWEM\BaseFinder\BaseFinder.h" />
+    <ClInclude Include="..\Source\BWEM\bwapiExt.h" />
+    <ClInclude Include="..\Source\BWEM\bwem.h" />
+    <ClInclude Include="..\Source\BWEM\cp.h" />
+    <ClInclude Include="..\Source\BWEM\defs.h" />
+    <ClInclude Include="..\Source\BWEM\examples.h" />
+    <ClInclude Include="..\Source\BWEM\exampleWall.h" />
+    <ClInclude Include="..\Source\BWEM\graph.h" />
+    <ClInclude Include="..\Source\BWEM\gridMap.h" />
+    <ClInclude Include="..\Source\BWEM\map.h" />
+    <ClInclude Include="..\Source\BWEM\mapDrawer.h" />
+    <ClInclude Include="..\Source\BWEM\mapImpl.h" />
+    <ClInclude Include="..\Source\BWEM\neutral.h" />
+    <ClInclude Include="..\Source\BWEM\tiles.h" />
+    <ClInclude Include="..\Source\BWEM\utils.h" />
+    <ClInclude Include="..\Source\BWEM\winutils.h" />
+    <ClInclude Include="..\Source\McRave\Info\Building\Buildings.h" />
+    <ClInclude Include="..\Source\McRave\Info\Player\PlayerInfo.h" />
+    <ClInclude Include="..\Source\McRave\Info\Player\Players.h" />
+    <ClInclude Include="..\Source\McRave\Info\Resource\ResourceInfo.h" />
+    <ClInclude Include="..\Source\McRave\Info\Resource\Resources.h" />
+    <ClInclude Include="..\Source\McRave\Info\Roles.h" />
+    <ClInclude Include="..\Source\McRave\Info\Unit\Pathing.h" />
+    <ClInclude Include="..\Source\McRave\Info\Unit\Targeting.h" />
+    <ClInclude Include="..\Source\McRave\Info\Unit\UnitInfo.h" />
+    <ClInclude Include="..\Source\McRave\Info\Unit\UnitMath.h" />
+    <ClInclude Include="..\Source\McRave\Info\Unit\Units.h" />
+    <ClInclude Include="..\Source\McRave\Macro\Expanding\Expanding.h" />
+    <ClInclude Include="..\Source\McRave\Macro\Planning\Planning.h" />
+    <ClInclude Include="..\Source\McRave\Macro\Planning\Pylons.h" />
+    <ClInclude Include="..\Source\McRave\Macro\Producing\Producing.h" />
+    <ClInclude Include="..\Source\McRave\Macro\Researching\Researching.h" />
+    <ClInclude Include="..\Source\McRave\Macro\Upgrading\Upgrading.h" />
+    <ClInclude Include="..\Source\McRave\Main\Events.h" />
+    <ClInclude Include="..\Source\McRave\Main\Header.h" />
+    <ClInclude Include="..\Source\McRave\Main\McRave.h" />
+    <ClInclude Include="..\Source\McRave\Main\Util.h" />
+    <ClInclude Include="..\Source\McRave\Main\Visuals.h" />
+    <ClInclude Include="..\Source\McRave\Map\Grids.h" />
+    <ClInclude Include="..\Source\McRave\Map\Stations.h" />
+    <ClInclude Include="..\Source\McRave\Map\Terrain.h" />
+    <ClInclude Include="..\Source\McRave\Map\Walls\Walls.h" />
+    <ClInclude Include="..\Source\McRave\Micro\All\Commands.h" />
+    <ClInclude Include="..\Source\McRave\Micro\Combat\Combat.h" />
+    <ClInclude Include="..\Source\McRave\Micro\Defender\Defender.h" />
+    <ClInclude Include="..\Source\McRave\Micro\Scout\Scouts.h" />
+    <ClInclude Include="..\Source\McRave\Micro\Support\Support.h" />
+    <ClInclude Include="..\Source\McRave\Micro\Transport\Transports.h" />
+    <ClInclude Include="..\Source\McRave\Micro\Worker\Workers.h" />
+    <ClInclude Include="..\Source\McRave\Strategy\Actions\Actions.h" />
+    <ClInclude Include="..\Source\McRave\Strategy\Goals\Goals.h" />
+    <ClInclude Include="..\Source\McRave\Strategy\Spy\Spy.h" />
+    <ClInclude Include="..\Source\McRave\Strategy\Zones\Zones.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{2E63AE74-758A-4607-9DE4-D28E814A6E13}</ProjectGuid>
+    <RootNamespace>ExampleAIModule</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <ProjectName>McRave</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>..\Source\BWEB;..\Source\BWEM;..\Source\Horizon;..\Source\McRave;..\..\..\include;$(IncludePath)</IncludePath>
+    <OutDir>..\..\..\..\StarCraft McRave\bwapi-data\AI\</OutDir>
+    <LibraryPath>..\..\..\lib;$(LibraryPath)</LibraryPath>
+    <CodeAnalysisRuleSet>RuleSet1.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>..\Source\BWEB;..\Source\BWEM;..\Source\Horizon;..\Source\McRave;..\..\..\include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\..\..\lib;$(LibraryPath)</LibraryPath>
+    <OutDir>..\..\..\..\StarCraft McRave\bwapi-data\AI\</OutDir>
+    <TargetName>$(ProjectName)d</TargetName>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NOMINMAX;WIN32;_DEBUG;_WINDOWS;_USRDLL;EXAMPLEAIMODULE_EXPORTS;MCRAVE_PROTOSS;MCRAVE_TERRAN;MCRAVE_ZERG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>false</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <EnablePREfast>true</EnablePREfast>
+    </ClCompile>
+    <PreLinkEvent />
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <TargetMachine>MachineX86</TargetMachine>
+      <AdditionalDependencies>../lib/BWAPId.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <AdditionalIncludeDirectories>../include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NOMINMAX;WIN32;NDEBUG;_WINDOWS;_USRDLL;EXAMPLEAIMODULE_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <SDLCheck>
+      </SDLCheck>
+    </ClCompile>
+    <PreLinkEvent />
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <TargetMachine>MachineX86</TargetMachine>
+      <AdditionalDependencies>../lib/BWAPI.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateMapFile>true</GenerateMapFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "$(TargetDir)$(ProjectName).dll" "C:\Users\Christian\AppData\Roaming\scbw\bots\McRave\AI\McRave.dll"
+copy /Y "$(TargetDir)$(ProjectName).dll" "C:\Users\Christian\AppData\Roaming\scbw\bots\McRaveZ\AI\McRave.dll"
+copy /Y "$(TargetDir)$(ProjectName).dll" "C:\Users\Christian\AppData\Roaming\scbw\bots\McRaveT\AI\McRave.dll"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

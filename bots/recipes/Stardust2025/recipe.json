@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2025/bots/Stardust.zip",
+  "sha256": "e099e319e0c2a920c282ffac6b2eaa2ec780028b18e4d8a179c0280aa6340d00",
+  "strip": "",
+  "race": "Protoss",
+  "license": "The Stardust License (MIT-style; no public tournament entry without the author's permission), plus BWEM's and FAP's",
+  "notes": "Stardust (the original C++ bot) as entered in AIIDE 2025, by Bruce Nielsen; includes its trained mining data"
+}

@@ -1,0 +1,678 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\Source\BWEB\Block.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEB\Station.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEB\Wall.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\area.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\base.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\bwapiExt.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\bwem.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\cp.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\examples.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\exampleWall.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\graph.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\gridMap.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\map.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\mapDrawer.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\mapImpl.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\neutral.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\tiles.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\utils.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\winutils.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\BaseFinder\BaseFinder.cpp">
+      <Filter>BWEM\BaseFinder</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEB\PathFind.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEB\BWEB.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Horizon\Horizon.cpp">
+      <Filter>Horizon</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT_2Gate.cpp">
+      <Filter>McRave\Builds\Protoss\PvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT_1GateCore.cpp">
+      <Filter>McRave\Builds\Protoss\PvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT_2Base.cpp">
+      <Filter>McRave\Builds\Protoss\PvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ_1GateCore.cpp">
+      <Filter>McRave\Builds\Protoss\PvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ_2Gate.cpp">
+      <Filter>McRave\Builds\Protoss\PvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvP\PvP_1GateCore.cpp">
+      <Filter>McRave\Builds\Protoss\PvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvP\PvP_2Gate.cpp">
+      <Filter>McRave\Builds\Protoss\PvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvFFA\PvFFA_1GateCore.cpp">
+      <Filter>McRave\Builds\Protoss\PvFFA</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ_FFE.cpp">
+      <Filter>McRave\Builds\Protoss\PvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ_PoolHatch.cpp">
+      <Filter>McRave\Builds\Zerg\ZvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ_PoolLair.cpp">
+      <Filter>McRave\Builds\Zerg\ZvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvT\ZvT_PoolHatch.cpp">
+      <Filter>McRave\Builds\Zerg\ZvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvT\ZvT_HatchPool.cpp">
+      <Filter>McRave\Builds\Zerg\ZvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvP\ZvP_PoolHatch.cpp">
+      <Filter>McRave\Builds\Zerg\ZvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvP\ZvP_HatchPool.cpp">
+      <Filter>McRave\Builds\Zerg\ZvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvP\PvP.cpp">
+      <Filter>McRave\Builds\Protoss\PvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvT\PvT.cpp">
+      <Filter>McRave\Builds\Protoss\PvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvZ\PvZ.cpp">
+      <Filter>McRave\Builds\Protoss\PvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ.cpp">
+      <Filter>McRave\Builds\Zerg\ZvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvT\ZvT.cpp">
+      <Filter>McRave\Builds\Zerg\ZvT</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvP\ZvP.cpp">
+      <Filter>McRave\Builds\Zerg\ZvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvFFA\ZvFFA.cpp">
+      <Filter>McRave\Builds\Zerg\ZvFFA</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvFFA\ZvFFA_HatchPool.cpp">
+      <Filter>McRave\Builds\Zerg\ZvFFA</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZergBuildOrder.cpp">
+      <Filter>McRave\Builds\Zerg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\PvFFA\PvFFA.cpp">
+      <Filter>McRave\Builds\Protoss\PvFFA</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TerranBuildOrder.cpp">
+      <Filter>McRave\Builds\Zerg\Terran</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvFFA\TvA.cpp">
+      <Filter>McRave\Builds\Zerg\Terran\TvFFA</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Zones\Zones.cpp">
+      <Filter>McRave\Strategy\Zones</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\ZvZ\ZvZ_HatchPool.cpp">
+      <Filter>McRave\Builds\Zerg\ZvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Macro\Planning\Planning.cpp">
+      <Filter>McRave\Macro\Planning</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Macro\Planning\Pylons.cpp">
+      <Filter>McRave\Macro\Planning</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Goals\Goals.cpp">
+      <Filter>McRave\Strategy\Goals</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Actions\Actions.cpp">
+      <Filter>McRave\Strategy\Actions</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Main\Dll.cpp">
+      <Filter>McRave\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Main\McRave.cpp">
+      <Filter>McRave\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Main\Util.cpp">
+      <Filter>McRave\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Main\Visuals.cpp">
+      <Filter>McRave\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\All\BuildOrder.cpp">
+      <Filter>McRave\Builds\All</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\All\Learning.cpp">
+      <Filter>McRave\Builds\All</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Map\Grids.cpp">
+      <Filter>McRave\Map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Map\Stations.cpp">
+      <Filter>McRave\Map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Map\Terrain.cpp">
+      <Filter>McRave\Map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Building\Buildings.cpp">
+      <Filter>McRave\Info\Building</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Player\PlayerInfo.cpp">
+      <Filter>McRave\Info\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Player\Players.cpp">
+      <Filter>McRave\Info\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Resource\ResourceInfo.cpp">
+      <Filter>McRave\Info\Resource</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Resource\Resources.cpp">
+      <Filter>McRave\Info\Resource</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Unit\Pathing.cpp">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Unit\Targeting.cpp">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Unit\UnitInfo.cpp">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Unit\Units.cpp">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Roles.cpp">
+      <Filter>McRave\Info</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Protoss\ProtossBuildOrder.cpp">
+      <Filter>McRave\Builds\Protoss</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\All\Commands.cpp">
+      <Filter>McRave\Micro\All</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\All\Specials.cpp">
+      <Filter>McRave\Micro\All</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Clusters.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Combat.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Decision.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Formations.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Navigation.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Simulation.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\State.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Defender\Defender.cpp">
+      <Filter>McRave\Micro\Defender</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Scout\Scouts.cpp">
+      <Filter>McRave\Micro\Scout</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Support\Support.cpp">
+      <Filter>McRave\Micro\Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Transport\Transports.cpp">
+      <Filter>McRave\Micro\Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Worker\Workers.cpp">
+      <Filter>McRave\Micro\Worker</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Macro\Expanding\Expanding.cpp">
+      <Filter>McRave\Macro\Expanding</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Macro\Producing\Producing.cpp">
+      <Filter>McRave\Macro\Producing</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Macro\Upgrading\Upgrading.cpp">
+      <Filter>McRave\Macro\Upgrades</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Macro\Researching\Researching.cpp">
+      <Filter>McRave\Macro\Researching</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Zerg\Z_RetiredBuilds.cpp">
+      <Filter>McRave\Builds\Zerg\ZvFFA</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Map\Walls\Walls.cpp">
+      <Filter>McRave\Map\Walls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\Combat\Bearings.cpp">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\Spy.cpp">
+      <Filter>McRave\Strategy\Spy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyGeneral.cpp">
+      <Filter>McRave\Strategy\Spy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyProtoss.cpp">
+      <Filter>McRave\Strategy\Spy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyTerran.cpp">
+      <Filter>McRave\Strategy\Spy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Strategy\Spy\SpyZerg.cpp">
+      <Filter>McRave\Strategy\Spy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvZ\TvZ.cpp">
+      <Filter>McRave\Builds\Zerg\Terran\TvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvZ\TvZ_2Rax.cpp">
+      <Filter>McRave\Builds\Zerg\Terran\TvZ</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Micro\All\Spells.cpp">
+      <Filter>McRave\Micro\All</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvP\TvP.cpp">
+      <Filter>McRave\Builds\Zerg\Terran\TvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Builds\Terran\TvP\TvP_RaxFact.cpp">
+      <Filter>McRave\Builds\Zerg\Terran\TvP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\McRave\Info\Unit\UnitMath.cpp">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Source\BWEB\Block.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEB\Station.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEB\Wall.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\area.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\base.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\bwapiExt.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\bwem.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\cp.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\defs.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\examples.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\exampleWall.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\graph.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\gridMap.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\map.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\mapDrawer.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\mapImpl.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\neutral.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\tiles.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\utils.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\winutils.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEM\BaseFinder\BaseFinder.h">
+      <Filter>BWEM\BaseFinder</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEB\PathFind.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEB\BWEB.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BWEB\JPS.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Horizon\Horizon.h">
+      <Filter>Horizon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Builds\Zerg\ZergBuildOrder.h">
+      <Filter>McRave\Builds\Zerg</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Builds\Protoss\ProtossBuildOrder.h">
+      <Filter>McRave\Builds\Protoss</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Builds\Terran\TerranBuildOrder.h">
+      <Filter>McRave\Builds\Zerg\Terran</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Strategy\Zones\Zones.h">
+      <Filter>McRave\Strategy\Zones</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Macro\Planning\Planning.h">
+      <Filter>McRave\Macro\Planning</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Macro\Planning\Pylons.h">
+      <Filter>McRave\Macro\Planning</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Strategy\Goals\Goals.h">
+      <Filter>McRave\Strategy\Goals</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Strategy\Actions\Actions.h">
+      <Filter>McRave\Strategy\Actions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Main\Events.h">
+      <Filter>McRave\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Main\Header.h">
+      <Filter>McRave\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Main\McRave.h">
+      <Filter>McRave\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Main\Util.h">
+      <Filter>McRave\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Main\Visuals.h">
+      <Filter>McRave\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Builds\All\BuildOrder.h">
+      <Filter>McRave\Builds\All</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Builds\All\Learning.h">
+      <Filter>McRave\Builds\All</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Map\Grids.h">
+      <Filter>McRave\Map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Map\Stations.h">
+      <Filter>McRave\Map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Map\Terrain.h">
+      <Filter>McRave\Map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Building\Buildings.h">
+      <Filter>McRave\Info\Building</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Player\PlayerInfo.h">
+      <Filter>McRave\Info\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Player\Players.h">
+      <Filter>McRave\Info\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Resource\ResourceInfo.h">
+      <Filter>McRave\Info\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Resource\Resources.h">
+      <Filter>McRave\Info\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Unit\Pathing.h">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Unit\Targeting.h">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Unit\UnitInfo.h">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Unit\Units.h">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Roles.h">
+      <Filter>McRave\Info</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\All\Commands.h">
+      <Filter>McRave\Micro\All</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\Combat\Combat.h">
+      <Filter>McRave\Micro\Combat</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\Defender\Defender.h">
+      <Filter>McRave\Micro\Defender</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\Scout\Scouts.h">
+      <Filter>McRave\Micro\Scout</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\Support\Support.h">
+      <Filter>McRave\Micro\Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\Transport\Transports.h">
+      <Filter>McRave\Micro\Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Micro\Worker\Workers.h">
+      <Filter>McRave\Micro\Worker</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Macro\Expanding\Expanding.h">
+      <Filter>McRave\Macro\Expanding</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Macro\Producing\Producing.h">
+      <Filter>McRave\Macro\Producing</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Macro\Upgrading\Upgrading.h">
+      <Filter>McRave\Macro\Upgrades</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Macro\Researching\Researching.h">
+      <Filter>McRave\Macro\Researching</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Map\Walls\Walls.h">
+      <Filter>McRave\Map\Walls</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Strategy\Spy\Spy.h">
+      <Filter>McRave\Strategy\Spy</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\McRave\Info\Unit\UnitMath.h">
+      <Filter>McRave\Info\Unit</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="BWEM">
+      <UniqueIdentifier>{3e14d27e-deb4-4133-aa73-c5da07446ee6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave">
+      <UniqueIdentifier>{74abad17-2dc8-41e2-933b-93e9cb0249af}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BWEB">
+      <UniqueIdentifier>{b8528e1c-6b41-44c6-888b-7c26e95822af}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BWEM\BaseFinder">
+      <UniqueIdentifier>{0e1ecd94-9211-4cea-8f45-228b7ee6c529}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Horizon">
+      <UniqueIdentifier>{b749054e-38eb-471e-a297-86a0e85b6d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Info">
+      <UniqueIdentifier>{aa3e82bb-a522-4484-9ba8-14f9be693f20}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Macro">
+      <UniqueIdentifier>{f1131dcf-ae55-4ca2-a0c4-96043e34709f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro">
+      <UniqueIdentifier>{7c29a969-8fd2-4b8e-8b39-a81c99a064f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Main">
+      <UniqueIdentifier>{1e6af1f8-505c-49cb-9bea-df12533f1fb2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds">
+      <UniqueIdentifier>{fac56f6b-dcb7-4099-8f2b-96ea6d2b2883}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Protoss">
+      <UniqueIdentifier>{87bfccbc-9225-47a5-8c9e-5c45c905120d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg">
+      <UniqueIdentifier>{e3095dc1-3f51-4c80-8a5a-fe10cb2bd7b1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\All">
+      <UniqueIdentifier>{2c0d2653-d39c-4398-b7fd-6f77ed7fee52}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Info\Player">
+      <UniqueIdentifier>{2bf76588-ab2d-4e2e-a7fd-be28f461672f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Map">
+      <UniqueIdentifier>{5b61ad1b-a22f-40ed-82f2-1f1f728b0d44}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Strategy">
+      <UniqueIdentifier>{5be6fb6e-002d-452d-bcaf-f2f060ea2314}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\Combat">
+      <UniqueIdentifier>{47b64926-ce31-482c-a5d5-b39500c6224c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\Worker">
+      <UniqueIdentifier>{6586f124-005e-4a19-9f5e-8b8c1bbe0ca7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\Support">
+      <UniqueIdentifier>{fe78872a-c0ff-48a9-a1dd-36200db61567}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\Transport">
+      <UniqueIdentifier>{52dd598d-026d-440b-a2ef-efd60d5a909b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\Scout">
+      <UniqueIdentifier>{cff871e6-db86-43e0-bef5-396ab11ba453}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\All">
+      <UniqueIdentifier>{25108f01-a860-44db-8e3b-ae59a838051d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Strategy\Spy">
+      <UniqueIdentifier>{6abfefaf-534b-455e-b1cd-97095a170c34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Micro\Defender">
+      <UniqueIdentifier>{73d53f71-c9a9-4156-a9ee-5d7e9d7fda64}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Protoss\PvZ">
+      <UniqueIdentifier>{c6a1cb01-78e9-4a67-ac61-36137770ca96}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Protoss\PvT">
+      <UniqueIdentifier>{23057fb9-c38a-4e2c-aee5-1932427d0d08}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Protoss\PvP">
+      <UniqueIdentifier>{5598992c-d4e4-4993-aef1-05e46a8313e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Protoss\PvFFA">
+      <UniqueIdentifier>{46f55096-36d6-4a8a-98eb-1f3c4e958acf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\ZvFFA">
+      <UniqueIdentifier>{67de1e4f-8061-4b5a-a0c3-251c88d803b8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\ZvP">
+      <UniqueIdentifier>{6afeacd8-0ca4-4fe4-9afa-1d02871fa9ee}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\ZvT">
+      <UniqueIdentifier>{86a9ac7c-3781-4379-9908-dc67b0fb4d91}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\ZvZ">
+      <UniqueIdentifier>{44b3f59c-cd40-4450-b91e-c992687375f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Strategy\Goals">
+      <UniqueIdentifier>{7d32044f-5090-4418-ba76-a450cd54e4dc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Strategy\Actions">
+      <UniqueIdentifier>{23424057-565c-4690-96e5-95da7c95da7b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Strategy\Zones">
+      <UniqueIdentifier>{5d9e192f-726f-4b53-83b2-101d7ddfffb4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Macro\Planning">
+      <UniqueIdentifier>{c4d99900-90e9-4ebc-8582-5a98e06a71d1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Info\Resource">
+      <UniqueIdentifier>{1190dc28-5827-4730-837d-213fd4793d7a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Info\Unit">
+      <UniqueIdentifier>{12283eaa-2520-4831-b83c-a4bd74ae4477}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Info\Building">
+      <UniqueIdentifier>{cc3c2ebb-5c44-464f-b2d7-442bfff76fa1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Macro\Upgrades">
+      <UniqueIdentifier>{b444e753-4a56-49c8-8131-a480d4957ce1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Macro\Expanding">
+      <UniqueIdentifier>{a184d93b-1bfa-46c4-9864-caa20d4f483b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Macro\Producing">
+      <UniqueIdentifier>{0908ccb8-e1a5-42f3-b5ae-d5099e920bd6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Macro\Researching">
+      <UniqueIdentifier>{05d71717-60c1-499f-a0a9-31f0b10ebc14}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Map\Walls">
+      <UniqueIdentifier>{8fea8213-ca8d-42e3-9d82-ed68a47eab0c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\Terran">
+      <UniqueIdentifier>{67955f2f-85e9-45b5-9b7e-4f96d897c248}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\Terran\TvFFA">
+      <UniqueIdentifier>{e0538aa9-127f-431d-bfa6-25c11ac5815f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\Terran\TvZ">
+      <UniqueIdentifier>{2affacfe-3f62-4e6a-a073-26efc79fc7cf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="McRave\Builds\Zerg\Terran\TvP">
+      <UniqueIdentifier>{166561e7-c028-4604-9361-2273838157f6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

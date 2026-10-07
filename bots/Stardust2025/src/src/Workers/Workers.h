@@ -1,0 +1,63 @@
+#pragma once
+
+#include "Common.h"
+#include "Base.h"
+#include "MyWorker.h"
+
+namespace Workers
+{
+    void initialize();
+
+    void onUnitDestroy(const Unit &unit);
+
+    void onMineralPatchDestroyed(const Resource &mineralPatch);
+
+    void updateAssignments();
+
+    void issueOrders();
+
+    // Whether the given worker unit can currently be reassigned to non-gathering duties
+    bool isAvailableForReassignment(const MyWorker &unit, bool allowCarryMinerals, bool allowMining);
+
+    MyWorker getClosestReassignableWorker(BWAPI::Position position, bool allowCarryMinerals, int *bestTravelTime = nullptr);
+
+    size_t getBaseWorkerCount(Base *base);
+
+    std::vector<MyWorker> getBaseWorkers(Base *base);
+
+    int baseMineralWorkerCount(Base *base);
+
+    void reserveBaseWorkers(std::vector<MyWorker> &workers, Base *base);
+
+    void reserveWorker(const MyWorker &unit);
+
+    void releaseWorker(const MyWorker &unit);
+
+    // How many mineral patches are currently available for assignment
+    int availableMineralAssignments(Base *base = nullptr, int workersPerPatch = 2);
+
+    // How many gas slots are currently available for assignment
+    int availableGasAssignments(Base *base = nullptr);
+
+    void setDesiredGasWorkerDelta(int gasWorkerDelta);
+
+    int mineralWorkers();
+
+    std::pair<int, int> gasWorkers();
+
+    int reassignableMineralWorkers();
+
+    int reassignableGasWorkers();
+
+    int idleWorkerCount();
+
+    std::map<Resource, std::set<MyWorker>> &mineralsAndAssignedWorkers();
+
+    // Gets all workers assigned to the resource. Does not check if any have died since their status was last updated.
+    std::set<MyWorker> getWorkersAssignedTo(const Resource &resource);
+
+    // Given a patch and a worker, returns the other worker assigned to it, if it exists.
+    MyWorker getOtherWorkerMining(const Resource &resource, const MyWorker &worker);
+
+    void setWorkerMineralPatch(const MyWorker &worker, const Resource &resource, Base *base);
+}

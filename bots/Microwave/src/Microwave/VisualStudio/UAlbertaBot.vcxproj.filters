@@ -1,0 +1,516 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="game">
+      <UniqueIdentifier>{56aebc46-135f-424b-b9a1-d1dd9ac3caf3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\macro">
+      <UniqueIdentifier>{a78e9ab8-4a81-4640-b6eb-f1eed3e4b1af}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\combat">
+      <UniqueIdentifier>{8e8c1957-bc1d-4bc8-90b0-95beab19d8a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\combat\micro">
+      <UniqueIdentifier>{e5971e4e-7c6b-4f4e-9fbe-4a5247b3cf51}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\util">
+      <UniqueIdentifier>{222db7e1-f821-4383-986a-83267e040564}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\util\map">
+      <UniqueIdentifier>{8ac87511-27d4-42ea-8402-6491d9206435}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="module">
+      <UniqueIdentifier>{b5d87a96-0443-4319-afc9-f457d890d031}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common">
+      <UniqueIdentifier>{849d54bf-a76a-4425-8399-099fbe0360c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\combat\squad">
+      <UniqueIdentifier>{32554737-6cf9-47c8-87c9-6db0b6ffcc51}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\macro\buildorders">
+      <UniqueIdentifier>{0984e4fa-2fbf-40e9-8c0d-304344df9718}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="util">
+      <UniqueIdentifier>{59599488-4576-44ab-8522-7d65a6425e15}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BWEB">
+      <UniqueIdentifier>{701a94f7-0076-4932-ac86-76c662b5ba23}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="FAP">
+      <UniqueIdentifier>{ab91f494-4990-43b3-baf8-a0affbbf92e9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BwapiAutoObs">
+      <UniqueIdentifier>{1d4f0b7b-7575-4b12-a4f6-06c280b72d2b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BWEM">
+      <UniqueIdentifier>{918cabae-ffe5-43aa-a937-a5483ea321ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BWEM\BaseFinder">
+      <UniqueIdentifier>{58ee0a06-8722-4cfe-887a-eee5b429e260}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\Source\CombatCommander.cpp">
+      <Filter>game\combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Dll.cpp">
+      <Filter>module</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\UAlbertaBotModule.cpp">
+      <Filter>module</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\MapGrid.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\MapTools.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\GameCommander.cpp">
+      <Filter>game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Squad.cpp">
+      <Filter>game\combat\squad</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\SquadData.cpp">
+      <Filter>game\combat\squad</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\CombatSimulation.cpp">
+      <Filter>game\combat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Common.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\UABAssert.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\BuildingManager.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\BuildingPlacer.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\ProductionManager.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\WorkerData.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\WorkerManager.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\DetectorManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\MeleeManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\MicroManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\RangedManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\ScoutManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\TransportManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\BuildOrderQueue.cpp">
+      <Filter>game\macro\buildorders</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\BuildOrder.cpp">
+      <Filter>game\macro\buildorders</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\TimerManager.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\InformationManager.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\StrategyManager.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\UnitData.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Config.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\JSONTools.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\ParseUtils.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Micro.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\UnitUtil.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\TankManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\MedicManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Logger.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\LurkerManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\StrategyBossZerg.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\BuildingData.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\MacroAct.cpp">
+      <Filter>game\macro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\SurveyerManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\FAP.cpp">
+      <Filter>FAP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Random.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Grid.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\GridDistances.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\MapPartitions.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\CasterManager.cpp">
+      <Filter>game\combat\micro</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\PathFinding.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\AutoObserver.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BwapiAutoObs\src\AutoObs.cpp">
+      <Filter>BwapiAutoObs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\area.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\base.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\bwapiExt.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\bwem.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\cp.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\graph.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\gridMap.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\map.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\mapImpl.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\neutral.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\tiles.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\utils.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\winutils.cpp">
+      <Filter>BWEM</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEM-community\src\BaseFinder\BaseFinder.cpp">
+      <Filter>BWEM\BaseFinder</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\GridWalk.cpp">
+      <Filter>game\util\map</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEB\Source\Block.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEB\Source\BWEB.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEB\Source\PathFind.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEB\Source\Station.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\BWEB\Source\Wall.cpp">
+      <Filter>BWEB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\PlayerSnapshot.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\OpponentPlan.cpp">
+      <Filter>game\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Source\Cluster.cpp">
+      <Filter>game\combat\squad</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Source\CombatCommander.h">
+      <Filter>game\combat</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\UAlbertaBotModule.h">
+      <Filter>module</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\MapTools.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\MapGrid.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\GameCommander.h">
+      <Filter>game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\SquadOrder.h">
+      <Filter>game\combat\squad</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Squad.h">
+      <Filter>game\combat\squad</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\SquadData.h">
+      <Filter>game\combat\squad</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Common.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\UABAssert.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\CombatSimulation.h">
+      <Filter>game\combat</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\BuildingManager.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\BuildingPlacer.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\ProductionManager.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\WorkerData.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\WorkerManager.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\DetectorManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\TransportManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\MeleeManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\MicroManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\RangedManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\ScoutManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\BuildOrderQueue.h">
+      <Filter>game\macro\buildorders</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\BuildOrder.h">
+      <Filter>game\macro\buildorders</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\TimerManager.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\InformationManager.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\StrategyManager.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\UnitData.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Config.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\JSONTools.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\ParseUtils.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Micro.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\UnitUtil.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\TankManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\MedicManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Logger.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\LurkerManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\StrategyBossZerg.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\BuildingData.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\MacroCommand.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\MacroAct.h">
+      <Filter>game\macro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\SurveyerManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\FAP.h">
+      <Filter>FAP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Random.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\DistanceMap.hpp">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Grid.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\GridDistances.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\MapPartitions.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\CasterManager.h">
+      <Filter>game\combat\micro</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\PathFinding.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\AutoObserver.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BwapiAutoObs\src\AutoObs.h">
+      <Filter>BwapiAutoObs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BwapiAutoObs\src\IAutoObs.h">
+      <Filter>BwapiAutoObs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\area.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\base.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\bwapiExt.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\bwem.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\cp.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\defs.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\graph.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\gridMap.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\map.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\mapImpl.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\neutral.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\tiles.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\utils.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\winutils.h">
+      <Filter>BWEM</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEM-community\src\BaseFinder\BaseFinder.h">
+      <Filter>BWEM\BaseFinder</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Profiler.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\GridWalk.h">
+      <Filter>game\util\map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEB\Source\Block.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEB\Source\BWEB.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEB\Source\JPS.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEB\Source\PathFind.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEB\Source\Station.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\BWEB\Source\Wall.h">
+      <Filter>BWEB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\PlayerSnapshot.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\OpponentPlan.h">
+      <Filter>game\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Timer.hpp">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Source\Cluster.h">
+      <Filter>game\combat\squad</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

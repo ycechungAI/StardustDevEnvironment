@@ -1,0 +1,5 @@
+v2.7;1666082853;2;(4)Python.scx;Microwave;Zerg;McRaveZ;Zerg;0;1;11Pool11GasMuta;Unknown;Unknown
+v2.7;1729618245;3;(3)NeoSylphid2.0.scx;Microwave;Zerg;McRaveZ;Zerg;0;1;11Pool11GasMuta;HeavyRush;NakedExpand
+v2.7;1729635922;3;(3)PowerBond1.00.scx;Microwave;Zerg;McRaveZ;Zerg;0;1;11Pool11GasMuta;NakedExpand;HeavyRush
+v2.7;1729630731;2;(2)MatchPoint1.3.scx;Microwave;Zerg;McRaveZ;Zerg;0;1;11Pool11GasMuta;HeavyRush;HeavyRush
+v2.7;1760830588;4;(4)CircuitBreaker.scx;Microwave;Zerg;McRaveZ;Zerg;0;1;12HatchTurtle;HeavyRush;HeavyRush
