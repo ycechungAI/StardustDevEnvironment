@@ -52,7 +52,7 @@ cd build/test && ./tests --gtest_filter=Steamhammer.4PoolHard
 
 The test harness, maps and opponents are described in `test/`: `Steamhammer.cpp`, `Locutus.cpp`, and `RushDefense.cpp` for a scripted scenario. Replays, CherryVis data and logs go to `build/test/replays/`.
 
-To play other bots, put them in `bots/` (see [bots/README.md](bots/README.md)) and run `.venv/bin/python tools/run_games.py --opponent <bot>`. Steamhammer, Locutus, Iron, McRave and the `WorkerRush` example are available out of the box.
+To play other bots, put them in `bots/` (see [bots/README.md](bots/README.md)) and run `.venv/bin/python tools/run_games.py --opponent <bot>`. Steamhammer, Locutus, Iron, McRave, the `WorkerRush` example and five recent tournament bots, among them the original C++ Stardust (`Stardust2025`), are available out of the box. `--bot <name>` plays as one of them instead of the Python port.
 
 `tools/run_games.py` runs the same tests with a time estimate up front and a progress line (elapsed time, frame, time left) every 30 seconds:
 

@@ -1,0 +1,5 @@
+1) Open VisualStudio/McRave.sln using Visual Studio 2017
+2) Change your output directory to StarCraft/bwapi-data/AI
+3) Change to "Release" and build
+4) Run with BWAPI 4.4.0
+	BWAPI.lib is in the root folder

@@ -1,0 +1,279 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>Microwave</ProjectName>
+    <ProjectGuid>{2E63AE74-758A-4607-9DE4-D28E814A6E13}</ProjectGuid>
+    <RootNamespace>ExampleAIModule</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <PlatformToolset>v141_xp</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)\..\bin\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)\$(Configuration)\$(ProjectName)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)\..\bin\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</IgnoreImportLibrary>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">BasicDesignGuidelineRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+    <RunCodeAnalysis Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</RunCodeAnalysis>
+    <CodeAnalysisIgnoreGeneratedCode Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</CodeAnalysisIgnoreGeneratedCode>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectName)_d</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../BOSS/source;../SparCraft/source;../source;$(BWTA_DIR)/include;$(BWAPI_DIR)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;EXAMPLEAIMODULE_EXPORTS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>false</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(BWAPI_DIR)/lib/BWAPId.lib;$(Configuration)/SparCraft/SparCraft_d.lib;../../BOSS/bin/BOSS_d.lib;$(BWTA_DIR)/lib/BWTAd.lib;$(BWTA_DIR)/lib/libboost_system-vc120-mt-gd-1_56.lib;$(BWTA_DIR)/lib/libboost_thread-vc120-mt-gd-1_56.lib;$(BWTA_DIR)/lib/libCGAL-vc120-mt-gd-4.4.lib;$(BWTA_DIR)/lib/libgmp-10.lib;$(BWTA_DIR)/lib/libmpfr-4.lib;$(BWTA_DIR)/lib/libboost_filesystem-vc120-mt-gd-1_56.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <AdditionalIncludeDirectories>../source;../BOSS/source;../../BWEM-community/src;../../BWEB/source;../../BwapiAutoObs/src;$(BWAPI440_DIR)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;EXAMPLEAIMODULE_EXPORTS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <EnablePREfast>false</EnablePREfast>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DisableSpecificWarnings>4996</DisableSpecificWarnings>
+      <Optimization>Disabled</Optimization>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+    <Link>
+      <AdditionalDependencies>../../BWAPILIB/bin/BWAPILIB.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <TargetMachine>MachineX86</TargetMachine>
+      <GenerateMapFile>true</GenerateMapFile>
+      <MapExports>true</MapExports>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\BwapiAutoObs\src\AutoObs.cpp" />
+    <ClCompile Include="..\..\BWEB\Source\Block.cpp" />
+    <ClCompile Include="..\..\BWEB\Source\BWEB.cpp" />
+    <ClCompile Include="..\..\BWEB\Source\PathFind.cpp" />
+    <ClCompile Include="..\..\BWEB\Source\Station.cpp" />
+    <ClCompile Include="..\..\BWEB\Source\Wall.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\area.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\base.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\BaseFinder\BaseFinder.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\bwapiExt.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\bwem.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\cp.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\graph.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\gridMap.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\map.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\mapImpl.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\neutral.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\tiles.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\utils.cpp" />
+    <ClCompile Include="..\..\BWEM-community\src\winutils.cpp" />
+    <ClCompile Include="..\Source\AutoObserver.cpp" />
+    <ClCompile Include="..\Source\BuildingData.cpp" />
+    <ClCompile Include="..\source\BuildingManager.cpp" />
+    <ClCompile Include="..\source\BuildingPlacer.cpp" />
+    <ClCompile Include="..\source\BuildOrder.cpp" />
+    <ClCompile Include="..\source\BuildOrderQueue.cpp" />
+    <ClCompile Include="..\Source\CasterManager.cpp" />
+    <ClCompile Include="..\Source\Cluster.cpp" />
+    <ClCompile Include="..\Source\CombatSimulation.cpp" />
+    <ClCompile Include="..\Source\CombatCommander.cpp" />
+    <ClCompile Include="..\Source\Common.cpp" />
+    <ClCompile Include="..\source\DetectorManager.cpp" />
+    <ClCompile Include="..\Source\Dll.cpp" />
+    <ClCompile Include="..\Source\FAP.cpp" />
+    <ClCompile Include="..\Source\GameCommander.cpp" />
+    <ClCompile Include="..\Source\Grid.cpp" />
+    <ClCompile Include="..\Source\GridDistances.cpp" />
+    <ClCompile Include="..\Source\GridWalk.cpp" />
+    <ClCompile Include="..\Source\InformationManager.cpp" />
+    <ClCompile Include="..\source\JSONTools.cpp" />
+    <ClCompile Include="..\Source\Logger.cpp" />
+    <ClCompile Include="..\Source\LurkerManager.cpp" />
+    <ClCompile Include="..\Source\MacroAct.cpp" />
+    <ClCompile Include="..\Source\MapGrid.cpp" />
+    <ClCompile Include="..\Source\MapPartitions.cpp" />
+    <ClCompile Include="..\Source\MapTools.cpp" />
+    <ClCompile Include="..\Source\MedicManager.cpp" />
+    <ClCompile Include="..\source\MeleeManager.cpp" />
+    <ClCompile Include="..\source\MicroManager.cpp" />
+    <ClCompile Include="..\Source\Config.cpp" />
+    <ClCompile Include="..\Source\Micro.cpp" />
+    <ClCompile Include="..\Source\OpponentPlan.cpp" />
+    <ClCompile Include="..\Source\ParseUtils.cpp" />
+    <ClCompile Include="..\Source\PathFinding.cpp" />
+    <ClCompile Include="..\Source\PlayerSnapshot.cpp" />
+    <ClCompile Include="..\source\ProductionManager.cpp" />
+    <ClCompile Include="..\Source\Random.cpp" />
+    <ClCompile Include="..\source\RangedManager.cpp" />
+    <ClCompile Include="..\source\ScoutManager.cpp" />
+    <ClCompile Include="..\Source\Squad.cpp" />
+    <ClCompile Include="..\Source\SquadData.cpp" />
+    <ClCompile Include="..\Source\StrategyBossZerg.cpp" />
+    <ClCompile Include="..\Source\StrategyManager.cpp" />
+    <ClCompile Include="..\Source\SurveyerManager.cpp" />
+    <ClCompile Include="..\Source\TankManager.cpp" />
+    <ClCompile Include="..\source\TimerManager.cpp" />
+    <ClCompile Include="..\source\TransportManager.cpp" />
+    <ClCompile Include="..\Source\UABAssert.cpp" />
+    <ClCompile Include="..\Source\UAlbertaBotModule.cpp" />
+    <ClCompile Include="..\Source\UnitData.cpp" />
+    <ClCompile Include="..\Source\UnitUtil.cpp" />
+    <ClCompile Include="..\source\WorkerData.cpp" />
+    <ClCompile Include="..\source\WorkerManager.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\BwapiAutoObs\src\AutoObs.h" />
+    <ClInclude Include="..\..\BwapiAutoObs\src\IAutoObs.h" />
+    <ClInclude Include="..\..\BWEB\Source\Block.h" />
+    <ClInclude Include="..\..\BWEB\Source\BWEB.h" />
+    <ClInclude Include="..\..\BWEB\Source\JPS.h" />
+    <ClInclude Include="..\..\BWEB\Source\PathFind.h" />
+    <ClInclude Include="..\..\BWEB\Source\Station.h" />
+    <ClInclude Include="..\..\BWEB\Source\Wall.h" />
+    <ClInclude Include="..\..\BWEM-community\src\area.h" />
+    <ClInclude Include="..\..\BWEM-community\src\base.h" />
+    <ClInclude Include="..\..\BWEM-community\src\BaseFinder\BaseFinder.h" />
+    <ClInclude Include="..\..\BWEM-community\src\bwapiExt.h" />
+    <ClInclude Include="..\..\BWEM-community\src\bwem.h" />
+    <ClInclude Include="..\..\BWEM-community\src\cp.h" />
+    <ClInclude Include="..\..\BWEM-community\src\defs.h" />
+    <ClInclude Include="..\..\BWEM-community\src\graph.h" />
+    <ClInclude Include="..\..\BWEM-community\src\gridMap.h" />
+    <ClInclude Include="..\..\BWEM-community\src\map.h" />
+    <ClInclude Include="..\..\BWEM-community\src\mapImpl.h" />
+    <ClInclude Include="..\..\BWEM-community\src\neutral.h" />
+    <ClInclude Include="..\..\BWEM-community\src\tiles.h" />
+    <ClInclude Include="..\..\BWEM-community\src\utils.h" />
+    <ClInclude Include="..\..\BWEM-community\src\winutils.h" />
+    <ClInclude Include="..\Source\AutoObserver.h" />
+    <ClInclude Include="..\Source\BuildingData.h" />
+    <ClInclude Include="..\source\BuildingManager.h" />
+    <ClInclude Include="..\source\BuildingPlacer.h" />
+    <ClInclude Include="..\source\BuildOrder.h" />
+    <ClInclude Include="..\source\BuildOrderQueue.h" />
+    <ClInclude Include="..\Source\CasterManager.h" />
+    <ClInclude Include="..\Source\Cluster.h" />
+    <ClInclude Include="..\Source\CombatSimulation.h" />
+    <ClInclude Include="..\Source\CombatCommander.h" />
+    <ClInclude Include="..\Source\Common.h" />
+    <ClInclude Include="..\source\DetectorManager.h" />
+    <ClInclude Include="..\Source\DistanceMap.hpp" />
+    <ClInclude Include="..\Source\FAP.h" />
+    <ClInclude Include="..\Source\GameCommander.h" />
+    <ClInclude Include="..\Source\Grid.h" />
+    <ClInclude Include="..\Source\GridDistances.h" />
+    <ClInclude Include="..\Source\GridWalk.h" />
+    <ClInclude Include="..\Source\InformationManager.h" />
+    <ClInclude Include="..\source\JSONTools.h" />
+    <ClInclude Include="..\Source\Logger.h" />
+    <ClInclude Include="..\Source\LurkerManager.h" />
+    <ClInclude Include="..\Source\MacroAct.h" />
+    <ClInclude Include="..\Source\MacroCommand.h" />
+    <ClInclude Include="..\Source\MapGrid.h" />
+    <ClInclude Include="..\Source\MapPartitions.h" />
+    <ClInclude Include="..\Source\MapTools.h" />
+    <ClInclude Include="..\Source\MedicManager.h" />
+    <ClInclude Include="..\source\MeleeManager.h" />
+    <ClInclude Include="..\source\MicroManager.h" />
+    <ClInclude Include="..\Source\Config.h" />
+    <ClInclude Include="..\Source\Micro.h" />
+    <ClInclude Include="..\Source\OpponentPlan.h" />
+    <ClInclude Include="..\Source\ParseUtils.h" />
+    <ClInclude Include="..\Source\PathFinding.h" />
+    <ClInclude Include="..\Source\PlayerSnapshot.h" />
+    <ClInclude Include="..\source\ProductionManager.h" />
+    <ClInclude Include="..\Source\Profiler.hpp" />
+    <ClInclude Include="..\Source\Random.h" />
+    <ClInclude Include="..\source\RangedManager.h" />
+    <ClInclude Include="..\source\ScoutManager.h" />
+    <ClInclude Include="..\Source\Squad.h" />
+    <ClInclude Include="..\Source\SquadData.h" />
+    <ClInclude Include="..\Source\SquadOrder.h" />
+    <ClInclude Include="..\Source\StrategyBossZerg.h" />
+    <ClInclude Include="..\Source\StrategyManager.h" />
+    <ClInclude Include="..\Source\SurveyerManager.h" />
+    <ClInclude Include="..\Source\TankManager.h" />
+    <ClInclude Include="..\Source\Timer.hpp" />
+    <ClInclude Include="..\source\TimerManager.h" />
+    <ClInclude Include="..\source\TransportManager.h" />
+    <ClInclude Include="..\Source\UABAssert.h" />
+    <ClInclude Include="..\Source\UAlbertaBotModule.h" />
+    <ClInclude Include="..\Source\UnitData.h" />
+    <ClInclude Include="..\Source\UnitUtil.h" />
+    <ClInclude Include="..\source\WorkerData.h" />
+    <ClInclude Include="..\source\WorkerManager.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -39,9 +39,20 @@ TEST(Bots, List)
 }
 
 // Plays STARDUST_OPPONENT=<bot name> for STARDUST_GAMES games (default 1), on STARDUST_TEST_MAP or random SSCAIT
-// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST.
+// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST. STARDUST_BOT=<bot name> plays as that bot instead of the
+// Python port (for example Stardust2025, the original C++ Stardust); its replays are named <us>_vs_<bot>_...
 TEST(Bots, Play)
 {
+    const RegisteredBot *us = nullptr;
+    if (auto botName = std::getenv("STARDUST_BOT"); botName && *botName)
+    {
+        us = FindBot(botName);
+        if (!us)
+        {
+            FAIL() << "No bot named " << botName << " to play as. Available:" << std::endl << botList();
+        }
+    }
+
     auto opponentName = std::getenv("STARDUST_OPPONENT");
     if (!opponentName || !*opponentName)
     {
@@ -66,9 +77,15 @@ TEST(Bots, Play)
         BWTest test;
         test.opponentRace = bot->race;
         test.opponentModule = bot->create;
+        if (us)
+        {
+            test.myRace = us->race;
+            test.myModule = us->create;
+        }
         test.onEndMine = [&](bool won)
         {
             std::ostringstream replayName;
+            if (us) replayName << us->name << "_vs_";
             replayName << bot->name << "_" << test.map->shortname() << "_" << test.randomSeed
                        << (won ? "_WON" : "_LOST");
             test.replayName = replayName.str();

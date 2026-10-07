@@ -1,0 +1,4 @@
+v2.7;1759140416;4;(4)Andromeda.scx;Microwave;Zerg;InfestedArtosis;Zerg;0;1;9PoolGasHatchSpeed8D;HeavyRush;HeavyRush
+v2.7;1715709733;4;(4)FightingSpirit.scx;Microwave;Zerg;InfestedArtosis;Zerg;0;1;9PoolGasHatchSpeed8D;HeavyRush;HeavyRush
+v2.7;1696223505;4;(4)Roadkill.scm;Microwave;Zerg;InfestedArtosis;Zerg;0;1;9PoolSpeedLing;NakedExpand;NakedExpand
+v2.7;1696251931;4;(4)ArcadiaII2.02.scx;Microwave;Zerg;InfestedArtosis;Zerg;0;1;9PoolSpeedLing;HeavyRush;NakedExpand
