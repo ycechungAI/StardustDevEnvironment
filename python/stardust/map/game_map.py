@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import bwapi
 import bwem
+import numpy as np
 from bwapi import Position, Races, TilePosition, UnitType, UnitTypes, WalkPosition
 from stardust import common, config
 from stardust.cpp import INT_MAX
@@ -24,6 +25,7 @@ from stardust.map.choke import Choke
 from stardust.map.map_specific_override import MapSpecificOverride
 from stardust.map.starting_location import StartingLocation
 from stardust.util import geo
+from numpy.typing import NDArray
 
 if TYPE_CHECKING:
     from stardust.units.unit import Unit
@@ -62,7 +64,8 @@ _bordering_mineral_patch = bytearray()
 _narrow_choke_tiles = bytearray()
 _leaf_area_tiles = bytearray()
 _island_tiles = bytearray()
-_tile_last_seen: list[int] = []
+# Not in Stardust's form: a numpy array (x + y * map_width), so visibility can be applied to it in one operation
+_tile_last_seen: NDArray[np.int64] = np.zeros(0, dtype=np.int64)
 _power: list[int] = []
 
 _player_to_player_bases: dict[bwapi.Player, _PlayerBases] = {}
@@ -456,18 +459,32 @@ def _check_creep(base: Base) -> bool:
     if not opponent.can_be_race(Races.Zerg):
         return False
 
-    game = bwapi.Broodwar
+    # Stardust checks the tiles from (-8, -5) to (11, 7) around the base tile, skipping the resource depot's own
+    # rows (y 0..1) and columns (x 0..3), i.e. every tile in the box except those in either. Tiles off the map are
+    # ignored.
     tile = base.get_tile_position()
-    # The resource depot's own tiles (x 0..3, y 0..1) are skipped
-    for x in (*range(-8, 0), *range(4, 12)):
-        for y in (*range(-5, 0), *range(2, 8)):
-            tile_x = tile.x + x
-            tile_y = tile.y + y
-            if tile_x < 0 or tile_x >= _map_width or tile_y < 0 or tile_y >= _map_height:
-                continue
-            if game.hasCreep(tile_x, tile_y):
-                return True
-    return False
+    creep = _creep_grid()
+    left, top = max(0, tile.x - 8), max(0, tile.y - 5)
+    right, bottom = min(_map_width, tile.x + 12), min(_map_height, tile.y + 8)
+    if left >= right or top >= bottom:
+        return False
+    box = creep[left:right, top:bottom]
+    in_depot_columns = (np.arange(left, right) - tile.x >= 0) & (np.arange(left, right) - tile.x < 4)
+    in_depot_rows = (np.arange(top, bottom) - tile.y >= 0) & (np.arange(top, bottom) - tile.y < 2)
+    return bool(box[~in_depot_columns][:, ~in_depot_rows].any())
+
+
+_creep_grid_frame = -1
+_creep_grid_cache: NDArray[np.bool_] = np.zeros((0, 0), dtype=np.bool_)
+
+
+def _creep_grid() -> NDArray[np.bool_]:
+    """Not in Stardust: the creep on every tile, fetched at most once per frame."""
+    global _creep_grid_frame, _creep_grid_cache
+    if _creep_grid_frame != common.current_frame or _creep_grid_cache.shape != (_map_width, _map_height):
+        _creep_grid_cache = bwapi.Broodwar.getCreepGrid()
+        _creep_grid_frame = common.current_frame
+    return _creep_grid_cache
 
 
 def _validate_base_ownership(base: Base, recently_destroyed_building: Unit | None = None) -> None:
@@ -1046,7 +1063,7 @@ def initialize() -> None:
     _narrow_choke_tiles = bytearray()
     _leaf_area_tiles = bytearray()
     _island_tiles = bytearray()
-    _tile_last_seen = [-1] * size
+    _tile_last_seen = np.full(size, -1, dtype=np.int64)
     _power = []
     _player_to_player_bases.clear()
 
@@ -1204,7 +1221,7 @@ def on_unit_destroy(unit: Unit | bwapi.Unit) -> None:
 
 def _last_seen_or_none(x: int, y: int) -> int | None:
     if 0 <= x < _map_width and 0 <= y < _map_height:
-        return _tile_last_seen[x + y * _map_width]
+        return int(_tile_last_seen[x + y * _map_width])
     return None
 
 
@@ -1219,12 +1236,9 @@ def update() -> None:
         start_y, end_y = 0, _map_height >> 1
     else:
         start_y, end_y = _map_height >> 1, _map_height
-    last_seen = _tile_last_seen
-    for y in range(start_y, end_y):
-        row = y * w
-        for x in range(w):
-            if game.isVisible(x, y):
-                last_seen[x + row] = frame
+    # (The visibility grid is indexed [x, y]; transposed, its rows line up with the last-seen array's.)
+    visible = game.getVisibilityGrid()[:, start_y:end_y].T.ravel()
+    _tile_last_seen[start_y * w:end_y * w][visible] = frame
 
     # Update bases, base scouting and resource depot
     for base in _bases:
@@ -1514,11 +1528,11 @@ def is_on_island(pos: TilePosition) -> bool:
 
 
 def last_seen(x: int, y: int) -> int:
-    return _tile_last_seen[x + y * _map_width]
+    return int(_tile_last_seen[x + y * _map_width])
 
 
 def last_seen_tile(tile: TilePosition) -> int:
-    return _tile_last_seen[tile.x + tile.y * _map_width]
+    return int(_tile_last_seen[tile.x + tile.y * _map_width])
 
 
 def make_position_valid(x: int, y: int) -> tuple[int, int]:
@@ -1538,7 +1552,7 @@ def walkability_grid() -> bytearray:
     return _tile_walkability
 
 
-def last_seen_grid() -> list[int]:
+def last_seen_grid() -> NDArray[np.int64]:
     """The tile last-seen frames themselves (x + y * map_width), for hot loops."""
     return _tile_last_seen
 

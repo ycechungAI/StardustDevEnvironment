@@ -823,6 +823,26 @@ def _update_available_build_locations() -> None:
     # Gather our pending pylons
     pending_pylons = builder.pending_buildings_of_type(UnitTypes.Protoss_Pylon)
 
+    # Not in Stardust: the same builder frames and exit distances are asked for many times in one update (e.g. every
+    # pylon location uses its block's first one), so they are computed once each here
+    builder_frames_cache: dict[tuple[Position, TilePosition, UnitType], int] = {}
+    exit_distance_cache: dict[tuple[Neighbourhood, Position, TilePosition, UnitType], int] = {}
+
+    def cached_builder_frames(origin: Position, tile: TilePosition, unit_type: UnitType) -> int:
+        key = (origin, tile, unit_type)
+        frames = builder_frames_cache.get(key)
+        if frames is None:
+            frames = builder_frames_cache[key] = builder_frames(origin, tile, unit_type)
+        return frames
+
+    def cached_distance_to_exit(neighbourhood: Neighbourhood, exit_position: Position, tile: TilePosition,
+                                unit_type: UnitType) -> int:
+        key = (neighbourhood, exit_position, tile, unit_type)
+        dist = exit_distance_cache.get(key)
+        if dist is None:
+            dist = exit_distance_cache[key] = _distance_to_exit(neighbourhood, exit_position, tile, unit_type)
+        return dist
+
     # Scan blocks to:
     # - Collect the powered (or soon-to-be-powered) medium and large build locations we have available
     # - Collect the next pylon to be built in each block
@@ -876,25 +896,26 @@ def _update_available_build_locations() -> None:
             for pylon_location in block.small:
                 first_small_tile = block.small[0].tile
                 pylon = BuildLocation(pylon_location,
-                                      builder_frames(origin, first_small_tile, UnitTypes.Protoss_Pylon),
+                                      cached_builder_frames(origin, first_small_tile, UnitTypes.Protoss_Pylon),
                                       0,
-                                      _distance_to_exit(neighbourhood, exit_position, first_small_tile,
+                                      cached_distance_to_exit(neighbourhood, exit_position, first_small_tile,
                                                         UnitTypes.Protoss_Pylon))
 
                 if pylon_location.tile == block.power_pylon:
                     for location in unpowered_medium:
                         pylon.powers_medium.append(BuildLocation(
                             location,
-                            builder_frames(origin, location.tile, UnitTypes.Protoss_Forge),
+                            cached_builder_frames(origin, location.tile, UnitTypes.Protoss_Forge),
                             0,
-                            _distance_to_exit(neighbourhood, exit_position, location.tile, UnitTypes.Protoss_Forge),
+                            cached_distance_to_exit(neighbourhood, exit_position, location.tile,
+                                                    UnitTypes.Protoss_Forge),
                             True))
                     for location in unpowered_large:
                         pylon.powers_large.append(BuildLocation(
                             location,
-                            builder_frames(origin, location.tile, UnitTypes.Protoss_Gateway),
+                            cached_builder_frames(origin, location.tile, UnitTypes.Protoss_Gateway),
                             0,
-                            _distance_to_exit(neighbourhood, exit_position, location.tile,
+                            cached_distance_to_exit(neighbourhood, exit_position, location.tile,
                                               UnitTypes.Protoss_Gateway)))
 
                 result[neighbourhood][2].append(pylon)
@@ -902,17 +923,17 @@ def _update_available_build_locations() -> None:
             for location, powered_at in powered_medium:
                 result[neighbourhood][3].append(BuildLocation(
                     location,
-                    builder_frames(origin, location.tile, UnitTypes.Protoss_Forge),
+                    cached_builder_frames(origin, location.tile, UnitTypes.Protoss_Forge),
                     powered_at,
-                    _distance_to_exit(neighbourhood, exit_position, location.tile, UnitTypes.Protoss_Forge),
+                    cached_distance_to_exit(neighbourhood, exit_position, location.tile, UnitTypes.Protoss_Forge),
                     True))
 
             for location, powered_at in powered_large:
                 result[neighbourhood][4].append(BuildLocation(
                     location,
-                    builder_frames(origin, location.tile, UnitTypes.Protoss_Gateway),
+                    cached_builder_frames(origin, location.tile, UnitTypes.Protoss_Gateway),
                     powered_at,
-                    _distance_to_exit(neighbourhood, exit_position, location.tile, UnitTypes.Protoss_Gateway)))
+                    cached_distance_to_exit(neighbourhood, exit_position, location.tile, UnitTypes.Protoss_Gateway)))
 
     for neighbourhood_locations in result:
         for size in range(2, 5):
@@ -926,6 +947,26 @@ def _update_frames_until_powered() -> None:
 
     # Gather our pending pylons
     pending_pylons = builder.pending_buildings_of_type(UnitTypes.Protoss_Pylon)
+
+    # Not in Stardust: the same builder frames and exit distances are asked for many times in one update (e.g. every
+    # pylon location uses its block's first one), so they are computed once each here
+    builder_frames_cache: dict[tuple[Position, TilePosition, UnitType], int] = {}
+    exit_distance_cache: dict[tuple[Neighbourhood, Position, TilePosition, UnitType], int] = {}
+
+    def cached_builder_frames(origin: Position, tile: TilePosition, unit_type: UnitType) -> int:
+        key = (origin, tile, unit_type)
+        frames = builder_frames_cache.get(key)
+        if frames is None:
+            frames = builder_frames_cache[key] = builder_frames(origin, tile, unit_type)
+        return frames
+
+    def cached_distance_to_exit(neighbourhood: Neighbourhood, exit_position: Position, tile: TilePosition,
+                                unit_type: UnitType) -> int:
+        key = (neighbourhood, exit_position, tile, unit_type)
+        dist = exit_distance_cache.get(key)
+        if dist is None:
+            dist = exit_distance_cache[key] = _distance_to_exit(neighbourhood, exit_position, tile, unit_type)
+        return dist
 
     # Loop and update every location with a current frames_until_powered value
     for neighbourhood_locations in _available_build_locations:

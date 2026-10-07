@@ -59,7 +59,7 @@ class _TileGroup:
     def __init__(self, tiles: set[TilePosition]) -> None:
         self.tiles = sorted(tiles, key=lambda tile: (tile.x, tile.y))
         map_width = bwapi.Broodwar.mapWidth()
-        self.indices = [tile.x + tile.y * map_width for tile in self.tiles]
+        self.indices = np.array([tile.x + tile.y * map_width for tile in self.tiles], dtype=np.int64)
         self.center_x = np.array([tile.x * 32 + 16 for tile in self.tiles], dtype=np.int64)
         self.center_y = np.array([tile.y * 32 + 16 for tile in self.tiles], dtype=np.int64)
 
@@ -67,12 +67,7 @@ class _TileGroup:
         return _TileGroup(set(self.tiles) | set(other.tiles))
 
 
-def _approximate_distances(dx: NDArray[np.int64], dy: NDArray[np.int64]) -> NDArray[np.int64]:
-    """geo.approximate_distance over arrays of (non-negative) deltas."""
-    lo = np.minimum(dx, dy)
-    hi = np.maximum(dx, dy)
-    min_calc = (3 * lo) >> 3
-    return np.where(lo <= (hi >> 2), hi, (min_calc >> 5) + min_calc + hi - (hi >> 4) - (hi >> 6))
+_approximate_distances = geo.approximate_distances
 
 
 def _edge_to_point_distances(unit_type: UnitType, center: Position, px: NDArray[np.int64],
@@ -363,7 +358,7 @@ def _get_tile_to_monitor_choke_from() -> TilePosition:
     return best_tile
 
 
-def _highest_priority_tile(scout_tiles: dict[int, _TileGroup], last_seen: list[int], unit_type: UnitType,
+def _highest_priority_tile(scout_tiles: dict[int, _TileGroup], last_seen: NDArray[np.int64], unit_type: UnitType,
                            position: Position) -> TilePosition:
     """The tile to scout next: Stardust scans the tiles in priority order, then (x, y) order, and takes the first tile
     with the lowest desired frame (last seen + priority), breaking ties by the lowest distance from the scout."""
@@ -375,8 +370,7 @@ def _highest_priority_tile(scout_tiles: dict[int, _TileGroup], last_seen: list[i
     for priority in sorted(scout_tiles):
         group = scout_tiles[priority]
         groups.append(group)
-        desired_parts.append(np.fromiter((last_seen[index] for index in group.indices), dtype=np.int64,
-                                         count=len(group.indices)) + priority)
+        desired_parts.append(last_seen[group.indices] + priority)
     desired = np.concatenate(desired_parts)
     center_x = np.concatenate([group.center_x for group in groups])
     center_y = np.concatenate([group.center_y for group in groups])
@@ -571,7 +565,7 @@ class EarlyGameWorkerScout(Play):
                 and self._scout_tiles):
             main_tiles = self._scout_tiles[min(self._scout_tiles)]
             last_seen = game_map.last_seen_grid()
-            seen = sum(1 for index in main_tiles.indices if last_seen[index] > 0)
+            seen = int(np.count_nonzero(last_seen[main_tiles.indices] > 0))
 
             if fdiv(seen, len(main_tiles.tiles)) > 0.8:
                 strategist.set_worker_scout_status(strategist.WorkerScoutStatus.EnemyBaseScouted)
@@ -664,7 +658,7 @@ class EarlyGameWorkerScout(Play):
         else:
             # Plot a path, avoiding static defenses and the enemy mineral line
             # Also reject tiles outside the scout areas to limit the search space
-            grid = players.grid(bwapi.Broodwar.enemy())
+            threat_tiles = players.grid(bwapi.Broodwar.enemy()).static_ground_threat_tiles()
             game = bwapi.Broodwar
             scout_areas = self._scout_areas
 
@@ -676,13 +670,8 @@ class EarlyGameWorkerScout(Play):
                 if target_base.is_in_mineral_line(t):
                     return False
 
-                walk_x = t.x << 2
-                walk_y = t.y << 2
-                for y in range(4):
-                    for x in range(4):
-                        if grid.static_ground_threat_at(walk_x + x, walk_y + y) > 0:
-                            return False
-                return True
+                # (Stardust checks each of the tile's 16 walk tiles for static ground threat)
+                return not threat_tiles[t.x, t.y]
 
             tile_height = game.getGroundHeight(tile)
 

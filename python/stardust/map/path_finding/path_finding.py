@@ -391,8 +391,17 @@ def search(start: TilePosition, end: TilePosition,
             diff1, diff2 = diff2, diff1
         return diff2 * 10 + diff1 * 4
 
+    # Not in Stardust: validators don't change during a search, so each tile is only checked once
+    valid_cache: dict[int, bool] = {}
+
     def tile_valid(x: int, y: int) -> bool:
-        return tile_validator is None or tile_validator(TilePosition(x, y))
+        if tile_validator is None:
+            return True
+        index = x + y * width
+        valid = valid_cache.get(index)
+        if valid is None:
+            valid = valid_cache[index] = tile_validator(TilePosition(x, y))
+        return valid
 
     parents = _parents
     parents[:] = [None] * len(parents)

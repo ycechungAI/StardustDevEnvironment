@@ -178,6 +178,7 @@ BWAPIValueClass<BWAPI::Point<int, Scale>> declare_point(py::module_ &m, const ch
     cls.attr("SCALE") = Scale;
     cls.def(py::init([]() { return P(0, 0); }));
     cls.def(py::init<int, int>(), py::arg("x"), py::arg("y"));
+    cls.def(py::init([](const P &other) { return P(other); }), py::arg("other"));
     cls.def_readonly("x", &P::x);
     cls.def_readonly("y", &P::y);
     cls.def("isValid", [](const P &p) { return p.isValid(); });

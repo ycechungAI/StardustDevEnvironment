@@ -1,6 +1,8 @@
 #include "BWAPIBindings.h"
 #include "PythonModules.h"
 
+#include <pybind11/numpy.h>
+
 void bind_bwapi_generated(py::module_ &m);
 
 namespace
@@ -9,6 +11,23 @@ namespace
     BWAPIInterfaceClass<T> existing(py::module_ &m, const char *name)
     {
         return py::reinterpret_borrow<BWAPIInterfaceClass<T>>(m.attr(name));
+    }
+
+    // A whole-map grid of a per-tile (or per-walk-tile) query as a numpy bool array indexed [x, y], so Python can read
+    // the map in one call instead of one call per tile
+    template<class F>
+    py::array_t<bool> grid(int width, int height, F query)
+    {
+        py::array_t<bool> result({width, height});
+        auto out = result.mutable_unchecked<2>();
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                out(x, y) = query(x, y);
+            }
+        }
+        return result;
     }
 
     template<class T>
@@ -43,6 +62,22 @@ void init_bwapi_module(py::module_ &m)
             py::arg("condition") = py::none(),
             py::arg("timesToRun") = -1,
             py::arg("framesToCheck") = 0);
+
+    // Not in BWAPI: whole-map grids, for numpy
+    existing<BWAPI::Game>(m, "Game")
+            .def("getVisibilityGrid", [](BWAPI::Game &game)
+            {
+                return grid(game.mapWidth(), game.mapHeight(), [&](int x, int y) { return game.isVisible(x, y); });
+            }, "isVisible for every tile, as a numpy bool array indexed [x, y]")
+            .def("getCreepGrid", [](BWAPI::Game &game)
+            {
+                return grid(game.mapWidth(), game.mapHeight(), [&](int x, int y) { return game.hasCreep(x, y); });
+            }, "hasCreep for every tile, as a numpy bool array indexed [x, y]")
+            .def("getWalkabilityGrid", [](BWAPI::Game &game)
+            {
+                return grid(game.mapWidth() * 4, game.mapHeight() * 4,
+                            [&](int x, int y) { return game.isWalkable(x, y); });
+            }, "isWalkable for every walk tile, as a numpy bool array indexed [x, y]");
 
     existing<BWAPI::UnitInterface>(m, "Unit").def("__repr__", [](const BWAPI::UnitInterface &unit)
     {

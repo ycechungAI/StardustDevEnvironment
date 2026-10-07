@@ -37,7 +37,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_definitions(tests PUBLIC DEBUG=1)
 endif()
 
-target_link_libraries(tests gtest gtest_main BWAPI BWAPILIB StardustAI Steamhammer Locutus Iron McRave)
+target_link_libraries(tests gtest BWAPI BWAPILIB StardustAI Steamhammer Locutus Iron McRave)
 target_compile_options(tests PRIVATE -Wall -Werror)
 
 file(COPY ${CMAKE_SOURCE_DIR}/test/3rdparty/maps DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

@@ -12,6 +12,7 @@ msvc
 out
 CMakeSettings.json
 build/
+build-ui/
 .venv/
 __pycache__/
 .pytest_cache/

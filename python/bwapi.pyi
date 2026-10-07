@@ -9,6 +9,9 @@ Position, WalkPosition and TilePosition are immutable and hashable.
 from collections.abc import Callable, Iterator
 from typing import ClassVar, overload
 
+import numpy as np
+from numpy.typing import NDArray
+
 #: The current game, set by the bot host before any callback runs. (None outside a game, e.g. offline tests.)
 Broodwar: Game
 
@@ -152,6 +155,12 @@ class Game:
     def __hash__(self) -> int: ...
 
     def registerEvent(self, action: Callable[[Game], None], condition: Callable[[Game], bool] | None = ..., timesToRun: int = ..., framesToCheck: int = ...) -> None: ...
+    def getVisibilityGrid(self) -> NDArray[np.bool_]:
+        """isVisible for every tile, as a numpy bool array indexed [x, y]. (Not in BWAPI.)"""
+    def getCreepGrid(self) -> NDArray[np.bool_]:
+        """hasCreep for every tile, as a numpy bool array indexed [x, y]. (Not in BWAPI.)"""
+    def getWalkabilityGrid(self) -> NDArray[np.bool_]:
+        """isWalkable for every walk tile, as a numpy bool array indexed [x, y]. (Not in BWAPI.)"""
     def getForces(self) -> set[Force]:
         """Retrieves the set of all teams/forces. Forces are commonly seen in game types and some others such as and the team versions of game types."""
     def getPlayers(self) -> set[Player]:
