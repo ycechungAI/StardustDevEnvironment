@@ -31,6 +31,14 @@
 #include <cstring>
 #include <condition_variable>
 
+// For some of our extensions we cheat and use the BWAPI types directly to avoid the need for conversions
+#include "../../bwapi/include/BWAPI/ExactPosition.h"
+#include "../../bwapi/include/BWAPI/StateCopy.h"
+#include "../../bwapi/include/BWAPI/PrepareGatherPathOptions.h"
+#include "../../bwapi/include/BWAPI/PrepareGatherPathResult.h"
+#include "../../bwapi/include/BWAPI/SimulateGatherPathOptions.h"
+#include "../../bwapi/include/BWAPI/SimulateGatherPathResult.h"
+
 using bwgame::error;
 
 //#ifdef OPENBW_ENABLE_UI
@@ -1259,6 +1267,16 @@ Unit Game::getUnit(size_t index) const
   return {impl->funcs.get_unit(index), impl};
 }
 
+std::vector<Unit> Game::getVisibleUnits() const
+{
+  std::vector<Unit> result;
+  for (auto &unit : impl->st.visible_units)
+  {
+    result.emplace_back(Unit{&unit, impl});
+  }
+  return result;
+}
+
 Bullet Game::getBullet(size_t index) const
 {
   return {impl->funcs.st.bullets_container.try_get(index), impl};
@@ -1498,6 +1516,15 @@ void Game::setGUI(bool enabled)
 void Game::enableCheats() const
 {
   impl->funcs.st.cheats_enabled = true;
+}
+
+void Game::enableMiningTraining() const
+{
+  bwgame::sync_functions::dynamic_writer<> w;
+  w.template put<uint8_t>(210);
+  w.template put<uint8_t>(2);
+  w.template put<uint8_t>(0);
+  impl->game_setup_helper.input_action(w.data(), w.size());
 }
 
 void Game::saveReplay(const std::string& filename)
@@ -2294,6 +2321,455 @@ void Unit::setEnergy(int value)
   impl->game_setup_helper.input_action(w.data(), w.size());
 }
 
+void Unit::setResources(int value)
+{
+  bwgame::sync_functions::dynamic_writer<> w;
+  w.template put<uint8_t>(210);
+  w.template put<uint8_t>(0);
+  w.template put<uint8_t>(3);
+  w.template put<uint16_t>(impl->funcs.get_unit_id(u).raw_value);
+  w.template put<int32_t>(value);
+  impl->game_setup_helper.input_action(w.data(), w.size());
+}
+
+void Unit::setHeading(int value)
+{
+  bwgame::sync_functions::dynamic_writer<> w;
+  w.template put<uint8_t>(210);
+  w.template put<uint8_t>(0);
+  w.template put<uint8_t>(4);
+  w.template put<uint16_t>(impl->funcs.get_unit_id(u).raw_value);
+  w.template put<int32_t>(value);
+  impl->game_setup_helper.input_action(w.data(), w.size());
+}
+
+void Unit::setOrderProcessTimer(int value)
+{
+  bwgame::sync_functions::dynamic_writer<> w;
+  w.template put<uint8_t>(210);
+  w.template put<uint8_t>(0);
+  w.template put<uint8_t>(5);
+  w.template put<uint16_t>(impl->funcs.get_unit_id(u).raw_value);
+  w.template put<int32_t>(value);
+  impl->game_setup_helper.input_action(w.data(), w.size());
+}
+
+BWAPI::ExactPosition Unit::getExactPosition() const
+{
+    return {(uint32_t)u->exact_position.x.raw_value,
+            (uint32_t)u->exact_position.y.raw_value,
+            (int8_t)u->heading.raw_value,
+            (int32_t)u->velocity.x.raw_value,
+            (int32_t)u->velocity.y.raw_value};
+}
+
+int Unit::getOrderProcessTimer() const
+{
+    return u->order_process_timer;
+}
+
+// Gets a copy of the game's state, useful if we want a starting point for later simulation methods.
+BWAPI::StateCopy Game::getStateCopy()
+{
+    auto result = std::make_unique<bwgame::state>();
+    bwgame::state_copier(impl->st, *result)();
+    return {std::move(result)};
+}
+
+// Method that creates a state copy, moves the worker to a given position, gathers from a given patch, and returns a copy of the state at the start
+// of the return path.
+// The intention is to use this method to prepare a state copy for use in the simulateGatherPath method when we want to simulate a variation of
+// exact start positions.
+std::unique_ptr<BWAPI::PrepareGatherPathResult> Unit::prepareGatherPath(const BWAPI::PrepareGatherPathOptions &options) const
+{
+    // Create the state copy
+    // If a starting state was specified in the options, use it as the source for the copy, otherwise use the actual game state
+    auto &sourceState = options.startingState ? *options.startingState : impl->st;
+    auto state_copy_ptr = std::make_unique<bwgame::state>();
+    auto &state_copy = *state_copy_ptr;
+    bwgame::state_copier(sourceState, state_copy)();
+    openbwapi_functions<bwgame::state_functions> funcs_copy(impl->vars, state_copy);
+
+    // Get the unit and patch pointers in the state copy
+    auto unit = funcs_copy.get_unit(u->index);
+    if (!unit) return nullptr;
+
+    // Update the unit's position and heading
+    unit->next_speed.raw_value = 0;
+    unit->velocity.x.raw_value = 0;
+    unit->velocity.y.raw_value = 0;
+    unit->exact_position.x.raw_value = (int32_t)options.startPosition.x;
+    unit->exact_position.y.raw_value = (int32_t)options.startPosition.y;
+    unit->position.x = unit->exact_position.x.integer_part();
+    unit->position.y = unit->exact_position.y.integer_part();
+    unit->sprite->position = unit->position;
+    funcs_copy.set_flingy_move_target(unit, unit->position);
+    funcs_copy.set_next_target_waypoint(unit, unit->position);
+    unit->heading.raw_value = options.startPosition.heading;
+    unit->current_velocity_direction = unit->heading;
+    unit->next_velocity_direction = unit->heading;
+    unit->desired_velocity_direction = unit->heading;
+    for (auto* i : ptr(unit->sprite->images)) {
+        funcs_copy.set_image_heading(i, unit->heading);
+    }
+    funcs_copy.unit_finder_reinsert(unit);
+
+    auto currentPosition = [&unit]()
+    {
+        return BWAPI::ExactPosition(
+                (uint32_t)unit->exact_position.x.raw_value,
+                (uint32_t)unit->exact_position.y.raw_value,
+                (int8_t)unit->heading.raw_value,
+                (int32_t)unit->velocity.x.raw_value,
+                (int32_t)unit->velocity.y.raw_value);
+    };
+
+    // If we only wanted to move the worker, return now
+    if (!options.prepareReturn)
+    {
+        return std::make_unique<BWAPI::PrepareGatherPathResult>(state_copy.current_frame, currentPosition(), std::move(state_copy_ptr));
+    }
+
+    // Set movement state to match what we expect when arriving at the patch
+    unit->movement_flags = 0;
+    unit->movement_state = 12;
+
+    // Order the unit to harvest from the patch
+    auto patch = funcs_copy.get_unit(options.patchUnitIndex);
+    if (!patch) return nullptr;
+
+    bwgame::order_target_t order_target;
+    order_target.unit = patch;
+    funcs_copy.issue_order(unit, false, funcs_copy.get_order_type(bwgame::Orders::Harvest1), order_target);
+
+    // Checks if we have hit the limit to how many frames we are allowed to simulate
+    // This is intended to guard against the unit getting stuck and the simulation never returning
+    int depthLimit = impl->st.mining_training ? 20 : 120;
+    auto depthLimitExceeded = [&]()
+    {
+        if ((state_copy.current_frame - impl->st.current_frame) < depthLimit) return false;
+        return true;
+    };
+
+    // Advances the state of the unit to the next frame
+    // Does not update any other units, bullets, triggers, etc.
+    auto nextFrame = [&]()
+    {
+        state_copy.current_frame++;
+        funcs_copy.update_unit_movement(unit);
+        funcs_copy.update_unit_sprite(unit);
+        funcs_copy.update_unit(unit);
+    };
+
+    // Advance frames until the unit gets to the returning minerals order
+    while (true)
+    {
+        if (depthLimitExceeded()) return nullptr;
+
+        nextFrame();
+
+        // Break when the worker is ready to return
+        if (unit->order_type->id == bwgame::Orders::ReturnMinerals) break;
+
+        // Pin the unit's order process timer at 0 to reduce waiting time
+        unit->order_process_timer = 0;
+    }
+
+    // Override the status with the value we would get after normal pathing to the patch
+    // Without this, the worker will likely not have the status flag to check for collision on the first two frames after mining completion
+    unit->status_flags = 9895937;
+
+    return std::make_unique<BWAPI::PrepareGatherPathResult>(state_copy.current_frame, currentPosition(), std::move(state_copy_ptr));
+}
+
+// Method that simulates the path of a worker gathering
+// Returns the path (same format as getExactPosition), the first position in the next path (gather path after returning, return path after mining),
+// and the "exit speed" (speed 8 frames after moving along the next path)
+// Exit speed will be 0 if the worker collided with the target
+// Returns no value if the unit doesn't have a valid gather-related order or the path gets stuck somewhere.
+// The method is only intended for use with a single worker mining a patch, there may be unintended results if taking over from another worker.
+std::unique_ptr<BWAPI::SimulateGatherPathResult> Unit::simulateGatherPath(const BWAPI::SimulateGatherPathOptions &options) const
+{
+    // Create a copy of the state
+    // To balance memory allocations/deallocations with total memory usage, we reuse the same state object but reset it every 1000 times, unless
+    // we are being asked to return a copy of the state, in which case we reset it immediately to avoid passing along cruft
+    static std::unique_ptr<bwgame::state> state_copy_ptr;
+    static int counter = 0;
+    if (++counter == 1000 || options.returnStateAtStartOfNextPath)
+    {
+        state_copy_ptr.reset();
+        counter = 0;
+    }
+    if (!state_copy_ptr) state_copy_ptr = std::make_unique<bwgame::state>();
+    auto &state_copy = *state_copy_ptr;
+
+    // If a starting state was specified in the options, use it as the source for the copy, otherwise use the actual game state
+    auto &sourceState = options.startingState ? *options.startingState : impl->st;
+    bwgame::state_copier<true>(sourceState, state_copy)();
+    openbwapi_functions<bwgame::state_functions> funcs_copy(impl->vars, state_copy);
+
+    int startFrame = state_copy.current_frame;
+
+    // Get the unit pointer in the state copy
+    auto unit = funcs_copy.get_unit(u->index);
+    if (!unit) return nullptr;
+
+    // Advances the state of the unit to the next frame
+    // Does not update any other units, bullets, triggers, etc.
+    auto nextFrame = [&]()
+    {
+        state_copy.current_frame++;
+
+        if (funcs_copy.us_hidden(unit))
+        {
+            funcs_copy.update_hidden_unit(unit);
+        }
+        else
+        {
+            funcs_copy.update_unit_movement(unit);
+            funcs_copy.update_unit_sprite(unit);
+            funcs_copy.update_unit(unit);
+        }
+    };
+
+    std::vector<BWAPI::ExactPosition> positions;
+    auto recordPosition = [&positions, &unit]()
+    {
+        positions.emplace_back((uint32_t)unit->exact_position.x.raw_value,
+                               (uint32_t)unit->exact_position.y.raw_value,
+                               (int8_t)unit->heading.raw_value,
+                               (int32_t)unit->velocity.x.raw_value,
+                               (int32_t)unit->velocity.y.raw_value);
+    };
+
+    // If we want to switch patches, do so
+    if (options.switchPatches)
+    {
+        auto patch = funcs_copy.get_unit(options.patchUnitIndex);
+        if (!patch) return nullptr;
+
+        // Issue the order on the third frame as if we were constrained by latency
+        nextFrame();
+        recordPosition();
+        nextFrame();
+        recordPosition();
+        nextFrame();
+        recordPosition();
+
+        bwgame::order_target_t order_target;
+        order_target.unit = patch;
+        funcs_copy.issue_order(unit, false, funcs_copy.get_order_type(bwgame::Orders::Harvest1), order_target);
+
+        nextFrame();
+        recordPosition();
+    }
+
+    // Validate the unit has a target
+    if (!unit->order_target.unit) return nullptr;
+
+    // Set the relevant orders based on what the unit is currently doing
+    bwgame::Orders resendOrderType;
+    bwgame::Orders pathFinishedOrderType;
+    bwgame::Orders nextOrderType;
+    int orderProcessFrames;
+    switch (unit->order_type->id)
+    {
+        case bwgame::Orders::MoveToMinerals:
+        {
+            resendOrderType = bwgame::Orders::Harvest1;
+            pathFinishedOrderType = bwgame::Orders::WaitForMinerals;
+            nextOrderType = bwgame::Orders::ReturnMinerals;
+            orderProcessFrames = 2;
+            break;
+        }
+        case bwgame::Orders::ReturnMinerals:
+        {
+            resendOrderType = bwgame::Orders::ReturnMinerals;
+            pathFinishedOrderType = bwgame::Orders::MoveToMinerals;
+            nextOrderType = bwgame::Orders::MoveToMinerals;
+            orderProcessFrames = 1;
+            break;
+        }
+        // TODO: Enable and test when we want to optimize anything with gas
+        /*
+        case bwgame::Orders::MoveToGas:
+        {
+            resendOrderType = bwgame::Orders::HarvestGas;
+            pathFinishedOrderType = ???
+            nextOrderType = bwgame::Orders::ReturnGas;
+            break;
+        }
+        case bwgame::Orders::ReturnGas:
+        {
+            resendOrderType = bwgame::Orders::ReturnGas;
+            pathFinishedOrderType = bwgame::Orders::MoveToGas;
+            nextOrderType = bwgame::Orders::MoveToGas;
+            break;
+        }
+         */
+        default:
+        {
+            // The worker is doing something else, so we can't do the simulation
+            return nullptr;
+        }
+    }
+
+    // Create the order target to use for reissuing commands
+    // We capture this now in case it changes later
+    bwgame::order_target_t order_target;
+    order_target.unit = unit->order_target.unit;
+
+    // Checks if we have hit the limit to how many frames we are allowed to simulate
+    // This is intended to guard against the unit getting stuck and the simulation never returning
+    // We give a larger limit if we are simulating without "mining training" mode activated, or if we are simulating with switch patches
+    // (used for initial split training where paths are sometimes quite a bit longer than usual)
+    int depthLimit;
+    if (options.switchPatches)
+    {
+        if (impl->st.mining_training)
+        {
+            depthLimit = 500;
+        }
+        else
+        {
+            depthLimit = 600;
+        }
+    }
+    else
+    {
+        if (impl->st.mining_training)
+        {
+            depthLimit = 250;
+        }
+        else
+        {
+            depthLimit = 350;
+        }
+    }
+    auto depthLimitExceeded = [&]()
+    {
+        if ((state_copy.current_frame - sourceState.current_frame) < depthLimit) return false;
+        return true;
+    };
+
+    auto positionsEqual =
+            [](const BWAPI::ExactPosition &first, const BWAPI::ExactPosition &second)
+            {
+                return first.x == second.x && first.y == second.y;
+            };
+
+    auto lastTwoPositionsEqual = [&]()
+    {
+        if (positions.size() < 2) return false;
+        return positionsEqual(*(positions.rbegin()), (*(positions.rbegin() + 1)));
+    };
+
+    // Simulate the unit until it reaches the "path finished" order
+    int lastOrderProcessTimerOverrideFrame = -1;
+    while (unit->order_type->id != pathFinishedOrderType)
+    {
+        if (depthLimitExceeded()) return nullptr;
+
+        // Resend if we want to resend on this frame
+        if (options.resendFrames.find(state_copy.current_frame) != options.resendFrames.end())
+        {
+            if (!options.includeAllPositions) positions.clear(); // We only return the path following the last resend unless explicitly disabled
+            funcs_copy.issue_order(unit, false, funcs_copy.get_order_type(resendOrderType), order_target);
+        }
+        nextFrame();
+        recordPosition();
+
+        // Reset the order process timer if we want to ensure it is either 0 or non-zero at arrival
+        // Skip this, however, if we have just done a resend
+        if ((options.forceActionAtArrival || options.forceActionAfterArrival)
+            && options.resendFrames.find(state_copy.current_frame - 1) == options.resendFrames.end()
+            && options.resendFrames.find(state_copy.current_frame - orderProcessFrames) == options.resendFrames.end())
+        {
+            // If we want to ensure the order process is zero on arrival, we can just set to zero every frame
+            if (options.forceActionAtArrival)
+            {
+                unit->order_process_timer = 0;
+                lastOrderProcessTimerOverrideFrame = state_copy.current_frame;
+            }
+            else
+            {
+                // Set the order process timer to 8 unless we think we might be at the destination, in which case we leave it alone
+                if (!lastTwoPositionsEqual())
+                {
+                    unit->order_process_timer = 8;
+                    lastOrderProcessTimerOverrideFrame = state_copy.current_frame;
+                }
+            }
+        }
+    }
+
+    // Save the action frame and position
+    int actionFrame = state_copy.current_frame;
+    auto actionPosition = *positions.rbegin();
+
+    // Remove duplicated positions at the end of the path, these are the positions while the worker was waiting to gather or deliver
+    // We ignore the heading as the worker may turn while waiting, but this would not affect its ability to transition earlier
+    int arrivalFrame = actionFrame;
+    while (lastTwoPositionsEqual())
+    {
+        positions.pop_back();
+        --arrivalFrame;
+    }
+
+    // Continue simulating until the unit reaches its next order
+    while (unit->order_type->id != nextOrderType)
+    {
+        if (depthLimitExceeded()) return nullptr;
+        nextFrame();
+    }
+
+    // Save the first position of the next path
+    auto firstNextPathPosition = BWAPI::ExactPosition{(uint32_t)unit->exact_position.x.raw_value,
+                                                 (uint32_t)unit->exact_position.y.raw_value,
+                                                 (int8_t)unit->heading.raw_value,
+                                                 (int32_t)unit->velocity.x.raw_value,
+                                                 (int32_t)unit->velocity.y.raw_value};
+
+    // Make a copy of the state if requested to do so
+    std::unique_ptr<bwgame::state> stateAtStartOfNextPath;
+    if (options.returnStateAtStartOfNextPath)
+    {
+        stateAtStartOfNextPath = std::make_unique<bwgame::state>();
+        bwgame::state_copier<true>(state_copy, *stateAtStartOfNextPath)();
+    }
+
+    // Detect a collision by checking if the unit is not moving 8 frames after the order changes
+    // We don't check against the initial position, as sometimes the unit will move a bit before colliding and entering collision resolution
+    for (int i = 0; i < 6; i++) nextFrame();
+    auto pos1 = unit->exact_position;
+    nextFrame();
+    auto pos2 = unit->exact_position;
+    nextFrame();
+    auto pos3 = unit->exact_position;
+
+    // Compute the squared speed, but zero it if the unit collided, as during collision resolution the unit may still have a velocity
+    uint64_t squaredSpeed;
+    if (pos1 == pos2 && pos1 == pos3)
+    {
+        squaredSpeed = 0;
+    }
+    else
+    {
+        squaredSpeed = (uint64_t)((int64_t)unit->velocity.x.raw_value * (int64_t)unit->velocity.x.raw_value)
+                     + (uint64_t)((int64_t)unit->velocity.y.raw_value * (int64_t)unit->velocity.y.raw_value);
+    }
+
+    return std::make_unique<BWAPI::SimulateGatherPathResult>(
+            startFrame,
+            arrivalFrame,
+            actionFrame,
+            lastOrderProcessTimerOverrideFrame,
+            std::move(positions),
+            actionPosition,
+            firstNextPathPosition,
+            squaredSpeed,
+            std::move(stateAtStartOfNextPath));
+}
 
 Bullet::operator bool() const
 {

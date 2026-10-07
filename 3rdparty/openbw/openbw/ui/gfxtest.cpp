@@ -673,8 +673,21 @@ val lookup_unit(int32_t index) {
 	o.set("y", u->position.y);
 	o.set("type", (int)u->unit_type->id);
 	o.set("hp", Dump::to_emscripten(u->hp));
+	o.set("shields", Dump::to_emscripten(u->shield_points));
+	o.set("energy", Dump::to_emscripten(u->energy));
 	o.set("ground_weapon_cooldown", u->ground_weapon_cooldown);
 	o.set("air_weapon_cooldown", u->air_weapon_cooldown);
+
+    o.set("cur_speed", Dump::to_emscripten(u->current_speed));
+    o.set("top_speed", Dump::to_emscripten(u->flingy_top_speed));
+
+    if (u->order_type) o.set("order", (int)u->order_type->id);
+    o.set("order_target", Dump::dump_target(&u->order_target));
+	o.set("order_process_timer", u->order_process_timer);
+    o.set("main_order_timer", u->main_order_timer);
+    o.set("secondary_order_timer", u->secondary_order_timer);
+    o.set("order_state", u->order_state);
+
 	return o;
 }
 
@@ -707,6 +720,11 @@ void set_screen_center_position(int32_t x, int32_t y) {
 	ui_functions& ui = m->ui;
 	ui.screen_pos.x = x - ui.view_width / 2;
 	ui.screen_pos.y = y - ui.view_height / 2;
+}
+
+void set_vision(int32_t vision) {
+    ui_functions& ui = m->ui;
+    ui.vision = vision;
 }
 
 void clear_selection() {
@@ -844,6 +862,7 @@ EMSCRIPTEN_BINDINGS(openbw) {
 	function("get_selected_units", &get_selected_units);
 	function("select_unit_by_bw_id", &select_unit_by_bw_id);
 	function("set_screen_center_position", &set_screen_center_position);
+	function("set_vision", &set_vision);
 	function("clear_selection", &clear_selection);
 	function("enable_main_update_loop", &enable_main_update_loop);
 	function("lookup_unit", &lookup_unit);

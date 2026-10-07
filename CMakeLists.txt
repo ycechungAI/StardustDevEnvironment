@@ -1,7 +1,15 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.25)
 project(StardustDevEnvironment)
 
 set(CMAKE_CXX_STANDARD 17)
+
+# Vendored zstd and googletest declare very old minimum CMake versions, which CMake 4 rejects
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
+# Build the bot against the repo's virtualenv interpreter when there is one
+if (NOT DEFINED Python_EXECUTABLE AND EXISTS ${CMAKE_SOURCE_DIR}/.venv/bin/python)
+    set(Python_EXECUTABLE ${CMAKE_SOURCE_DIR}/.venv/bin/python)
+endif ()
 
 IF(MSVC)
     add_definitions(-DWITHOUT_POSIX)
@@ -13,6 +21,8 @@ ELSE(MSVC)
 ENDIF(MSVC)
 
 add_subdirectory(3rdparty/zstd/build/cmake)
+add_subdirectory(3rdparty/BWEM)
+add_subdirectory(3rdparty/FAP)
 add_subdirectory(src)
 
 IF(NOT MSVC)

@@ -89,7 +89,7 @@ namespace Log
         if (!log)
         {
             std::ostringstream filename;
-            filename << "bwapi-data/write/DemoAI_log";
+            filename << "bwapi-data/write/Stardust_log";
             auto tt = std::chrono::system_clock::to_time_t(startTime);
             auto tm = std::localtime(&tt);
             filename << "_" << std::put_time(tm, "%Y%m%d_%H%M%S") << ".txt";

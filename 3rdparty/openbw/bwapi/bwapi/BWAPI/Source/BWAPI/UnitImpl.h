@@ -2,6 +2,7 @@
 
 #include <BWAPI/Unit.h>
 #include <BWAPI/Unitset.h>
+#include <BWAPI/ExactPosition.h>
 #include <Util/Types.h>
 
 #include <BWAPI/UnitCommand.h>
@@ -19,6 +20,11 @@ namespace BWAPI
   class PlayerInterface;
   typedef PlayerInterface *Player;
 
+  struct PrepareGatherPathOptions;
+  struct PrepareGatherPathResult;
+  struct SimulateGatherPathOptions;
+  struct SimulateGatherPathResult;
+
   /**
    * Interface for broodwar unit, can be used to obtain any information and
    * issue commands.
@@ -27,6 +33,8 @@ namespace BWAPI
   {
     public:
       virtual int           getID() const override;
+      virtual int           getBWID() const override;
+      virtual size_t        getBWIndex() const override;
       virtual bool          exists() const override;
       virtual int           getReplayID() const override;
       virtual Player        getPlayer() const override;
@@ -247,6 +255,14 @@ namespace BWAPI
       virtual void setHitPoints(int value) override;
       virtual void setShields(int value) override;
       virtual void setEnergy(int value) override;
+      virtual void setResources(int value) override;
+      virtual void setHeading(int value) override;
+      virtual void setOrderProcessTimer(int value) override;
+
+      virtual ExactPosition getExactPosition() const override;
+      virtual int getOrderProcessTimer() const override;
+      virtual std::unique_ptr<PrepareGatherPathResult> prepareGatherPath(const PrepareGatherPathOptions &options) const override;
+      virtual std::unique_ptr<SimulateGatherPathResult> simulateGatherPath(const SimulateGatherPathOptions &options) const override;
 
       //Internal BWAPI commands:
       UnitImpl(BW::Unit bwunit, u16 index);

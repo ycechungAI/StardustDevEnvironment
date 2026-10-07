@@ -1,0 +1,31 @@
+[project]
+name = "stardust"
+version = "0.1.0"
+description = "Stardust, a StarCraft: Brood War bot, written in Python on top of BWAPI/OpenBW"
+readme = "README.md"
+# Must match the interpreter the C++ bot host is built against (CMake uses .venv/bin/python when present).
+# 3.14 for compression.zstd (CherryVis output)
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.5.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.10",
+    "libclang>=18",  # only needed to regenerate the bindings (tools/gen_bwapi_bindings.py)
+]
+
+[tool.uv]
+# The bot is loaded from python/ by the C++ host, not installed into the venv
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]
+pythonpath = ["python"]
+
+[tool.mypy]
+mypy_path = "python"
+files = ["python/stardust"]
+strict = true
