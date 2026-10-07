@@ -25,6 +25,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import elo  # tools/elo.py
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # Typical game length for the Python port; wall time per game varies with the opponent (about 1-3 minutes headless).
@@ -175,6 +177,10 @@ def main() -> int:
         time.sleep(1)
 
         for replay in sorted(set(replays_dir.glob("*.rep")) - existing_replays - reported_replays):
+            # Replays saved mid-game with [r] in the game window aren't finished games
+            if re.search(r"_frame\d+_", replay.name):
+                existing_replays.add(replay)
+                continue
             reported_replays.add(replay)
             if "_WON" in replay.name or "_LOST" in replay.name:
                 result = "won" if "_WON" in replay.name else "lost"
@@ -183,6 +189,12 @@ def main() -> int:
             results[result] += 1
             print(f"GAME {len(reported_replays)}/{games} {result} at {fmt(time.time() - start)} elapsed "
                   f"({replay.name})", flush=True)
+
+            # The harness records the game in replays/results.csv just before saving its replay
+            _, rated = elo.update(replays_dir)
+            for game in rated:
+                if game.row.get("replay") == replay.name:
+                    print(f"  ELO {elo.game_line(game)}", flush=True)
 
         if time.time() < next_report:
             continue
@@ -223,8 +235,11 @@ def main() -> int:
     print(f"DONE in {fmt(elapsed)} (exit {exit_code}): {len(reported_replays)} game(s): {tally or 'no replays'}; "
           f"{len(failed)} worker(s) with failed tests; Python errors: {python_errors}", flush=True)
     for text in texts:
-        for line in re.findall(r"Python onFrame:.*", text):
+        for line in re.findall(r"STATS .*|Python onFrame:.*", text):
             print(f"  {line}", flush=True)
+    records, _ = elo.update(replays_dir)
+    if records:
+        print("\n" + elo.leaderboard(records), flush=True)
     if parallel > 1:
         print(f"  logs: {', '.join(str(worker.log_path.relative_to(ROOT)) for worker in workers)}", flush=True)
     return exit_code

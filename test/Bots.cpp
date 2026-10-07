@@ -77,10 +77,12 @@ TEST(Bots, Play)
         BWTest test;
         test.opponentRace = bot->race;
         test.opponentModule = bot->create;
+        test.opponentName = bot->name;
         if (us)
         {
             test.myRace = us->race;
             test.myModule = us->create;
+            test.myName = us->name;
         }
         test.onEndMine = [&](bool won)
         {

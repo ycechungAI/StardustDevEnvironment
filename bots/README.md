@@ -28,7 +28,7 @@ These come with the repository, already patched to build here (each folder's lic
 | `Microwave` | Zerg | AIIDE 2025 |
 | `McRaveZ` | Zerg | McRave as entered in AIIDE 2024/2025 |
 
-`SAIDA` (Terran, AIIDE 2018 champion) states no licence, so only its recipe is included. To get it: `.venv/bin/python tools/fetch_bot.py SAIDA`, then re-run CMake.
+`SAIDA` (Terran, AIIDE 2018 champion) states no licence, so only its recipe is included. To get it: `.venv/bin/python tools/fetch_bot.py SAIDA`, then re-run CMake. (Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that.)
 
 ## Playing as another bot
 
@@ -41,6 +41,8 @@ These come with the repository, already patched to build here (each folder's lic
 Without `--bot`, the Python port plays. Replays are then named `<bot>_vs_<opponent>_<map>_<seed>_WON` or `_LOST`.
 
 Games run under OpenBW like the other tests. Replays go to `build/test/replays/`, named `<bot>_<map>_<seed>_WON` or `_LOST`. `STARDUST_TEST_MAP` picks the map (otherwise it's a random SSCAIT map) and the live game window works too (see "Watching a game" in the top-level README).
+
+Bots built with `stardust_bot` export only their factory (hidden symbol visibility). Several bots carry their own, different BWEM and BWEB; with default visibility macOS merges their inline functions across bots and they crash.
 
 ## What kind of bot works
 

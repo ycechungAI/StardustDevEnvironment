@@ -9,5 +9,6 @@ stardust_bot(
         CREATE "new MyBot::MyBotModule()"
         CXX_STANDARD 17
         DEFINITIONS SERVERLOG SERVERLOGDLL NDEBUG   # as in its tournament build (Release_Server_DLL)
+                    _LIBCPP_ENABLE_CXX17_REMOVED_RANDOM_SHUFFLE  # it uses std::random_shuffle, gone from libc++'s C++17
         MSVC_COMPAT
 )

@@ -25,6 +25,7 @@ include_directories(SYSTEM
 
 set(TEST_INCLUDES
         ${PROJECT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/3rdparty  # nlohmann/json.hpp
         )
 include_directories(${TEST_INCLUDES})
 

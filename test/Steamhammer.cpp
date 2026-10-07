@@ -8,6 +8,7 @@ TEST(Steamhammer, RunTwenty)
     while (count < 20)
     {
         BWTest test;
+        test.opponentName = "Steamhammer";
         test.opponentRace = BWAPI::Races::Zerg;
         test.maps = Maps::Get("aiide");
         test.opponentModule = []()
@@ -47,6 +48,7 @@ TEST(Steamhammer, RunTwenty)
 TEST(Steamhammer, 4PoolHard)
 {
     BWTest test;
+    test.opponentName = "Steamhammer";
     test.opponentRace = BWAPI::Races::Zerg;
     test.opponentModule = []()
     {

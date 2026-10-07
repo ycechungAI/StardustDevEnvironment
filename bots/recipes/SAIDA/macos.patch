@@ -1,5 +1,6 @@
---- a/src/SAIDA/BWEM/src/area.cpp
-+++ b/src/SAIDA/BWEM/src/area.cpp
+diff -ruN a/src/SAIDA/BWEM/src/area.cpp b/src/SAIDA/BWEM/src/area.cpp
+--- a/src/SAIDA/BWEM/src/area.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/BWEM/src/area.cpp	2026-10-07 03:41:28
 @@ -14,6 +14,10 @@
  #include "neutral.h"
  #include "winutils.h"
@@ -11,8 +12,67 @@
  
  
  using namespace BWAPI;
---- a/src/SAIDA/Common.h
-+++ b/src/SAIDA/Common.h
+diff -ruN a/src/SAIDA/BasicBuildStrategy.cpp b/src/SAIDA/BasicBuildStrategy.cpp
+--- a/src/SAIDA/BasicBuildStrategy.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/BasicBuildStrategy.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "BasicBuildStrategy.h"
++﻿#include <new>
++#include "BasicBuildStrategy.h"
+ #include "EnemyStrategyManager.h"
+ #include "TrainManager.h"
+ 
+@@ -6,8 +7,16 @@
+ 
+ BasicBuildStrategy &BasicBuildStrategy::Instance()
+ {
+-	static BasicBuildStrategy instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(BasicBuildStrategy) static unsigned char storage[sizeof(BasicBuildStrategy)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) BasicBuildStrategy();
++	}
++	return *reinterpret_cast<BasicBuildStrategy *>(storage);
+ }
+ 
+ BasicBuildStrategy::BasicBuildStrategy()
+diff -ruN a/src/SAIDA/BuildManager.cpp b/src/SAIDA/BuildManager.cpp
+--- a/src/SAIDA/BuildManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/BuildManager.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "BuildManager.h"
++﻿#include <new>
++#include "BuildManager.h"
+ 
+ using namespace MyBot;
+ 
+@@ -472,8 +473,16 @@
+ 
+ BuildManager &BuildManager::Instance()
+ {
+-	static BuildManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(BuildManager) static unsigned char storage[sizeof(BuildManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) BuildManager();
++	}
++	return *reinterpret_cast<BuildManager *>(storage);
+ }
+ 
+ BuildOrderQueue *BuildManager::getBuildQueue()
+diff -ruN a/src/SAIDA/Common.h b/src/SAIDA/Common.h
+--- a/src/SAIDA/Common.h	2026-10-07 03:54:30
++++ b/src/SAIDA/Common.h	2026-10-07 03:41:28
 @@ -22,7 +22,6 @@
  #include <ctime>
  #include <iomanip>
@@ -21,8 +81,9 @@
  #include <windows.h>
  
  #include <BWAPI.h>
---- a/src/SAIDA/Config.h
-+++ b/src/SAIDA/Config.h
+diff -ruN a/src/SAIDA/Config.h b/src/SAIDA/Config.h
+--- a/src/SAIDA/Config.h	2026-10-07 03:54:30
++++ b/src/SAIDA/Config.h	2026-10-07 03:41:28
 @@ -80,7 +80,6 @@
  		/// 자원 측정시에 사용되는 measure duration 정보이며 단위는 seconds
  		extern int duration;
@@ -31,9 +92,17 @@
  
  	}
  
---- a/src/SAIDA/ConstructionManager.cpp
-+++ b/src/SAIDA/ConstructionManager.cpp
-@@ -51,7 +51,7 @@
+diff -ruN a/src/SAIDA/ConstructionManager.cpp b/src/SAIDA/ConstructionManager.cpp
+--- a/src/SAIDA/ConstructionManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/ConstructionManager.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "ConstructionManager.h"
++﻿#include <new>
++#include "ConstructionManager.h"
+ #include "UnitManager/TankManager.h"
+ 
+ using namespace MyBot;
+@@ -51,7 +52,7 @@
  {
  	for (auto &b : toRemove)
  	{
@@ -42,7 +111,7 @@
  
  		if (it != constructionQueue.end())
  		{
-@@ -69,7 +69,7 @@
+@@ -69,7 +70,7 @@
  void ConstructionManager::cancelNotUnderConstructionTasks(const vector<ConstructionTask> &toRemove) {
  	for (auto &b : toRemove)
  	{
@@ -51,7 +120,7 @@
  
  		if (it != constructionQueue.end())
  		{
-@@ -298,7 +298,7 @@
+@@ -298,7 +299,7 @@
  				toRemove.push_back(b);
  			}
  
@@ -60,8 +129,28 @@
  
  			if (iter != cancelBuildings.end()) {
  				toRemove.push_back(b);
---- a/src/SAIDA/ConstructionManager.h
-+++ b/src/SAIDA/ConstructionManager.h
+@@ -1176,8 +1177,16 @@
+ 
+ ConstructionManager &ConstructionManager::Instance()
+ {
+-	static ConstructionManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(ConstructionManager) static unsigned char storage[sizeof(ConstructionManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) ConstructionManager();
++	}
++	return *reinterpret_cast<ConstructionManager *>(storage);
+ }
+ 
+ // constructionQueue에 해당 type 의 Item 이 존재하는지 카운트한다. queryTilePosition 을 입력한 경우, 위치간 거리까지도 고려한다
+diff -ruN a/src/SAIDA/ConstructionManager.h b/src/SAIDA/ConstructionManager.h
+--- a/src/SAIDA/ConstructionManager.h	2026-10-07 03:54:30
++++ b/src/SAIDA/ConstructionManager.h	2026-10-07 03:41:28
 @@ -5,7 +5,7 @@
  #include "ConstructionPlaceFinder.h"
  #include "InformationManager.h"
@@ -71,8 +160,148 @@
  
  #define CM ConstructionManager::Instance()
  
---- a/src/SAIDA/GameCommander.h
-+++ b/src/SAIDA/GameCommander.h
+diff -ruN a/src/SAIDA/ConstructionPlaceFinder.cpp b/src/SAIDA/ConstructionPlaceFinder.cpp
+--- a/src/SAIDA/ConstructionPlaceFinder.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/ConstructionPlaceFinder.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "ConstructionPlaceFinder.h"
++﻿#include <new>
++#include "ConstructionPlaceFinder.h"
+ #include "UnitManager/ScvManager.h"
+ 
+ using namespace MyBot;
+@@ -21,8 +22,16 @@
+ 
+ ConstructionPlaceFinder &ConstructionPlaceFinder::Instance()
+ {
+-	static ConstructionPlaceFinder instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(ConstructionPlaceFinder) static unsigned char storage[sizeof(ConstructionPlaceFinder)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) ConstructionPlaceFinder();
++	}
++	return *reinterpret_cast<ConstructionPlaceFinder *>(storage);
+ }
+ 
+ TilePosition ConstructionPlaceFinder::getSeedPositionFromSeedLocationStrategy(BuildOrderItem::SeedPositionStrategy seedPositionStrategy) const {
+diff -ruN a/src/SAIDA/DeepLearning/SharedMemoryManager.cpp b/src/SAIDA/DeepLearning/SharedMemoryManager.cpp
+--- a/src/SAIDA/DeepLearning/SharedMemoryManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/DeepLearning/SharedMemoryManager.cpp	2026-10-07 03:53:16
+@@ -1,10 +1,20 @@
++#include <new>
+ #include "SharedMemoryManager.h"
+ 
+ using namespace MyBot;
+ 
+-SharedMemoryManager &SharedMemoryManager::Instance() {
+-	static SharedMemoryManager instance;
+-	return instance;
++SharedMemoryManager &SharedMemoryManager::Instance()
++{
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(SharedMemoryManager) static unsigned char storage[sizeof(SharedMemoryManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) SharedMemoryManager();
++	}
++	return *reinterpret_cast<SharedMemoryManager *>(storage);
+ }
+ 
+ void SharedMemoryManager::read()
+diff -ruN a/src/SAIDA/DeepLearning/Supervised.cpp b/src/SAIDA/DeepLearning/Supervised.cpp
+--- a/src/SAIDA/DeepLearning/Supervised.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/DeepLearning/Supervised.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "Supervised.h"
+ #include <iostream>
+ #include <vector>
+@@ -8,8 +9,16 @@
+ 
+ Supervised &Supervised::Instance()
+ {
+-	static Supervised instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(Supervised) static unsigned char storage[sizeof(Supervised)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) Supervised();
++	}
++	return *reinterpret_cast<Supervised *>(storage);
+ }
+ 
+ Supervised::Supervised()
+diff -ruN a/src/SAIDA/EnemyStrategyManager.cpp b/src/SAIDA/EnemyStrategyManager.cpp
+--- a/src/SAIDA/EnemyStrategyManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/EnemyStrategyManager.cpp	2026-10-07 03:53:16
+@@ -1,11 +1,20 @@
+-﻿#include "EnemyStrategyManager.h"
++﻿#include <new>
++#include "EnemyStrategyManager.h"
+ 
+ using namespace MyBot;
+ 
+ EnemyStrategyManager &EnemyStrategyManager::Instance()
+ {
+-	static EnemyStrategyManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(EnemyStrategyManager) static unsigned char storage[sizeof(EnemyStrategyManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) EnemyStrategyManager();
++	}
++	return *reinterpret_cast<EnemyStrategyManager *>(storage);
+ }
+ 
+ void EnemyStrategyManager::update()
+diff -ruN a/src/SAIDA/GameCommander.cpp b/src/SAIDA/GameCommander.cpp
+--- a/src/SAIDA/GameCommander.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/GameCommander.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "GameCommander.h"
++﻿#include <new>
++#include "GameCommander.h"
+ 
+ using namespace MyBot;
+ 
+@@ -11,8 +12,16 @@
+ 
+ GameCommander &GameCommander::Instance()
+ {
+-	static GameCommander instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(GameCommander) static unsigned char storage[sizeof(GameCommander)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) GameCommander();
++	}
++	return *reinterpret_cast<GameCommander *>(storage);
+ }
+ 
+ void GameCommander::onStart()
+diff -ruN a/src/SAIDA/GameCommander.h b/src/SAIDA/GameCommander.h
+--- a/src/SAIDA/GameCommander.h	2026-10-07 03:54:30
++++ b/src/SAIDA/GameCommander.h	2026-10-07 03:41:28
 @@ -9,17 +9,17 @@
  #include "EnemyStrategyManager.h"
  #include "TrainManager.h"
@@ -102,12 +331,157 @@
  
  namespace MyBot
  {
---- a/src/SAIDA/StrategyManager.cpp
-+++ b/src/SAIDA/StrategyManager.cpp
-@@ -1,9 +1,9 @@
- ﻿#include "StrategyManager.h"
+diff -ruN a/src/SAIDA/InformationManager.cpp b/src/SAIDA/InformationManager.cpp
+--- a/src/SAIDA/InformationManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/InformationManager.cpp	2026-10-07 03:53:39
+@@ -1,4 +1,5 @@
+-﻿#include "InformationManager.h"
++﻿#include <new>
++#include "InformationManager.h"
+ 
+ using namespace MyBot;
+ 
+@@ -1120,8 +1121,16 @@
+ 
+ InformationManager &InformationManager::Instance()
+ {
+-	static InformationManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(InformationManager) static unsigned char storage[sizeof(InformationManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) InformationManager();
++	}
++	return *reinterpret_cast<InformationManager *>(storage);
+ }
+ 
+ 
+diff -ruN a/src/SAIDA/MyBotModule.cpp b/src/SAIDA/MyBotModule.cpp
+--- a/src/SAIDA/MyBotModule.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/MyBotModule.cpp	2026-10-07 03:49:18
+@@ -27,9 +27,6 @@
+ #endif
+ 
+ 	FileUtil::MakeDirectory(Config::Files::WriteDirectory.c_str());
+-	Config::Files::LogFilename = CommonUtil::getYYYYMMDDHHMMSSOfNow() + Broodwar->mapFileName() + Broodwar->enemy()->getName() + "_LastGameLog.dat";
+-	Config::Files::TimeoutFilename = "Timeout_" + CommonUtil::getYYYYMMDDHHMMSSOfNow() + Broodwar->mapFileName() + Broodwar->enemy()->getName() + ".dat";
+-	Config::Files::ErrorLogFilename = "Error_" + CommonUtil::getYYYYMMDDHHMMSSOfNow() + Broodwar->mapFileName() + Broodwar->enemy()->getName() + ".dat";
+ }
+ 
+ MyBotModule::~MyBotModule() {
+@@ -39,6 +36,10 @@
+ }
+ 
+ void MyBotModule::onStart() {
++	// (Moved from the constructor: the Stardust test harness creates the module before the enemy player is known)
++	Config::Files::LogFilename = CommonUtil::getYYYYMMDDHHMMSSOfNow() + Broodwar->mapFileName() + Broodwar->enemy()->getName() + "_LastGameLog.dat";
++	Config::Files::TimeoutFilename = "Timeout_" + CommonUtil::getYYYYMMDDHHMMSSOfNow() + Broodwar->mapFileName() + Broodwar->enemy()->getName() + ".dat";
++	Config::Files::ErrorLogFilename = "Error_" + CommonUtil::getYYYYMMDDHHMMSSOfNow() + Broodwar->mapFileName() + Broodwar->enemy()->getName() + ".dat";
+ 	Logger::debug("game start!!\n");
+ 
+ #ifdef _LOGGING
+diff -ruN a/src/SAIDA/ReserveBuilding.cpp b/src/SAIDA/ReserveBuilding.cpp
+--- a/src/SAIDA/ReserveBuilding.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/ReserveBuilding.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "ReserveBuilding.h"
+ 
+ using namespace MyBot;
+@@ -125,9 +126,18 @@
+ 	}
+ }
+ 
+-ReserveBuilding &ReserveBuilding::Instance() {
+-	static ReserveBuilding instance;
+-	return instance;
++ReserveBuilding &ReserveBuilding::Instance()
++{
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(ReserveBuilding) static unsigned char storage[sizeof(ReserveBuilding)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) ReserveBuilding();
++	}
++	return *reinterpret_cast<ReserveBuilding *>(storage);
+ }
+ 
+ // private
+diff -ruN a/src/SAIDA/SaidaUtil.cpp b/src/SAIDA/SaidaUtil.cpp
+--- a/src/SAIDA/SaidaUtil.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/SaidaUtil.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "SaidaUtil.h"
+ #include <stdio.h>
+ #include "./UnitManager/TankManager.h"
+@@ -1547,9 +1548,18 @@
+ 	return damage;
+ }
+ 
+-DefenseBuilding &DefenseBuilding::Instance() {
+-	static DefenseBuilding defenseBuilding;
+-	return defenseBuilding;
++DefenseBuilding &DefenseBuilding::Instance()
++{
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(DefenseBuilding) static unsigned char storage[sizeof(DefenseBuilding)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) DefenseBuilding();
++	}
++	return *reinterpret_cast<DefenseBuilding *>(storage);
+ }
+ 
+ DefenseBuilding::DefenseBuilding() {
+diff -ruN a/src/SAIDA/ScoutManager.cpp b/src/SAIDA/ScoutManager.cpp
+--- a/src/SAIDA/ScoutManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/ScoutManager.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "ScoutManager.h"
++﻿#include <new>
++#include "ScoutManager.h"
+ 
+ using namespace MyBot;
+ 
+@@ -24,8 +25,16 @@
+ 
+ ScoutManager &ScoutManager::Instance()
+ {
+-	static ScoutManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(ScoutManager) static unsigned char storage[sizeof(ScoutManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) ScoutManager();
++	}
++	return *reinterpret_cast<ScoutManager *>(storage);
+ }
+ 
+ void ScoutManager::update() {
+diff -ruN a/src/SAIDA/StrategyManager.cpp b/src/SAIDA/StrategyManager.cpp
+--- a/src/SAIDA/StrategyManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/StrategyManager.cpp	2026-10-07 03:53:16
+@@ -1,9 +1,10 @@
+-﻿#include "StrategyManager.h"
 -#include "UnitManager\TankManager.h"
 -#include "UnitManager\GoliathManager.h"
++﻿#include <new>
++#include "StrategyManager.h"
 +#include "UnitManager/TankManager.h"
 +#include "UnitManager/GoliathManager.h"
  #include "TrainManager.h"
@@ -118,8 +492,28 @@
  
  #define PERIOD 24 * 5                // 주기
  #define BASE_WINNING_RATE 65.00      // 베이스 승률						
---- a/src/SAIDA/StrategyManager.h
-+++ b/src/SAIDA/StrategyManager.h
+@@ -12,8 +13,16 @@
+ 
+ StrategyManager &StrategyManager::Instance()
+ {
+-	static StrategyManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(StrategyManager) static unsigned char storage[sizeof(StrategyManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) StrategyManager();
++	}
++	return *reinterpret_cast<StrategyManager *>(storage);
+ }
+ 
+ StrategyManager::StrategyManager()
+diff -ruN a/src/SAIDA/StrategyManager.h b/src/SAIDA/StrategyManager.h
+--- a/src/SAIDA/StrategyManager.h	2026-10-07 03:54:30
++++ b/src/SAIDA/StrategyManager.h	2026-10-07 03:41:28
 @@ -10,8 +10,8 @@
  #include "ScoutManager.h"
  #include "EnemyStrategyManager.h"
@@ -131,8 +525,63 @@
  
  #define SM StrategyManager::Instance()
  #define ATTACKPOS SM.getMainAttackPosition()
---- a/src/SAIDA/TrainManager.h
-+++ b/src/SAIDA/TrainManager.h
+diff -ruN a/src/SAIDA/TerranConstructionPlaceFinder.cpp b/src/SAIDA/TerranConstructionPlaceFinder.cpp
+--- a/src/SAIDA/TerranConstructionPlaceFinder.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/TerranConstructionPlaceFinder.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "TerranConstructionPlaceFinder.h"
+ #include "UnitManager/TankManager.h"
+ 
+@@ -11,8 +12,16 @@
+ 
+ TerranConstructionPlaceFinder &TerranConstructionPlaceFinder::Instance()
+ {
+-	static TerranConstructionPlaceFinder instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(TerranConstructionPlaceFinder) static unsigned char storage[sizeof(TerranConstructionPlaceFinder)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) TerranConstructionPlaceFinder();
++	}
++	return *reinterpret_cast<TerranConstructionPlaceFinder *>(storage);
+ }
+ 
+ TerranConstructionPlaceFinder::TerranConstructionPlaceFinder()
+diff -ruN a/src/SAIDA/TrainManager.cpp b/src/SAIDA/TrainManager.cpp
+--- a/src/SAIDA/TrainManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/TrainManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "TrainManager.h"
+ #include "EnemyStrategyManager.h"
+ 
+@@ -14,8 +15,16 @@
+ 
+ TrainManager &TrainManager::Instance()
+ {
+-	static TrainManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(TrainManager) static unsigned char storage[sizeof(TrainManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) TrainManager();
++	}
++	return *reinterpret_cast<TrainManager *>(storage);
+ }
+ 
+ void TrainManager::update()
+diff -ruN a/src/SAIDA/TrainManager.h b/src/SAIDA/TrainManager.h
+--- a/src/SAIDA/TrainManager.h	2026-10-07 03:54:30
++++ b/src/SAIDA/TrainManager.h	2026-10-07 03:41:28
 @@ -5,10 +5,10 @@
  #include "UnitData.h"
  #include "InformationManager.h"
@@ -148,8 +597,38 @@
  
  namespace MyBot
  {
---- a/src/SAIDA/UXManager.h
-+++ b/src/SAIDA/UXManager.h
+diff -ruN a/src/SAIDA/UXManager.cpp b/src/SAIDA/UXManager.cpp
+--- a/src/SAIDA/UXManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UXManager.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "UXManager.h"
++﻿#include <new>
++#include "UXManager.h"
+ 
+ using namespace MyBot;
+ 
+@@ -9,8 +10,16 @@
+ 
+ UXManager &UXManager::Instance()
+ {
+-	static UXManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(UXManager) static unsigned char storage[sizeof(UXManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) UXManager();
++	}
++	return *reinterpret_cast<UXManager *>(storage);
+ }
+ 
+ 
+diff -ruN a/src/SAIDA/UXManager.h b/src/SAIDA/UXManager.h
+--- a/src/SAIDA/UXManager.h	2026-10-07 03:54:30
++++ b/src/SAIDA/UXManager.h	2026-10-07 03:41:28
 @@ -8,8 +8,8 @@
  #include "ConstructionManager.h"
  #include "ScoutManager.h"
@@ -161,8 +640,9 @@
  
  namespace MyBot
  {
---- a/src/SAIDA/UnitInfo.cpp
-+++ b/src/SAIDA/UnitInfo.cpp
+diff -ruN a/src/SAIDA/UnitInfo.cpp b/src/SAIDA/UnitInfo.cpp
+--- a/src/SAIDA/UnitInfo.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitInfo.cpp	2026-10-07 03:41:28
 @@ -2,7 +2,7 @@
  #include "Common.h"
  #include "GameCommander.h"
@@ -172,8 +652,9 @@
  #include "InformationManager.h"
  
  using namespace MyBot;
---- a/src/SAIDA/UnitInfo.h
-+++ b/src/SAIDA/UnitInfo.h
+diff -ruN a/src/SAIDA/UnitInfo.h b/src/SAIDA/UnitInfo.h
+--- a/src/SAIDA/UnitInfo.h	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitInfo.h	2026-10-07 03:41:28
 @@ -1,7 +1,7 @@
  ﻿#pragma once
  
@@ -183,9 +664,115 @@
  
  namespace MyBot
  {
---- a/src/SAIDA/UnitManager/GoliathManager.cpp
-+++ b/src/SAIDA/UnitManager/GoliathManager.cpp
-@@ -409,7 +409,7 @@
+diff -ruN a/src/SAIDA/UnitManager/ComsatStationManager.cpp b/src/SAIDA/UnitManager/ComsatStationManager.cpp
+--- a/src/SAIDA/UnitManager/ComsatStationManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/ComsatStationManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "ComsatStationManager.h"
+ #include "../InformationManager.h"
+ 
+@@ -10,8 +11,16 @@
+ 
+ ComsatStationManager &ComsatStationManager::Instance()
+ {
+-	static ComsatStationManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(ComsatStationManager) static unsigned char storage[sizeof(ComsatStationManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) ComsatStationManager();
++	}
++	return *reinterpret_cast<ComsatStationManager *>(storage);
+ }
+ 
+ void ComsatStationManager::update()
+diff -ruN a/src/SAIDA/UnitManager/DropshipManager.cpp b/src/SAIDA/UnitManager/DropshipManager.cpp
+--- a/src/SAIDA/UnitManager/DropshipManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/DropshipManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "DropshipManager.h"
+ #include "../UnitManager/TankManager.h"
+ #include "../UnitManager/GoliathManager.h"
+@@ -10,8 +11,16 @@
+ 
+ DropshipManager &DropshipManager::Instance()
+ {
+-	static DropshipManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(DropshipManager) static unsigned char storage[sizeof(DropshipManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) DropshipManager();
++	}
++	return *reinterpret_cast<DropshipManager *>(storage);
+ }
+ 
+ void DropshipManager::update()
+diff -ruN a/src/SAIDA/UnitManager/EngineeringBayManager.cpp b/src/SAIDA/UnitManager/EngineeringBayManager.cpp
+--- a/src/SAIDA/UnitManager/EngineeringBayManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/EngineeringBayManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "EngineeringBayManager.h"
+ #include "../InformationManager.h"
+ 
+@@ -10,8 +11,16 @@
+ 
+ EngineeringBayManager &EngineeringBayManager::Instance()
+ {
+-	static EngineeringBayManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(EngineeringBayManager) static unsigned char storage[sizeof(EngineeringBayManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) EngineeringBayManager();
++	}
++	return *reinterpret_cast<EngineeringBayManager *>(storage);
+ }
+ 
+ void EngineeringBayManager::update()
+diff -ruN a/src/SAIDA/UnitManager/GoliathManager.cpp b/src/SAIDA/UnitManager/GoliathManager.cpp
+--- a/src/SAIDA/UnitManager/GoliathManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/GoliathManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "GoliathManager.h"
+ #include "../InformationManager.h"
+ #include "../StrategyManager.h"
+@@ -11,8 +12,16 @@
+ 
+ GoliathManager &GoliathManager::Instance()
+ {
+-	static GoliathManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(GoliathManager) static unsigned char storage[sizeof(GoliathManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) GoliathManager();
++	}
++	return *reinterpret_cast<GoliathManager *>(storage);
+ }
+ 
+ 
+@@ -409,7 +418,7 @@
  	if (defenceUnitSize < goliathDefenceSet.size()) {
  		uList sorted = goliathDefenceSet.getSortedUnitList(INFO.getMainBaseLocation(S)->getPosition(), true);
  
@@ -194,7 +781,7 @@
  			setStateToGoliath(sorted.at(i), new GoliathIdleState());
  		}
  	}
-@@ -440,7 +440,7 @@
+@@ -440,7 +449,7 @@
  			return a.first < b.first;
  		});
  
@@ -203,3 +790,169 @@
  
  			UnitInfo *unit = sortList.at(i).second;
  
+diff -ruN a/src/SAIDA/UnitManager/MarineManager.cpp b/src/SAIDA/UnitManager/MarineManager.cpp
+--- a/src/SAIDA/UnitManager/MarineManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/MarineManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "MarineManager.h"
+ #include "../InformationManager.h"
+ #include "../StrategyManager.h"
+@@ -30,8 +31,16 @@
+ 
+ MarineManager &MarineManager::Instance()
+ {
+-	static MarineManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(MarineManager) static unsigned char storage[sizeof(MarineManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) MarineManager();
++	}
++	return *reinterpret_cast<MarineManager *>(storage);
+ }
+ 
+ void MarineManager::update()
+diff -ruN a/src/SAIDA/UnitManager/ScvManager.cpp b/src/SAIDA/UnitManager/ScvManager.cpp
+--- a/src/SAIDA/UnitManager/ScvManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/ScvManager.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "ScvManager.h"
++﻿#include <new>
++#include "ScvManager.h"
+ #include "../EnemyStrategyManager.h"
+ #include "TankManager.h"
+ #include "MarineManager.h"
+@@ -25,8 +26,16 @@
+ 
+ ScvManager &ScvManager::Instance()
+ {
+-	static ScvManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(ScvManager) static unsigned char storage[sizeof(ScvManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) ScvManager();
++	}
++	return *reinterpret_cast<ScvManager *>(storage);
+ }
+ 
+ void ScvManager::update()
+diff -ruN a/src/SAIDA/UnitManager/TankManager.cpp b/src/SAIDA/UnitManager/TankManager.cpp
+--- a/src/SAIDA/UnitManager/TankManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/TankManager.cpp	2026-10-07 03:53:16
+@@ -1,4 +1,5 @@
+-﻿#include "TankManager.h"
++﻿#include <new>
++#include "TankManager.h"
+ 
+ using namespace MyBot;
+ 
+@@ -10,8 +11,16 @@
+ 
+ TankManager &TankManager::Instance()
+ {
+-	static TankManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(TankManager) static unsigned char storage[sizeof(TankManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) TankManager();
++	}
++	return *reinterpret_cast<TankManager *>(storage);
+ }
+ 
+ void TankManager::update()
+diff -ruN a/src/SAIDA/UnitManager/VessleManager.cpp b/src/SAIDA/UnitManager/VessleManager.cpp
+--- a/src/SAIDA/UnitManager/VessleManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/VessleManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "VessleManager.h"
+ #include "TankManager.h"
+ #include "VultureManager.h"
+@@ -11,8 +12,16 @@
+ 
+ VessleManager &VessleManager::Instance()
+ {
+-	static VessleManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(VessleManager) static unsigned char storage[sizeof(VessleManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) VessleManager();
++	}
++	return *reinterpret_cast<VessleManager *>(storage);
+ }
+ 
+ void VessleManager::update()
+diff -ruN a/src/SAIDA/UnitManager/VultureManager.cpp b/src/SAIDA/UnitManager/VultureManager.cpp
+--- a/src/SAIDA/UnitManager/VultureManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/VultureManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "VultureManager.h"
+ #include "TankManager.h"
+ 
+@@ -12,8 +13,16 @@
+ 
+ VultureManager &VultureManager::Instance()
+ {
+-	static VultureManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(VultureManager) static unsigned char storage[sizeof(VultureManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) VultureManager();
++	}
++	return *reinterpret_cast<VultureManager *>(storage);
+ }
+ 
+ void VultureManager::update()
+diff -ruN a/src/SAIDA/UnitManager/WraithManager.cpp b/src/SAIDA/UnitManager/WraithManager.cpp
+--- a/src/SAIDA/UnitManager/WraithManager.cpp	2026-10-07 03:54:30
++++ b/src/SAIDA/UnitManager/WraithManager.cpp	2026-10-07 03:53:16
+@@ -1,3 +1,4 @@
++#include <new>
+ #include "WraithManager.h"
+ #include "VultureManager.h"
+ #include "../InformationManager.h"
+@@ -10,8 +11,16 @@
+ 
+ WraithManager &WraithManager::Instance()
+ {
+-	static WraithManager instance;
+-	return instance;
++	// (Not thread-safe-static as in the original: MSVC hands an object asked for again while it is still being
++	// constructed back to the caller, and SAIDA's managers rely on that; other runtimes abort)
++	alignas(WraithManager) static unsigned char storage[sizeof(WraithManager)];
++	static bool started = false;
++	if (!started)
++	{
++		started = true;
++		new (storage) WraithManager();
++	}
++	return *reinterpret_cast<WraithManager *>(storage);
+ }
+ 
+ void WraithManager::update()

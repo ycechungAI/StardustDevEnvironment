@@ -177,6 +177,9 @@ struct ui_wrapper {
   int screen_pos_x = 0;
   int screen_pos_y = 0;
   std::function<void(uint8_t*, size_t)> on_draw;
+  // Keys pressed in the window, collected on the UI thread and taken by the game thread
+  std::mutex keys_mut;
+  std::vector<int> keys;
   bwgame::game_player get_player(bwgame::state& st) {
     bwgame::game_player player;
     player.set_st(st);
@@ -190,6 +193,10 @@ struct ui_wrapper {
 
       ui.exit_on_close = false;
       ui.global_volume = 0;
+      ui.on_key_down = [this](int key) {
+        std::lock_guard<std::mutex> keys_lock(keys_mut);
+        keys.push_back(key);
+      };
       auto load_data_file = bwgame::data_loading::data_files_directory(mpq_path.c_str());
       ui.load_data_file = [&](bwgame::a_vector<uint8_t>& data, bwgame::a_string filename) {
         load_data_file(data, std::move(filename));
@@ -261,6 +268,12 @@ struct ui_wrapper {
   uint8_t* screen_buffer() {
     return m_screen_buffer;
   }
+  std::vector<int> take_keys() {
+    std::lock_guard<std::mutex> keys_lock(keys_mut);
+    std::vector<int> result;
+    result.swap(keys);
+    return result;
+  }
 };
 
 struct draw_ui_wrapper {
@@ -321,6 +334,9 @@ struct ui_wrapper {
   }
   uint8_t* screen_buffer() {
     return nullptr;
+  }
+  std::vector<int> take_keys() {
+    return {};
   }
 };
 struct draw_ui_wrapper {
@@ -1534,6 +1550,12 @@ void Game::saveReplay(const std::string& filename)
     bwgame::data_loading::file_writer<> w(filename.c_str());
     replay_saver_funcs.save_replay(impl->st.current_frame, w);
   }
+}
+
+std::vector<int> Game::takeKeyPresses()
+{
+  if (impl->ui) return impl->ui->take_keys();
+  return {};
 }
 
 std::tuple<int, int, void*> Game::GameScreenBuffer()
