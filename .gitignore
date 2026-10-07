@@ -34,6 +34,8 @@ bots/*
 !bots/StardustBots.cmake
 !bots/WorkerRush/
 !bots/recipes/
+!bots/ClaudeOpus55/
+!bots/genai/
 !bots/compat/
 !bots/BananaBrain/
 !bots/McRaveZ/
@@ -43,3 +45,6 @@ bots/*
 bots/*/**/*.dll
 # Stardust's mining-training folder is a copy of its author's whole dev environment, only needed to retrain
 bots/Stardust2025/mining-training/
+
+# Personal Claude Code settings
+.claude/settings.local.json

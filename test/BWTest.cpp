@@ -531,7 +531,9 @@ void BWTest::runGame(bool opponent)
         if (me && them)
         {
             std::cout << "STATS " << StatsSummary(*me, *them) << std::endl;
-            if (!opponentName.empty())
+            // STARDUST_NO_RESULTS=1 keeps practice games out of the results history (and so the Elo ratings)
+            auto noResults = std::getenv("STARDUST_NO_RESULTS");
+            if (!opponentName.empty() && !(noResults && *noResults && std::string(noResults) != "0"))
             {
                 std::string result = gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST");
                 AppendResult(*me, *them, result, h->getFrameCount(), map->shortname(), randomSeed,
