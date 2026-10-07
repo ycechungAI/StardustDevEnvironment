@@ -50,6 +50,49 @@ namespace
         if (length < 1) return from;
         return Position(from.x + int(dx * distance / length), from.y + int(dy * distance / length)).makeValid();
     }
+
+    // A tile ground units can cross: its middle four walk cells are walkable
+    bool walkableTile(int x, int y)
+    {
+        for (int wx = x * 4 + 1; wx <= x * 4 + 2; wx++)
+        {
+            for (int wy = y * 4 + 1; wy <= y * 4 + 2; wy++)
+            {
+                if (!Broodwar->isWalkable(wx, wy)) return false;
+            }
+        }
+        return true;
+    }
+
+    // Ground distance in tiles from the nearest source to every tile (-1 where unreachable), out to a limit
+    std::vector<int> groundDistances(const std::vector<TilePosition> &sources, int limit = INT_MAX)
+    {
+        int width = Broodwar->mapWidth(), height = Broodwar->mapHeight();
+        std::vector<int> distance(width * height, -1);
+        std::vector<TilePosition> queue;
+        for (auto source : sources)
+        {
+            if (!source.isValid() || distance[source.y * width + source.x] >= 0) continue;
+            distance[source.y * width + source.x] = 0;
+            queue.push_back(source);
+        }
+        const int dx[] = {1, -1, 0, 0}, dy[] = {0, 0, 1, -1};
+        for (size_t i = 0; i < queue.size(); i++)
+        {
+            auto tile = queue[i];
+            int next = distance[tile.y * width + tile.x] + 1;
+            if (next > limit) continue;
+            for (int d = 0; d < 4; d++)
+            {
+                int x = tile.x + dx[d], y = tile.y + dy[d];
+                if (x < 0 || y < 0 || x >= width || y >= height || distance[y * width + x] >= 0) continue;
+                if (!walkableTile(x, y)) continue;
+                distance[y * width + x] = next;
+                queue.emplace_back(x, y);
+            }
+        }
+        return distance;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -97,6 +140,75 @@ void ClaudeOpus55::onStart()
 
     findBases();
     rally = findRampTop();
+    if (natural)
+    {
+        // The natural's front: from its minerals, past the nexus and on a little, where attacks come from
+        Position depot = Position(natural->depot) + Position(64, 48);
+        naturalFront = towards(depot, depot + (depot - natural->center), 192);
+    }
+    analyseMap();
+}
+
+// How far the enemy is by ground, and how many ways lead into our natural from the enemy's side and how wide they
+// are: a forge expand needs a natural with one narrow entrance, on a map big enough that a rush can't arrive first
+void ClaudeOpus55::analyseMap()
+{
+    int width = Broodwar->mapWidth();
+    TilePosition homeTile(home);
+    std::vector<TilePosition> enemyStarts;
+    for (auto start : Broodwar->getStartLocations())
+    {
+        if (start != Broodwar->self()->getStartLocation()) enemyStarts.push_back(start + TilePosition(2, 1));
+    }
+    auto fromHome = groundDistances({homeTile});
+    rushDistance = INT_MAX;
+    for (auto start : enemyStarts)
+    {
+        int distance = fromHome[start.y * width + start.x];
+        if (distance >= 0) rushDistance = std::min(rushDistance, distance);
+    }
+    if (!natural) return;
+
+    const int Ring = 14;  // tiles out from the natural nexus: past its buildings, at its chokes
+    TilePosition naturalTile = natural->depot + TilePosition(2, 1);
+    auto fromNatural = groundDistances({naturalTile}, Ring);
+    auto fromEnemy = groundDistances(enemyStarts);
+    int naturalToEnemy = fromEnemy[naturalTile.y * width + naturalTile.x];
+    int naturalToHome = fromHome[naturalTile.y * width + naturalTile.x];
+    if (naturalToEnemy < 0 || naturalToHome < 0) return;
+
+    // The ring of tiles Ring steps from the natural that lead on toward the enemy and not back up to our main
+    std::set<int> ring;
+    for (int i = 0; i < (int) fromNatural.size(); i++)
+    {
+        if (fromNatural[i] == Ring && fromEnemy[i] >= 0 && fromEnemy[i] < naturalToEnemy
+            && fromHome[i] > naturalToHome - Ring / 2) ring.insert(i);
+    }
+    // Each connected stretch of it is one entrance
+    naturalEntrances = 0;
+    widestEntrance = 0;
+    while (!ring.empty())
+    {
+        std::vector<int> stretch = {*ring.begin()};
+        ring.erase(ring.begin());
+        for (size_t i = 0; i < stretch.size(); i++)
+        {
+            int x = stretch[i] % width, y = stretch[i] / width;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    auto it = ring.find((y + dy) * width + x + dx);
+                    if (it == ring.end()) continue;
+                    stretch.push_back(*it);
+                    ring.erase(it);
+                }
+            }
+        }
+        if (stretch.size() < 2) continue;  // a crack in the cliffs, not a way in
+        naturalEntrances++;
+        widestEntrance = std::max(widestEntrance, (int) stretch.size());
+    }
 }
 
 // The highest-ground tile of our main closest to the natural: the top of the ramp, where defending is easiest
@@ -225,7 +337,7 @@ void ClaudeOpus55::onFrame()
     if (Broodwar->isPaused() || !Broodwar->self()) return;
     int frame = Broodwar->getFrameCount();
 
-    if (getenv("CO55_DEBUG") && frame % 1000 == 0)
+    if (getenv("CO55_DEBUG") && frame % 500 == 0)
     {
         auto self = Broodwar->self();
         printf("CO55 %d: supply %d/%d min %d gas %d nexus %d probes %d gates %d zealots %d goons %d attacking %d wave %d\n",
@@ -233,14 +345,27 @@ void ClaudeOpus55::onFrame()
                self->allUnitCount(UnitTypes::Protoss_Nexus), self->allUnitCount(UnitTypes::Protoss_Probe),
                self->allUnitCount(UnitTypes::Protoss_Gateway), self->allUnitCount(UnitTypes::Protoss_Zealot),
                self->allUnitCount(UnitTypes::Protoss_Dragoon), attacking, wave);
-        printf("     natural %s expansionDue %d threats %zu bases %zu\n",
-               natural ? "yes" : "no", expansionDue, threatsNearHome().size(), bases.size());
-        for (auto &[b, p] : builders)
-            printf("     pending %s at %d,%d since %d order %s builder at %d,%d\n", p.type.c_str(), p.tile.x, p.tile.y,
-                   p.frame, b->getOrder().c_str(), b->getTilePosition().x, b->getTilePosition().y);
-        auto spot = pylonSpot();
-        printf("     pylonSpot %d,%d home %d,%d minerals %d,%d\n", spot.x, spot.y, TilePosition(home).x,
-               TilePosition(home).y, TilePosition(mineralCenter).x, TilePosition(mineralCenter).y);
+        printf("     natural %s expansionDue %d threats %zu rush %d cloak %d air %d ranged %d step %zu/%zu\n",
+               natural ? "yes" : "no", expansionDue, threatsNearHome().size(), rushSeen, cloakSeen, airSeen,
+               rangedNeeded, buildOrderStep, buildOrder.size());
+        if (getenv("CO55_DEBUG")[0] == '2')
+        {
+            printf("     map %s rushDistance %d naturalEntrances %d widest %d\n", Broodwar->mapFileName().c_str(),
+                   rushDistance, naturalEntrances, widestEntrance);
+            printf("     home %d,%d naturalDepot %d,%d front %d,%d\n", TilePosition(home).x, TilePosition(home).y,
+                   natural ? natural->depot.x : -1, natural ? natural->depot.y : -1, TilePosition(naturalFront).x,
+                   TilePosition(naturalFront).y);
+            for (auto &[b, p] : builders)
+                printf("     pending %s at %d,%d since %d order %s builder at %d,%d\n", p.type.c_str(), p.tile.x,
+                       p.tile.y, p.frame, b->getOrder().c_str(), b->getTilePosition().x, b->getTilePosition().y);
+            for (auto u : Broodwar->self()->getUnits())
+                if (u->getType().isBuilding()) printf("     have %s at %d,%d\n", u->getType().c_str(), u->getTilePosition().x, u->getTilePosition().y);
+        }
+        std::map<std::string, int> seen;
+        for (auto &[id, s] : enemyArmy) seen[s.type.getName()]++;
+        printf("     enemy army:");
+        for (auto &[name, n] : seen) printf(" %s=%d", name.c_str(), n);
+        printf("\n");
         fflush(stdout);
     }
 
@@ -356,8 +481,15 @@ void ClaudeOpus55::manageWorkers()
             }
             else if (Broodwar->isVisible(pending.tile))
             {
-                it = builders.erase(it);
-                continue;
+                // Something is in the way: the nearest free spot close by, or give it up
+                auto spot = findBuildSpot(pending.type, pending.tile);
+                if (!spot.isValid() || spot.getApproxDistance(pending.tile) > 6)
+                {
+                    it = builders.erase(it);
+                    continue;
+                }
+                pending.tile = spot;
+                if (!builder->build(pending.type, spot)) builder->move(Position(spot) + Position(32, 32));
             }
             else
             {
@@ -492,13 +624,14 @@ bool ClaudeOpus55::build(UnitType type, TilePosition near)
     }
     else
     {
-        tile = findBuildSpot(type, near);
+        tile = findBuildSpot(type, near, Broodwar->isExplored(near));  // the natural may not be seen yet
     }
     if (!tile.isValid()) return false;
 
     auto builder = chooseBuilder(Position(tile));
     if (!builder) return false;
 
+    if (getenv("CO55_DEBUG")) printf("     BUILD %s near %d,%d -> %d,%d frame %d\n", type.c_str(), near.x, near.y, tile.x, tile.y, Broodwar->getFrameCount());
     builders[builder] = PendingBuild{type, tile, Broodwar->getFrameCount()};
     if (!builder->build(type, tile)) builder->move(Position(tile) + Position(type.tileWidth() * 16, type.tileHeight() * 16));
     return true;
@@ -506,7 +639,7 @@ bool ClaudeOpus55::build(UnitType type, TilePosition near)
 
 // The nearest explored, buildable spot to `near` that leaves a free tile around the building (so the base doesn't wall
 // itself in) and stays out of the mineral line
-TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near) const
+TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool checkExplored) const
 {
     int w = type.tileWidth(), h = type.tileHeight();
     int homeToMinerals = home.getApproxDistance(mineralCenter);
@@ -518,7 +651,7 @@ TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near) const
             {
                 if (std::abs(dx) != radius && std::abs(dy) != radius) continue;  // the ring at this radius only
                 TilePosition tile(near.x + dx, near.y + dy);
-                if (!tile.isValid() || !Broodwar->canBuildHere(tile, type, nullptr, true)) continue;
+                if (!tile.isValid() || !Broodwar->canBuildHere(tile, type, nullptr, checkExplored)) continue;
                 Position center = Position(tile) + Position(w * 16, h * 16);
                 if (center.getApproxDistance(mineralCenter) < homeToMinerals && center.getApproxDistance(home) < 400)
                 {
@@ -548,7 +681,20 @@ TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near) const
 void ClaudeOpus55::chooseBuildOrder()
 {
     using namespace UnitTypes;
-    if (enemyRace == Races::Zerg)
+    // Forge fast expand, as the strong Protoss bots were seen to beat Zerg: pylon and forge at the natural's front,
+    // the natural nexus, cannons there, then gateways and the core in the main. Only where the natural has one narrow
+    // way in, which cannons can hold, and the map isn't so small that zerglings arrive before them
+    bool forgeExpandMap = natural && naturalFront.isValid() && naturalEntrances == 1 && widestEntrance <= 12
+                          && rushDistance >= 150 && rushDistance != INT_MAX;
+    if (enemyRace == Races::Zerg && forgeExpandMap)
+    {
+        forgeExpand = true;
+        buildOrder = {{8, Protoss_Pylon, true}, {10, Protoss_Forge, true}, {12, Protoss_Nexus},
+                      {13, Protoss_Photon_Cannon, true}, {14, Protoss_Pylon}, {15, Protoss_Gateway},
+                      {15, Protoss_Photon_Cannon, true}, {16, Protoss_Assimilator}, {17, Protoss_Cybernetics_Core},
+                      {19, Protoss_Pylon}, {20, Protoss_Gateway}, {22, Protoss_Gateway}, {24, Protoss_Assimilator}};
+    }
+    else if (enemyRace == Races::Zerg)
     {
         // Two gateways early for the zergling rushes, then the core
         buildOrder = {{8, Protoss_Pylon}, {10, Protoss_Gateway}, {12, Protoss_Gateway}, {14, Protoss_Pylon},
@@ -614,6 +760,7 @@ void ClaudeOpus55::buildStructures()
             break;
         }
     }
+    TilePosition frontTile = naturalFront.isValid() ? TilePosition(naturalFront) : TilePositions::Invalid;
     auto placeFor = [&](UnitType type) -> TilePosition
     {
         if (type == UnitTypes::Protoss_Pylon) return pylonSpot();
@@ -628,7 +775,8 @@ void ClaudeOpus55::buildStructures()
 
     // An early rush seen (an early pool, zerglings, mass gateways or a worker rush): a forge and cannons by the minerals,
     // alongside as many zealots as the gateways can make
-    if (rushSeen && Broodwar->getFrameCount() < 9000 && self->completedUnitCount(UnitTypes::Protoss_Pylon) > 0)
+    if (!forgeExpand && rushSeen && Broodwar->getFrameCount() < 9000
+        && self->completedUnitCount(UnitTypes::Protoss_Pylon) > 0)
     {
         auto spot = TilePosition((home + mineralCenter) / 2);
         if (count(UnitTypes::Protoss_Forge) < 1 && count(UnitTypes::Protoss_Gateway) >= 1)
@@ -649,12 +797,44 @@ void ClaudeOpus55::buildStructures()
         auto &step = buildOrder[buildOrderStep];
         bool supplyBlocked = supplyTotal - supplyUsed <= 1 && supplyTotal < 200
                              && pendingCount(UnitTypes::Protoss_Pylon) + self->incompleteUnitCount(UnitTypes::Protoss_Pylon) == 0;
-        if (supplyBlocked && step.type != UnitTypes::Protoss_Pylon)
+        // Forge expand against an early pool: both cannons before the nexus
+        bool cannonsFirst = forgeExpand && rushSeen && step.type == UnitTypes::Protoss_Nexus
+                            && self->completedUnitCount(UnitTypes::Protoss_Forge) > 0
+                            && count(UnitTypes::Protoss_Photon_Cannon) < 2;
+        // A building for the natural's front needs a pylon there: if the first one was lost or never placed, another
+        bool frontPowered = true;
+        if (step.atNatural && step.type.requiresPsi() && frontTile.isValid())
+        {
+            frontPowered = false;
+            for (auto pylon : self->getUnits())
+            {
+                if (pylon->getType() == UnitTypes::Protoss_Pylon && pylon->getTilePosition().getApproxDistance(frontTile) <= 7)
+                {
+                    frontPowered = true;
+                }
+            }
+            for (auto &[builder, pending] : builders)
+            {
+                if (pending.type == UnitTypes::Protoss_Pylon && pending.tile.getApproxDistance(frontTile) <= 7)
+                {
+                    frontPowered = true;
+                }
+            }
+        }
+        if (!frontPowered)
+        {
+            build(UnitTypes::Protoss_Pylon, frontTile);
+        }
+        else if (supplyBlocked && step.type != UnitTypes::Protoss_Pylon)
         {
             build(UnitTypes::Protoss_Pylon, pylonSpot());
         }
+        else if (cannonsFirst)
+        {
+            build(UnitTypes::Protoss_Photon_Cannon, frontTile);
+        }
         else if (supplyUsed >= step.supply && (step.type == UnitTypes::Protoss_Pylon || Broodwar->canMake(step.type))
-                 && build(step.type, placeFor(step.type)))
+                 && build(step.type, step.atNatural && frontTile.isValid() ? frontTile : placeFor(step.type)))
         {
             buildOrderStep++;
         }
@@ -695,6 +875,16 @@ void ClaudeOpus55::buildStructures()
              && count(UnitTypes::Protoss_Observatory) < 1)
     {
         build(UnitTypes::Protoss_Observatory, nearPylon);
+    }
+
+    // Mutalisks (or their spire) seen: cannons in every mineral line, and a stargate for corsairs
+    if (airSeen)
+    {
+        buildMineralLineCannons();
+        if (coreDone && enemyRace == Races::Zerg && count(UnitTypes::Protoss_Stargate) < 1)
+        {
+            build(UnitTypes::Protoss_Stargate, nearPylon);
+        }
     }
 
     // Spending: with 400+ minerals spare, take another base when it is safe and our army is holding its own (or we
@@ -748,6 +938,38 @@ void ClaudeOpus55::buildStructures()
                 building->upgrade(UpgradeTypes::Protoss_Ground_Armor);
             }
         }
+    }
+}
+
+// Two cannons between each completed nexus and its minerals (with a pylon there first), against air harassment
+void ClaudeOpus55::buildMineralLineCannons()
+{
+    auto self = Broodwar->self();
+    if (self->completedUnitCount(UnitTypes::Protoss_Forge) == 0) return;
+    for (auto nexus : nexuses(true))
+    {
+        auto minerals = nexus->getUnitsInRadius(320, IsMineralField);
+        if (minerals.empty()) continue;
+        auto spot = (nexus->getPosition() + minerals.getPosition()) / 2;
+        int cannons = (int) Broodwar->getUnitsInRadius(spot, 192, IsOwned && GetType == UnitTypes::Protoss_Photon_Cannon).size();
+        for (auto &[builder, pending] : builders)
+        {
+            if (pending.type == UnitTypes::Protoss_Photon_Cannon && Position(pending.tile).getApproxDistance(spot) < 192)
+            {
+                cannons++;
+            }
+        }
+        if (cannons >= 2) continue;
+        if (Broodwar->hasPower(TilePosition(spot), UnitTypes::Protoss_Photon_Cannon))
+        {
+            build(UnitTypes::Protoss_Photon_Cannon, TilePosition(spot));
+        }
+        else if (Broodwar->getUnitsInRadius(spot, 192, IsOwned && GetType == UnitTypes::Protoss_Pylon).empty()
+                 && pendingCount(UnitTypes::Protoss_Pylon) == 0)
+        {
+            build(UnitTypes::Protoss_Pylon, TilePosition(spot));
+        }
+        return;  // one base at a time
     }
 }
 
@@ -813,16 +1035,39 @@ void ClaudeOpus55::trainUnits()
     // Leave money for the natural once it is due
     if (expansionDue && pendingCount(UnitTypes::Protoss_Nexus) == 0) freeMinerals -= 400;
 
+    // Corsairs against mutalisks: up to 8, before the gateways spend everything
+    for (auto stargate : self->getUnits())
+    {
+        if (stargate->getType() == UnitTypes::Protoss_Stargate && stargate->isCompleted() && stargate->isIdle()
+            && self->allUnitCount(UnitTypes::Protoss_Corsair) < 8 && freeMinerals >= 150 && freeGas >= 100
+            && self->supplyUsed() + 4 <= self->supplyTotal())
+        {
+            stargate->train(UnitTypes::Protoss_Corsair);
+            freeMinerals -= 150;
+            freeGas -= 100;
+        }
+    }
+
+    // Against zerglings, mostly zealots with a few dragoons; against hydralisks, lurkers or mutalisks, dragoons only
     bool canMakeDragoons = self->completedUnitCount(UnitTypes::Protoss_Cybernetics_Core) > 0;
+    int zealots = self->allUnitCount(UnitTypes::Protoss_Zealot), dragoons = self->allUnitCount(UnitTypes::Protoss_Dragoon);
     for (auto gateway : self->getUnits())
     {
         if (gateway->getType() != UnitTypes::Protoss_Gateway || !gateway->isCompleted() || !gateway->isIdle()) continue;
         if (self->supplyUsed() + 4 > self->supplyTotal()) break;
-        if (canMakeDragoons && freeMinerals >= 125 && freeGas >= 50)
+        bool wantZealot = enemyRace == Races::Zerg && !rangedNeeded && zealots < 2 * dragoons + 2;
+        if (wantZealot && freeMinerals >= 100)
+        {
+            gateway->train(UnitTypes::Protoss_Zealot);
+            freeMinerals -= 100;
+            zealots++;
+        }
+        else if (canMakeDragoons && freeMinerals >= 125 && freeGas >= 50)
         {
             gateway->train(UnitTypes::Protoss_Dragoon);
             freeMinerals -= 125;
             freeGas -= 50;
+            dragoons++;
         }
         else if ((!canMakeDragoons || freeGas < 50) && freeMinerals >= 100)
         {
@@ -862,6 +1107,15 @@ void ClaudeOpus55::trackEnemy()
                 cloakSeen = true;
             }
             if (type == UnitTypes::Protoss_Templar_Archives) templarArchivesSeen = true;
+            if (type == UnitTypes::Zerg_Spire || type == UnitTypes::Zerg_Mutalisk || type == UnitTypes::Zerg_Greater_Spire)
+            {
+                airSeen = true;
+            }
+            if (airSeen || type == UnitTypes::Zerg_Hydralisk_Den || type == UnitTypes::Zerg_Hydralisk
+                || type == UnitTypes::Zerg_Lurker)
+            {
+                rangedNeeded = true;
+            }
             if (Broodwar->getFrameCount() < 5000 && !rushSeen)
             {
                 auto counts = [&](UnitType t) { return Broodwar->enemy()->visibleUnitCount(t); };
@@ -1029,10 +1283,13 @@ void ClaudeOpus55::fight(Unit unit, Position goal)
 
     Unit best = nullptr;
     int bestPriority = -1, bestHealth = INT_MAX;
-    int range = std::max(unit->getType().groundWeapon().maxRange(), 32) + 64;
-    for (auto enemy : unit->getUnitsInRadius(range + 96, IsEnemy && IsVisible && !IsFlying))
+    bool hitsGround = unit->getType().groundWeapon() != WeaponTypes::None;
+    bool hitsAir = unit->getType().airWeapon() != WeaponTypes::None;
+    int range = std::max({hitsGround ? unit->getType().groundWeapon().maxRange() : 0,
+                          hitsAir ? unit->getType().airWeapon().maxRange() : 0, 32}) + 64;
+    for (auto enemy : unit->getUnitsInRadius(range + 96, IsEnemy && IsVisible))
     {
-        if (!enemy->isDetected()) continue;
+        if (!enemy->isDetected() || (enemy->isFlying() ? !hitsAir : !hitsGround)) continue;
         int priority = targetPriority(enemy);
         int health = enemy->getHitPoints() + enemy->getShields();
         if (priority > bestPriority || priority == bestPriority && health < bestHealth)
@@ -1063,6 +1320,13 @@ void ClaudeOpus55::controlArmy()
     }
 
     controlObservers(army);
+    controlCorsairs(army);
+
+    // Once the natural is ours, the army waits in front of it rather than at the top of the main ramp
+    if (naturalFront.isValid() && Broodwar->self()->allUnitCount(UnitTypes::Protoss_Nexus) >= 2)
+    {
+        rally = towards(naturalFront, Position(natural->depot) + Position(64, 48), 64);
+    }
 
     // Defend first: everything goes for enemies near home, with probes helping against an early rush
     auto threats = threatsNearHome();
@@ -1261,6 +1525,48 @@ void ClaudeOpus55::controlArmy()
         else
         {
             fight(unit, rally);
+        }
+    }
+}
+
+// Corsairs guard the mineral lines (or fly with the attacking army) and shoot down any flyer that comes near
+void ClaudeOpus55::controlCorsairs(const Unitset &army)
+{
+    Unitset corsairs;
+    for (auto unit : Broodwar->self()->getUnits())
+    {
+        if (unit->getType() == UnitTypes::Protoss_Corsair && unit->isCompleted()) corsairs.insert(unit);
+    }
+    if (corsairs.empty()) return;
+    Position goal = attacking && !army.empty() ? army.getPosition() : (home + mineralCenter) / 2;
+
+    // Mutalisks anywhere near our bases or the army come first; otherwise overlords near the flock once it has 4
+    Unit target = nullptr;
+    int best = INT_MAX;
+    for (auto enemy : Broodwar->enemy()->getUnits())
+    {
+        if (!enemy->isVisible() || !enemy->isFlying() || !enemy->isDetected()) continue;
+        bool dangerous = enemy->getType().canAttack();
+        if (!dangerous && corsairs.size() < 4) continue;
+        int distance = enemy->getDistance(corsairs.getPosition());
+        int fromHome = std::min(enemy->getDistance(home), enemy->getDistance(goal));
+        if (dangerous ? fromHome > 1200 : distance > 500) continue;
+        int score = distance - (dangerous ? 2000 : 0);
+        if (score < best)
+        {
+            best = score;
+            target = enemy;
+        }
+    }
+    for (auto corsair : corsairs)
+    {
+        if (target)
+        {
+            if (corsair->getOrderTarget() != target) corsair->attack(target);
+        }
+        else if (corsair->getDistance(goal) > 96 && corsair->getTargetPosition().getApproxDistance(goal) > 64)
+        {
+            corsair->move(goal);
         }
     }
 }

@@ -2,6 +2,7 @@
 
 #include <BWAPI.h>
 
+#include <climits>
 #include <map>
 #include <set>
 #include <vector>
@@ -37,6 +38,12 @@ private:
     BWAPI::Position mineralCenter;
     std::vector<Base> bases;          // resource clusters, nearest to home first
     const Base *natural = nullptr;
+    BWAPI::Position naturalFront = BWAPI::Positions::Invalid;  // in front of the natural nexus, away from its minerals
+    bool forgeExpand = false;         // against Zerg: forge and cannons at the natural, then the nexus there
+    int rushDistance = INT_MAX;       // ground distance in tiles to the nearest enemy start
+    int naturalEntrances = 0;         // ways into the natural from the enemy's side
+    int widestEntrance = 0;           // in tiles
+    void analyseMap();
 
     // Units
     BWAPI::Unit mainNexus = nullptr;
@@ -61,6 +68,8 @@ private:
     // Cloaked enemies (dark templar, lurkers, wraiths, mines) seen: detection becomes urgent
     bool cloakSeen = false;
     bool templarArchivesSeen = false;
+    bool airSeen = false;              // a spire or mutalisks: cannons in the mineral lines and corsairs
+    bool rangedNeeded = false;         // hydralisks, lurkers or mutalisks: zealots are poor, dragoons only
     bool rushSeen = false;             // early mass gateways/barracks or early zealots/zerglings: hold the expansion
 
     // Set when the natural is due, so production leaves money for it
@@ -71,6 +80,7 @@ private:
     {
         int supply;
         BWAPI::UnitType type;
+        bool atNatural = false;  // placed at the natural's front (forge, cannons and their pylon) instead of the main
     };
     std::vector<Step> buildOrder;
     size_t buildOrderStep = 0;
@@ -95,7 +105,8 @@ private:
     int reservedGas() const;
     BWAPI::Unit chooseBuilder(BWAPI::Position near);
     BWAPI::TilePosition pylonSpot();
-    BWAPI::TilePosition findBuildSpot(BWAPI::UnitType type, BWAPI::TilePosition near) const;
+    BWAPI::TilePosition findBuildSpot(BWAPI::UnitType type, BWAPI::TilePosition near, bool checkExplored = true) const;
+    void buildMineralLineCannons();
     std::vector<BWAPI::Unit> nexuses(bool completedOnly) const;
     BWAPI::Unit nexusNeedingWorkers() const;
 
@@ -105,6 +116,7 @@ private:
     void controlArmy();
     void fight(BWAPI::Unit unit, BWAPI::Position goal);
     void controlObservers(const BWAPI::Unitset &army);
+    void controlCorsairs(const BWAPI::Unitset &army);
     BWAPI::Unitset threatsNearHome() const;
     static double strength(BWAPI::Unit unit);
     // Fighting power of a group: (total durability) x (total damage per frame), which values concentration
