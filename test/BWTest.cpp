@@ -383,6 +383,16 @@ void BWTest::runGame(bool opponent)
     // The stats as of the last frame played (once a player has left the game, the engine has removed its units)
     std::optional<PlayerStats> lastMyStats, lastOpponentStats;
 
+    // Both players' losses, counted from every kill the engine makes (whoever can see it)
+    Losses losses;
+    if (!opponent)
+    {
+        gameOwner.getGame().setOnKillUnit([&losses, &leftGame](BW::Unit unit)
+                                          {
+                                              if (!leftGame) losses.count(unit);
+                                          });
+    }
+
     // In the game window: [s] toggles the stats screen, [r] saves the replay so far
     bool showStats = true;
     auto ratings = ReadRatings();
@@ -412,8 +422,8 @@ void BWTest::runGame(bool opponent)
 
         if (!leftGame)
         {
-            lastMyStats = PlayerStats::read(game, "Tests", myName);
-            lastOpponentStats = PlayerStats::read(game, "Opponent", opponentDisplayName);
+            lastMyStats = PlayerStats::read(game, "Tests", myName, losses);
+            lastOpponentStats = PlayerStats::read(game, "Opponent", opponentDisplayName, losses);
         }
         if (showStats && lastMyStats && lastOpponentStats && std::get<0>(game.GameScreenBuffer()) > 0)
         {
@@ -473,6 +483,7 @@ void BWTest::runGame(bool opponent)
     }
 
     std::cout << "Game over " << (opponent ? "(opponent) " : "") << "after " << h->getFrameCount() << " frames" << std::endl;
+    if (!opponent) gameOwner.getGame().setOnKillUnit(nullptr);
 
     h->update();
 

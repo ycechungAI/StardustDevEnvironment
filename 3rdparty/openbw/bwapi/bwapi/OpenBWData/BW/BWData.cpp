@@ -370,6 +370,10 @@ struct game_vars {
   bool is_multi_player = false;
 
   std::unordered_map<std::string, std::string> override_env_var;
+
+  // Called when the engine kills a unit (damage, suicide, a cancelled build...), not when it just removes one
+  // (e.g. a drone becoming an extractor)
+  std::function<void(bwgame::unit_t*)> on_kill_unit;
 };
 
 void g_global_init_if_necessary(const bwgame::global_state& global_st, std::string mpq_path);
@@ -798,6 +802,10 @@ struct openbwapi_functions: F {
 
   template<typename... args_T>
   openbwapi_functions(game_vars& vars, args_T&&... args) : F(std::forward<args_T>(args)...), vars(vars) {}
+
+  virtual void on_kill_unit(bwgame::unit_t* u) override {
+    if (vars.on_kill_unit) vars.on_kill_unit(u);
+  }
 
 };
 
@@ -1568,6 +1576,19 @@ void Game::setOnDraw(std::function<void (uint8_t*, size_t)> onDraw)
 {
   impl->on_draw = onDraw;
   impl->on_draw_changed = true;
+}
+
+void Game::setOnKillUnit(std::function<void(Unit)> onKillUnit)
+{
+  if (!onKillUnit)
+  {
+    impl->vars.on_kill_unit = nullptr;
+    return;
+  }
+  auto *gameImpl = impl;
+  impl->vars.on_kill_unit = [gameImpl, onKillUnit = std::move(onKillUnit)](bwgame::unit_t* u) {
+    onKillUnit(Unit{u, gameImpl});
+  };
 }
 
 std::tuple<int, int, uint32_t*> Game::drawGameScreen(int x, int y, int width, int height)

@@ -1,5 +1,6 @@
 #include "GameStats.h"
 
+#include "BW/UnitStatusFlags.h"
 #include <nlohmann/json.hpp>
 
 #include <chrono>
@@ -45,7 +46,41 @@ namespace
     }
 }
 
-std::optional<PlayerStats> PlayerStats::read(BW::Game game, const std::string &characterName, const std::string &name)
+void Losses::count(BW::Unit unit)
+{
+    // Only the players' own units: not neutral minerals, geysers or critters (nor units of a player who has left,
+    // which the engine makes neutral)
+    int owner = unit.playerID();
+    if (owner < 0 || owner >= 8) return;
+
+    BWAPI::UnitType type(unit.unitType());
+    if (type.isNeutral() || type.isSpell()) return;
+
+    // Not real units: a reaver's scarabs, a carrier's interceptors, spider mines and nukes are spent as ammunition,
+    // broodlings die when their time runs out, and hallucinations are fake
+    if (type == BWAPI::UnitTypes::Protoss_Scarab || type == BWAPI::UnitTypes::Protoss_Interceptor
+        || type == BWAPI::UnitTypes::Terran_Vulture_Spider_Mine || type == BWAPI::UnitTypes::Terran_Nuclear_Missile
+        || type == BWAPI::UnitTypes::Zerg_Broodling)
+    {
+        return;
+    }
+    if (unit.statusFlag(BW::StatusFlags::IsHallucination)) return;
+
+    // The engine also "kills" something cancelled while it is being built or morphed; a unit killed by damage has 0 hp
+    if (!unit.statusFlag(BW::StatusFlags::Completed) && unit.hitPoints() > 0) return;
+
+    if (type.isBuilding())
+    {
+        buildings[owner]++;
+    }
+    else
+    {
+        units[owner]++;
+    }
+}
+
+std::optional<PlayerStats> PlayerStats::read(BW::Game game, const std::string &characterName, const std::string &name,
+                                             const Losses &losses)
 {
     for (int owner = 0; owner < 12; owner++)
     {
@@ -66,9 +101,12 @@ std::optional<PlayerStats> PlayerStats::read(BW::Game game, const std::string &c
                         + player.unitCountsAll(BWAPI::UnitTypes::Zerg_Drone.getID());
         stats.mineralsGathered = player.cumulativeMinerals();
         stats.gasGathered = player.cumulativeGas();
-        stats.unitsKilled = player.allUnitsKilled();
-        stats.unitsLost = player.allUnitsLost();
-        stats.buildingsLost = player.allBuildingsLost();
+        stats.unitsLost = losses.units[owner];
+        stats.buildingsLost = losses.buildings[owner];
+        for (int other = 0; other < 8; other++)
+        {
+            if (other != owner) stats.unitsKilled += losses.units[other];
+        }
         return stats;
     }
     return std::nullopt;

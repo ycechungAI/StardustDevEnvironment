@@ -3,9 +3,22 @@
 #include <BWAPI.h>
 #include "BW/BWData.h"
 
+#include <array>
 #include <map>
 #include <optional>
 #include <string>
+
+// What each player has lost so far, counted from the engine's kill events. OpenBW doesn't keep BW's score counters
+// (Player::allUnitsKilled(), allUnitsLost() and allBuildingsLost() are always 0), so the harness counts them itself.
+// Units and buildings are counted apart, like BW's own score: "units" never includes buildings.
+struct Losses
+{
+    std::array<int, 12> units{};      // by owner
+    std::array<int, 12> buildings{};  // by owner
+
+    // Counts a unit the engine has just killed, if it is a real loss for its player
+    void count(BW::Unit unit);
+};
 
 // One player's numbers, read from the engine's own state (so both sides are complete, unlike what a bot can see)
 struct PlayerStats
@@ -23,8 +36,10 @@ struct PlayerStats
     int unitsLost = 0;
     int buildingsLost = 0;
 
-    // Reads the player whose in-game (character) name is characterName; name is what to call it
-    static std::optional<PlayerStats> read(BW::Game game, const std::string &characterName, const std::string &name);
+    // Reads the player whose in-game (character) name is characterName; name is what to call it.
+    // Kills and losses come from losses: a player is credited with every unit the other players lost.
+    static std::optional<PlayerStats> read(BW::Game game, const std::string &characterName, const std::string &name,
+                                           const Losses &losses);
 };
 
 // Elo ratings written by tools/elo.py to replays/ratings.json, by player name; empty if there are none yet
