@@ -570,6 +570,9 @@ Position, WalkPosition and TilePosition are immutable and hashable.
 from collections.abc import Callable, Iterator
 from typing import ClassVar, overload
 
+import numpy as np
+from numpy.typing import NDArray
+
 #: The current game, set by the bot host before any callback runs. (None outside a game, e.g. offline tests.)
 Broodwar: Game
 
@@ -711,6 +714,11 @@ def write_stub(class_specs, stub_namespaces, enums):
             lines.append("    def registerEvent(self, action: Callable[[Game], None], "
                          "condition: Callable[[Game], bool] | None = ..., timesToRun: int = ..., "
                          "framesToCheck: int = ...) -> None: ...")
+            for grid_name, query in (("Visibility", "isVisible for every tile"),
+                                     ("Creep", "hasCreep for every tile"),
+                                     ("Walkability", "isWalkable for every walk tile")):
+                lines.append(f"    def get{grid_name}Grid(self) -> NDArray[np.bool_]:")
+                lines.append(f'        """{query}, as a numpy bool array indexed [x, y]. (Not in BWAPI.)"""')
         for name, pyt in fields:
             lines.append(f"    {name}: {pyt}")
         # Overload markers must be consistent per name after filtering.

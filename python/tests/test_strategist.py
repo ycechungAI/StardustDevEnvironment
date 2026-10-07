@@ -66,7 +66,8 @@ def test_highest_priority_scout_tile_matches_stardust_scan() -> None:
             position = Position(rng.randrange(width * 32), rng.randrange(height * 32))
 
             groups = {priority: scout_play._TileGroup(tiles) for priority, tiles in tiles_by_priority.items()}
-            assert (scout_play._highest_priority_tile(groups, last_seen, UnitTypes.Protoss_Probe, position)
+            assert (scout_play._highest_priority_tile(groups, np.array(last_seen, dtype=np.int64),
+                                                      UnitTypes.Protoss_Probe, position)
                     == _literal_highest_priority_tile(tiles_by_priority, last_seen, width, position))
 
 

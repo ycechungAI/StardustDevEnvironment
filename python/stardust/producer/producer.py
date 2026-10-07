@@ -909,24 +909,7 @@ def _shift_for_minerals(item: _ProductionItem, prerequisite_items: _ItemSet) -> 
     # Workers are a special case, as they start producing income after they are completed
     # So for them we just need enough minerals to cover the period until they have recovered their investment
     if f > item.start_frame and item.is_type(UnitTypes.Protoss_Probe):
-        f = item.start_frame
-        time_to_build = _build_time(item.type)
-        i = max(0, item.start_frame)
-        while i < _predict_frames:
-            frames = np.arange(i, _predict_frames, dtype=np.int64)
-            mining_time = frames - f - time_to_build
-            required = mineral_cost - np.where(mining_time > 0,
-                                               (mining_time * MINERALS_PER_WORKER_FRAME).astype(np.int64), 0)
-            done = required <= 0
-            event = done | (_minerals[i:] < required)
-            events = np.flatnonzero(event)
-            if not events.size:
-                break
-            j = int(events[0])
-            if done[j]:
-                break
-            f = i + j
-            i = f + 1
+        f = _worker_payback_frame(item.start_frame, mineral_cost, _build_time(item.type))
 
     # If we can't ever produce this item, return false
     if f == _predict_frames:
@@ -940,6 +923,57 @@ def _shift_for_minerals(item: _ProductionItem, prerequisite_items: _ItemSet) -> 
         item.completion_frame += delta
         _shift_all(prerequisite_items, 0, delta)
     return True
+
+
+def _worker_payback_frame(start_frame: int, mineral_cost: int, time_to_build: int) -> int:
+    """For a worker, the last frame from which we can't cover its cost until it has mined it back. Stardust's loop:
+
+        f = startFrame;
+        for (i = startFrame; i < PREDICT_FRAMES; i++) {
+            required = mineralCost - (miningTime = i - f - timeToBuild) > 0 ? (int)(miningTime * rate) : 0;
+            if (required <= 0) break;
+            if (minerals[i] < required) f = i;
+        }
+
+    This does the same with numpy. Two things keep it fast: once the worker has mined for payback_time frames the
+    loop always ends, so only frames up to f + timeToBuild + payback_time are looked at; and until f + timeToBuild
+    the requirement is the full cost, so a run of frames short of it, each within timeToBuild of the last, moves f
+    to the end of the run in one step."""
+    f = start_frame
+    if mineral_cost <= 0:
+        return f
+
+    # The first mining time at which the worker has paid for itself (int(m * rate) is nondecreasing in m)
+    payback_time = max(1, int(mineral_cost / MINERALS_PER_WORKER_FRAME) - 1)
+    while int(payback_time * MINERALS_PER_WORKER_FRAME) >= mineral_cost and payback_time > 1:
+        payback_time -= 1
+    while int(payback_time * MINERALS_PER_WORKER_FRAME) < mineral_cost:
+        payback_time += 1
+
+    i = start_frame
+    while i < _predict_frames:
+        end = min(_predict_frames, f + time_to_build + payback_time)
+        if i >= end:
+            break
+        lo = max(0, i)
+        mining_time = np.arange(lo - f - time_to_build, end - f - time_to_build, dtype=np.int64)
+        required = mineral_cost - np.where(mining_time > 0,
+                                           (mining_time * MINERALS_PER_WORKER_FRAME).astype(np.int64), 0)
+        short = np.flatnonzero(_minerals[lo:end] < required)
+        if not short.size:
+            break
+        f = lo + int(short[0])
+
+        # Follow the run of frames short of the full cost that are each within timeToBuild of the previous one
+        after = np.flatnonzero(_minerals[f + 1:] < mineral_cost)
+        if after.size:
+            gaps = np.diff(after, prepend=-1)
+            breaks = np.flatnonzero(gaps > time_to_build)
+            run_end = int(breaks[0]) - 1 if breaks.size else after.size - 1
+            if run_end >= 0:
+                f = f + 1 + int(after[run_end])
+        i = f + 1
+    return f
 
 
 def _mineral_block_frame(reassign_frame: int) -> int:
@@ -972,6 +1006,106 @@ def _gas_deficit(gas_cost: int, start_frame: int) -> tuple[int, int]:
                 gas_deficit_frame = lowest
                 gas_deficit = int(deficits[positive[chosen]])
     return gas_deficit_frame, gas_deficit
+
+
+def _refinery_start_frame(desired_start_frame: int, end_frame: int, price: int, build_time: int,
+                          existing_start_frame: int | None) -> int:
+    """Stardust's scan for the frame a refinery can start at, from the desired frame: one past the last frame f
+    before end_frame that fails either check, where actual is that value so far:
+
+        if (minerals[f] < price) { actual = f + 1; continue; }
+        needed = (int)(3.0 * (f - actual) * MINERALS_PER_WORKER_FRAME) + extra;
+        if (minerals[f + buildTime] < needed) { actual = f + 1; continue; }
+
+    extra is the price when adding a refinery (existing_start_frame None), and when moving one, the price only if
+    the refinery would complete before its existing start frame.
+
+    This does the same with numpy. Right after a failure, the frame is checked with nothing extra mined (f == actual),
+    so a run of frames failing that is skipped in one step; then the next failure is found with the mined amount
+    growing from there."""
+    actual = desired_start_frame
+    if desired_start_frame >= end_frame:
+        return actual
+
+    frames = np.arange(desired_start_frame, end_frame, dtype=np.int64)
+    start_ok = _minerals[desired_start_frame:end_frame] >= price
+    at_completion = _minerals[desired_start_frame + build_time:end_frame + build_time]
+    if existing_start_frame is None:
+        extra = np.full(len(frames), price, dtype=np.int64)
+    else:
+        extra = np.where(frames + build_time < existing_start_frame, price, 0)
+    passes_fresh = start_ok & (at_completion >= extra)
+
+    while actual < end_frame:
+        # Frames failing right after a failure (or at the desired frame)
+        i = actual - desired_start_frame
+        passing = np.flatnonzero(passes_fresh[i:])
+        if not passing.size:
+            return end_frame
+        actual += int(passing[0])
+
+        # The next failure after that, with the mined amount growing from actual
+        i = actual - desired_start_frame + 1
+        mined = (3.0 * np.arange(1, end_frame - actual, dtype=np.int64) * MINERALS_PER_WORKER_FRAME).astype(np.int64)
+        failing = np.flatnonzero(~start_ok[i:] | (at_completion[i:] < extra[i:] + mined))
+        if not failing.size:
+            return actual
+        actual += int(failing[0]) + 2
+    return actual
+
+
+def _gas_deficit_with_prerequisites(gas_cost: int, prerequisite_cost: int, start_frame: int,
+                                    reversed_prerequisites: list[tuple[int, int]]) -> tuple[int, int]:
+    """Stardust's backwards scan for the gas deficit of an item and its prerequisites, given as (start frame, gas
+    price) in reverse order. Returns (P, 0) if there is no deficit. Stardust's loop:
+
+        gasNeeded = prerequisiteCost + gasCost;
+        for (f = P - 1; f >= 0; f--) {
+            deficit = gasNeeded - gas[f];
+            if (deficit > 0 && f - ((deficit * 75) >> 4) < gasDeficitFrame) {
+                gasDeficitFrame = f - ((deficit * 75) >> 4); gasDeficit = deficit;
+            }
+            if (f == item.startFrame) gasNeeded -= gasCost;
+            while (next prerequisite's startFrame == f) gasNeeded -= its gas price;
+            if (gasNeeded == 0) break;
+        }
+
+    This does the same with numpy: it works out at which frames the amounts come off, and so how much is needed at
+    each frame the loop looks at, then picks the lowest deficit frame (the first found, i.e. latest f, on ties)."""
+    p = _predict_frames
+    if p <= 0:
+        return p, 0
+
+    # The amount that comes off at each frame, after that frame's deficit check
+    decrements = np.zeros(p, dtype=np.int64)
+    if 0 <= start_frame < p:
+        decrements[start_frame] += gas_cost
+
+    # Prerequisites come off in order as f counts down: each one at its start frame if the loop gets there, which it
+    # doesn't if that's above the previous one's frame (or off the window), and then neither do the rest
+    reachable = p - 1
+    for prerequisite_start, prerequisite_gas in reversed_prerequisites:
+        if not 0 <= prerequisite_start <= reachable:
+            break
+        decrements[prerequisite_start] += prerequisite_gas
+        reachable = prerequisite_start
+
+    # needed[f]: gas needed at f's check, i.e. the total less everything that came off at frames above f
+    came_off_above = np.concatenate((np.cumsum(decrements[::-1])[::-1][1:], [0]))
+    needed = (prerequisite_cost + gas_cost) - came_off_above
+
+    # The loop stops after the (highest) frame where nothing is needed any more
+    done = np.flatnonzero(needed - decrements == 0)
+    lowest_frame = int(done[-1]) if done.size else 0
+
+    deficits = needed[lowest_frame:] - _gas[lowest_frame:]
+    positive = np.flatnonzero(deficits > 0)
+    if not positive.size:
+        return p, 0
+    deficit_frames = (lowest_frame + positive) - ((deficits[positive] * 75) >> 4)  # Approximation avoiding division
+    lowest = int(deficit_frames.min())
+    chosen = int(np.flatnonzero(deficit_frames == lowest)[-1])
+    return lowest, int(deficits[positive[chosen]])
 
 
 def _supply_block_frames(start_frame: int, supply_required: int) -> list[int] | None:
@@ -1086,26 +1220,10 @@ def _shift_for_gas(item: _ProductionItem, prerequisite_items: _ItemSet, commit: 
     else:
         # There are prerequisites that require gas
         # Get the gas deficit if we produce the item and prerequisites on schedule
-        gas_needed = prerequisite_cost + gas_cost
-        reversed_prerequisites = list(reversed(prerequisite_items.items))
-        prerequisite_index = 0
-        for f in range(_predict_frames - 1, -1, -1):
-            deficit = gas_needed - int(_gas[f])
-            if deficit > 0:
-                deficit_frame = f - ((deficit * 75) >> 4)  # Approximation avoiding floating-point division
-                if deficit_frame < gas_deficit_frame:
-                    gas_deficit_frame = deficit_frame
-                    gas_deficit = deficit
-
-            if f == item.start_frame:
-                gas_needed -= gas_cost
-            while (prerequisite_index < len(reversed_prerequisites)
-                   and f == reversed_prerequisites[prerequisite_index].start_frame):
-                gas_needed -= reversed_prerequisites[prerequisite_index].gas_price()
-                prerequisite_index += 1
-
-            if gas_needed == 0:
-                break
+        gas_deficit_frame, gas_deficit = _gas_deficit_with_prerequisites(
+            gas_cost, prerequisite_cost, item.start_frame,
+            [(prerequisite.start_frame, prerequisite.gas_price())
+             for prerequisite in reversed(prerequisite_items.items)])
 
     # If we have enough gas now, just return
     if gas_deficit == 0 or gas_deficit_frame == _predict_frames:
@@ -1140,21 +1258,9 @@ def _shift_for_gas(item: _ProductionItem, prerequisite_items: _ItemSet, commit: 
         # We check two things:
         # - We have enough minerals to start the refinery at its new start frame
         # - We have enough minerals after the refinery completes and workers are reassigned
-        actual_start_frame = desired_start_frame
-        for f in range(desired_start_frame, min(refinery.start_frame, _predict_frames - refinery_build_time)):
-            # Start frame
-            if _minerals[f] < refinery_type.mineralPrice():
-                actual_start_frame = f + 1
-                continue
-
-            # Completion frame
-            completion_frame = f + refinery_build_time
-            minerals_needed = to_int(3.0 * (f - actual_start_frame) * MINERALS_PER_WORKER_FRAME)
-            if completion_frame < refinery.start_frame:
-                minerals_needed += refinery_type.mineralPrice()
-            if _minerals[completion_frame] < minerals_needed:
-                actual_start_frame = f + 1
-                continue
+        actual_start_frame = _refinery_start_frame(
+            desired_start_frame, min(refinery.start_frame, _predict_frames - refinery_build_time),
+            refinery_type.mineralPrice(), refinery_build_time, refinery.start_frame)
 
         # If we could move it back, make the relevant adjustment
         delta = refinery.start_frame - actual_start_frame
@@ -1189,20 +1295,8 @@ def _shift_for_gas(item: _ProductionItem, prerequisite_items: _ItemSet, commit: 
         # We check two things:
         # - We have enough minerals to start the refinery
         # - We have enough minerals after the refinery completes and workers are reassigned
-        actual_start_frame = desired_start_frame
-        for f in range(desired_start_frame, _predict_frames - refinery_build_time):
-            # Start frame
-            if _minerals[f] < refinery_type.mineralPrice():
-                actual_start_frame = f + 1
-                continue
-
-            # Completion frame
-            completion_frame = f + refinery_build_time
-            minerals_needed = refinery_type.mineralPrice() + to_int(
-                3.0 * (f - actual_start_frame) * MINERALS_PER_WORKER_FRAME)
-            if _minerals[completion_frame] < minerals_needed:
-                actual_start_frame = f + 1
-                continue
+        actual_start_frame = _refinery_start_frame(desired_start_frame, _predict_frames - refinery_build_time,
+                                                   refinery_type.mineralPrice(), refinery_build_time, None)
 
         # Queue it if it was possible to build
         if actual_start_frame < _predict_frames:

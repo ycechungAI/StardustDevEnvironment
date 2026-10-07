@@ -5,13 +5,24 @@ import math
 from enum import IntEnum
 
 import bwapi
+import numpy as np
 from bwapi import Position, Positions, TilePosition, UnitType, WalkPosition
-from stardust.cpp import INT_MAX, cdiv, cround, f32, to_int
+from numpy.typing import NDArray
+from stardust.cpp import cdiv, cround, f32, to_int
 
 _PI = 3.14159265358979323846
 
 # (radius, x, y) of every offset within 256 pixels, sorted by radius then x then y
 _radius_positions: list[tuple[int, int, int]] = []
+
+# Not in Stardust: _radius_positions as arrays, so the searches over it can use numpy
+_radius_values: list[int] = []
+_radius_dx: NDArray[np.int64] = np.zeros(0, dtype=np.int64)
+_radius_dy: NDArray[np.int64] = np.zeros(0, dtype=np.int64)
+
+# Not in Stardust: the map's terrain walkability at walk resolution, indexed [x, y]. Asking BWAPI one walk tile at a
+# time made map analysis take minutes, and terrain walkability doesn't change during a game. Built on first use.
+_walk_grid: NDArray[np.bool_] | None = None
 
 # Copied from openbw's bwgame.h, used for BW direction math
 _TAN_TABLE = (
@@ -110,6 +121,7 @@ class Direction(IntEnum):
 
 
 def initialize() -> None:
+    global _radius_dx, _radius_dy, _walk_grid
     _radius_positions.clear()
     for x in range(-256, 257):
         for y in range(-256, 257):
@@ -118,6 +130,38 @@ def initialize() -> None:
                 continue
             _radius_positions.append((dist, x, y))
     _radius_positions.sort()
+
+    _radius_values[:] = [radius for radius, _, _ in _radius_positions]
+    _radius_dx = np.array([x for _, x, _ in _radius_positions], dtype=np.int64)
+    _radius_dy = np.array([y for _, _, y in _radius_positions], dtype=np.int64)
+    _walk_grid = None
+
+
+def _walkability() -> NDArray[np.bool_]:
+    global _walk_grid
+    if _walk_grid is None:
+        _walk_grid = bwapi.Broodwar.getWalkabilityGrid()
+    return _walk_grid
+
+
+def _unwalkable_or_invalid(px: NDArray[np.int64], py: NDArray[np.int64]) -> NDArray[np.bool_]:
+    """For arrays of pixel positions, whether each is off the map or on an unwalkable walk tile."""
+    grid = _walkability()
+    width, height = grid.shape
+    valid = (px >= 0) & (py >= 0) & (px < width * 8) & (py < height * 8)
+    walkable_here = grid[np.where(valid, px >> 3, 0), np.where(valid, py >> 3, 0)]
+    result: NDArray[np.bool_] = ~(valid & walkable_here)
+    return result
+
+
+def approximate_distances(dx: NDArray[np.int64], dy: NDArray[np.int64]) -> NDArray[np.int64]:
+    """approximate_distance over arrays of (non-negative) deltas."""
+    lo = np.minimum(dx, dy)
+    hi = np.maximum(dx, dy)
+    min_calc = (3 * lo) >> 3
+    result: NDArray[np.int64] = np.where(lo <= (hi >> 2), hi,
+                                         (min_calc >> 5) + min_calc + hi - (hi >> 4) - (hi >> 6))
+    return result
 
 
 def approximate_distance(x1: int, x2: int, y1: int, y2: int) -> int:
@@ -204,12 +248,16 @@ def overlaps_tiles(first_top_left: TilePosition, first_width: int, first_height:
 
 
 def walkable(unit_type: UnitType, center: Position) -> bool:
-    game = bwapi.Broodwar
-    for x in range(center.x - unit_type.dimensionLeft(), center.x + unit_type.dimensionRight() + 1):
-        for y in range(center.y - unit_type.dimensionUp(), center.y + unit_type.dimensionDown() + 1):
-            if not game.isWalkable(cdiv(x, 8), cdiv(y, 8)):
-                return False
-    return True
+    # Stardust checks isWalkable(x / 8, y / 8) for every pixel the unit covers. The walk tiles that covers are the
+    # rectangle between the corners' walk tiles, and isWalkable is false off the map.
+    grid = _walkability()
+    left = cdiv(center.x - unit_type.dimensionLeft(), 8)
+    right = cdiv(center.x + unit_type.dimensionRight(), 8)
+    top = cdiv(center.y - unit_type.dimensionUp(), 8)
+    bottom = cdiv(center.y + unit_type.dimensionDown(), 8)
+    if left < 0 or top < 0 or right >= grid.shape[0] or bottom >= grid.shape[1]:
+        return False
+    return bool(grid[left:right + 1, top:bottom + 1].all())
 
 
 def find_closest_unwalkable_position(start: Position, search_radius: int,
@@ -217,57 +265,61 @@ def find_closest_unwalkable_position(start: Position, search_radius: int,
     if search_radius > 256:
         return find_closest_unwalkable_position_near(start, start, search_radius, further_from)
 
-    game = bwapi.Broodwar
     has_further_from = further_from != Positions.Invalid
     further_from_angle = math.atan2(start.y - further_from.y, start.x - further_from.x) if has_further_from else 0.0
-    for radius, dx, dy in _radius_positions:
-        # Stop the search when we exceed the radius
-        if radius > search_radius:
-            return Positions.Invalid
 
-        here = Position(start.x + dx, start.y + dy)
-
-        # Skip valid and walkable positions
-        if here.isValid() and game.isWalkable(WalkPosition(here)):
-            continue
+    # Stardust walks _radius_positions in order and returns the first offset that is invalid or unwalkable (and, if
+    # further_from is given, in the right direction), stopping past search_radius. This checks the same offsets in
+    # the same order, a growing chunk at a time with numpy, since the answer is usually close. (np.arctan2 is
+    # libm's atan2 on the platforms we use, so the angles match math.atan2.)
+    end = bisect.bisect_right(_radius_values, search_radius)
+    chunk_start = 0
+    chunk_size = 256
+    while chunk_start < end:
+        chunk_end = min(end, chunk_start + chunk_size)
+        xs = start.x + _radius_dx[chunk_start:chunk_end]
+        ys = start.y + _radius_dy[chunk_start:chunk_end]
+        found = _unwalkable_or_invalid(xs, ys)
 
         # If this is defined, we expect this position to be opposite the one we find here
         if has_further_from:
-            angle = math.atan2(here.y - start.y, here.x - start.x)
-            if abs(angle - further_from_angle) > _PI / 4.0:
-                continue
+            angles = np.arctan2((ys - start.y).astype(np.float64), (xs - start.x).astype(np.float64))
+            found &= ~(np.abs(angles - further_from_angle) > _PI / 4.0)
 
-        return here
+        hits = np.flatnonzero(found)
+        if hits.size:
+            return Position(int(xs[hits[0]]), int(ys[hits[0]]))
+
+        chunk_start = chunk_end
+        chunk_size *= 4
 
     return Positions.Invalid
 
 
 def find_closest_unwalkable_position_near(start: Position, close_to: Position, search_radius: int,
                                           further_from: Position = Positions.Invalid) -> Position:
-    game = bwapi.Broodwar
-    best_pos = Positions.Invalid
-    best_dist = INT_MAX
     has_further_from = further_from != Positions.Invalid
     further_from_angle = math.atan2(start.y - further_from.y, start.x - further_from.x) if has_further_from else 0.0
-    for x in range(start.x - search_radius, start.x + search_radius + 1):
-        for y in range(start.y - search_radius, start.y + search_radius + 1):
-            current = Position(x, y)
-            if current.isValid() and game.isWalkable(WalkPosition(current)):
-                continue
 
-            dist = current.getApproxDistance(close_to)
+    # Stardust scans the square x-major and keeps the first position with the smallest distance to close_to among
+    # the invalid or unwalkable ones (in the right direction, if further_from is given). Same, with numpy.
+    side = 2 * search_radius + 1
+    xs = np.repeat(np.arange(start.x - search_radius, start.x + search_radius + 1, dtype=np.int64), side)
+    ys = np.tile(np.arange(start.y - search_radius, start.y + search_radius + 1, dtype=np.int64), side)
+    found = _unwalkable_or_invalid(xs, ys)
 
-            # If this is defined, we expect this position to be opposite the one we find here
-            if has_further_from:
-                angle = math.atan2(current.y - start.y, current.x - start.x)
-                if abs(angle - further_from_angle) > _PI / 2.0:
-                    continue
+    # If this is defined, we expect this position to be opposite the one we find here
+    if has_further_from:
+        angles = np.arctan2((ys - start.y).astype(np.float64), (xs - start.x).astype(np.float64))
+        found &= ~(np.abs(angles - further_from_angle) > _PI / 2.0)
 
-            if dist < best_dist:
-                best_pos = current
-                best_dist = dist
+    hits = np.flatnonzero(found)
+    if not hits.size:
+        return Positions.Invalid
 
-    return best_pos
+    dists = approximate_distances(np.abs(xs[hits] - close_to.x), np.abs(ys[hits] - close_to.y))
+    best = hits[int(np.argmin(dists))]  # argmin returns the first of equal minimums, like Stardust's strict <
+    return Position(int(xs[best]), int(ys[best]))
 
 
 def _steps_between(start_x: int, start_y: int, end_x: int, end_y: int, dist_total: int) -> list[tuple[int, int]]:

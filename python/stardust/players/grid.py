@@ -18,6 +18,7 @@ from stardust.instrumentation import cherryvis
 from stardust.util import unit_util
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from stardust.players.upgrade_tracker import UpgradeTracker
 
 _STASIS_RANGE = 44
@@ -282,6 +283,13 @@ class Grid:
 
     def static_ground_threat_at(self, walk_x: int, walk_y: int) -> int:
         return int(self._static_ground_threat.data[walk_x, walk_y])
+
+    def static_ground_threat_tiles(self) -> NDArray[np.bool_]:
+        """Not in Stardust: whether any walk tile of each tile has static ground threat, indexed [tile x, tile y]."""
+        data = self._static_ground_threat.data
+        width, height = data.shape
+        result: NDArray[np.bool_] = (data > 0).reshape(width // 4, 4, height // 4, 4).any(axis=(1, 3))
+        return result
 
     def air_threat(self, pos: Position | WalkPosition) -> int:
         return self._get(self._air_threat, pos)

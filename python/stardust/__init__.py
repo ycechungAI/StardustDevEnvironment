@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import faulthandler
+import signal
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,5 +17,9 @@ def create_bot() -> StardustAIModule:
     STARDUST_BOT=stardust.bot:StardustBot.
     """
     from stardust.stardust_ai_module import StardustAIModule
+
+    # `kill -USR1 <pid>` prints the Python stack of every thread, to find where a slow frame is stuck
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
 
     return StardustAIModule()

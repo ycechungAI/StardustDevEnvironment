@@ -186,6 +186,19 @@ BWAPI::Position UnitTypeAndPosition::getCenterPosition()
 
 void BWTest::run()
 {
+    // STARDUST_TEST_MAP=<name> overrides the map, e.g. to reproduce a map-specific problem
+    if (auto mapOverride = std::getenv("STARDUST_TEST_MAP"); mapOverride && *mapOverride)
+    {
+        map = Maps::GetOne(mapOverride);
+    }
+
+    // STARDUST_TEST_FRAME_LIMIT=<frames> overrides the frame limit, e.g. to only look at startup
+    if (auto frameLimitOverride = std::getenv("STARDUST_TEST_FRAME_LIMIT"); frameLimitOverride && *frameLimitOverride)
+    {
+        frameLimit = std::atoi(frameLimitOverride);
+        expectWin = false;
+    }
+
     // Ensure a map is selected
     if (!map)
     {
@@ -219,6 +232,10 @@ void BWTest::run()
         signal(SIGFPE, handler);
         signal(SIGSEGV, handler);
         signal(SIGABRT, handler);
+
+        // Only our own game gets a window (in builds with OPENBW_ENABLE_UI). The window belongs to the main thread,
+        // which doesn't exist in this forked process.
+        setenv("OPENBW_ENABLE_UI", "0", 1);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         runGame(true);

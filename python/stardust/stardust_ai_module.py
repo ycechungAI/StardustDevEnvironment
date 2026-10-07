@@ -9,6 +9,10 @@ WorkerMiningInstrumentation (Stardust's mining research instrumentation) is not 
 
 from __future__ import annotations
 
+import cProfile
+import gc
+import os
+import time
 from collections.abc import Callable
 
 import bwapi
@@ -95,6 +99,29 @@ def _dump_heatmaps() -> None:
         game_map.dump_power_heatmap()
 
 
+_gc_callback: Callable[[str, dict[str, int]], None] | None = None
+
+
+def _log_slow_garbage_collections(threshold_ms: float) -> None:
+    global _gc_callback
+    if _gc_callback is not None and _gc_callback in gc.callbacks:
+        gc.callbacks.remove(_gc_callback)
+    started = 0.0
+
+    def callback(phase: str, info: dict[str, int]) -> None:
+        nonlocal started
+        if phase == "start":
+            started = time.perf_counter()
+            return
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if elapsed_ms >= threshold_ms:
+            log.get(f"Garbage collection of generation {info['generation']} took {elapsed_ms:.1f}ms "
+                    f"({info['collected']} collected, {len(gc.get_objects())} objects tracked)")
+
+    _gc_callback = callback
+    gc.callbacks.append(callback)
+
+
 class StardustAIModule:
     def __init__(self) -> None:
         # Used in our test infrastructure
@@ -110,7 +137,27 @@ class StardustAIModule:
 
         self._game_finished = False
 
+        # Not in Stardust: STARDUST_PROFILE_FRAMES=<file> writes a cProfile of all onFrame calls there (read it with
+        # pstats). It's written every 1000 frames and at the end of the game.
+        self._frame_profile_path = os.environ.get("STARDUST_PROFILE_FRAMES")
+        self._frame_profile = cProfile.Profile() if self._frame_profile_path else None
+
     def onStart(self) -> None:
+        # Not in Stardust: STARDUST_PROFILE_STARTUP=<file> writes a cProfile of startup there (read it with pstats)
+        profile_path = os.environ.get("STARDUST_PROFILE_STARTUP")
+        if profile_path:
+            with cProfile.Profile() as profile:
+                self._on_start()
+            profile.dump_stats(profile_path)
+        else:
+            self._on_start()
+
+    def _on_start(self) -> None:
+        # Not in Stardust: STARDUST_LOG_GC=<ms> logs Python garbage collections that take at least that long
+        gc_threshold = os.environ.get("STARDUST_LOG_GC")
+        if gc_threshold:
+            _log_slow_garbage_collections(float(gc_threshold))
+
         self._game_finished = False
         common.current_frame = 0
 
@@ -181,7 +228,23 @@ class StardustAIModule:
         worker_gather_optimizer.game_end()
         cherryvis.game_end()
 
+        if self._frame_profile is not None and self._frame_profile_path:
+            self._frame_profile.dump_stats(self._frame_profile_path)
+
     def onFrame(self) -> None:
+        if self._frame_profile is None or not self._frame_profile_path:
+            self._on_frame()
+            return
+
+        self._frame_profile.enable()
+        try:
+            self._on_frame()
+        finally:
+            self._frame_profile.disable()
+        if common.current_frame % 1000 == 0:
+            self._frame_profile.dump_stats(self._frame_profile_path)
+
+    def _on_frame(self) -> None:
         if common.current_frame < self.frame_skip:
             common.current_frame += 1
             return

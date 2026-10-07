@@ -52,6 +52,39 @@ cd build/test && ./tests --gtest_filter=Steamhammer.4PoolHard
 
 The test harness, maps and opponents are described in `test/`: `Steamhammer.cpp`, `Locutus.cpp`, and `RushDefense.cpp` for a scripted scenario. Replays, CherryVis data and logs go to `build/test/replays/`.
 
+`tools/run_games.py` runs the same tests with a time estimate up front and a progress line (elapsed time, frame, time left) every 30 seconds:
+
+```bash
+.venv/bin/python tools/run_games.py Steamhammer.4PoolHard
+```
+
+Test harness options, as environment variables:
+
+| Variable | |
+|---|---|
+| `STARDUST_TEST_MAP` | map to play on (a name such as `Benzene`) instead of a random one |
+| `STARDUST_TEST_FRAME_LIMIT` | end the game after this many frames, e.g. to look only at startup |
+| `STARDUST_PROFILE_STARTUP` | write a cProfile of the bot's `onStart` to this file |
+| `STARDUST_PROFILE_FRAMES` | write a cProfile of all `onFrame` calls to this file (every 1000 frames and at the end) |
+| `STARDUST_LOG_GC` | log Python garbage collections taking at least this many milliseconds to the bot log |
+| `OPENBW_GAME_SPEED` | milliseconds per frame in the game window (42 is StarCraft's "fastest"); by default it runs as fast as the bot allows |
+
+`kill -USR1 <pid>` on a running `tests` process prints the bot's Python stack.
+
+### Watching a game
+
+OpenBW can show the game in a window as it runs. This needs SDL2 (`brew install sdl2`) and a build with the UI enabled. A separate build directory keeps the normal headless build as it is:
+
+```bash
+cmake -S . -B build-ui -DCMAKE_BUILD_TYPE=Release -DOPENBW_ENABLE_UI=ON
+```
+
+```bash
+cmake --build build-ui -j
+```
+
+Put the MPQ files in `build-ui/test/` as well, then run games from there (or with `tools/run_games.py ... --build build-ui`). Only our bot's game gets a window, not the opponent's. Drawing the window slows the game a little.
+
 Python is loaded from `python/` in the source tree, so edits to the bot take effect on the next run without rebuilding. At the end of each game the host prints the bot's frame times against the usual tournament limits.
 
 ## Tests without StarCraft
@@ -115,7 +148,7 @@ Environment variables read by the host:
 
 ### Performance
 
-Tournaments (SSCAIT, AIIDE, ...) forfeit a bot that has 320 frames over 55 ms, 10 frames over 1 s, or any frame over 10 s. A call into BWAPI from Python costs roughly 0.1–0.4 µs, measured on an Apple Silicon Mac. That is fine for per-unit logic, even across hundreds of units per frame. Heavy computation should stay out of pure Python: combat simulation, pathfinding and map analysis are what Stardust uses BWEM and FAP for in C++. Use numpy, or bind the C++ library next to `bwapi`.
+Tournaments (SSCAIT, AIIDE, ...) forfeit a bot that has 320 frames over 55 ms, 10 frames over 1 s, or any frame over 10 s. As of October 2026, a full game against Steamhammer on Tau Cross averages about 10 ms a frame with under 20 frames over 55 ms (Apple Silicon); the slowest frames are the ones where one of our buildings appears, which re-paths every navigation grid. A call into BWAPI from Python costs roughly 0.1–0.4 µs, measured on an Apple Silicon Mac. That is fine for per-unit logic, even across hundreds of units per frame. Heavy computation should stay out of pure Python: combat simulation, pathfinding and map analysis are what Stardust uses BWEM and FAP for in C++. Use numpy, or bind the C++ library next to `bwapi`.
 
 ## Regenerating the bindings
 

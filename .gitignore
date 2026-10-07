@@ -12,8 +12,16 @@ msvc
 out
 CMakeSettings.json
 build/
+build-ui/
 .venv/
 __pycache__/
 .pytest_cache/
 .DS_Store
 .reference/
+.mypy_cache/
+
+# StarCraft's data files are copyrighted and must never be committed, wherever they are put
+*.mpq
+*.MPQ
+# (except BWAPI's own network plugin file)
+!3rdparty/openbw/bwapi/bwapi/SNP_DirectIP/SNP/caps.mpq

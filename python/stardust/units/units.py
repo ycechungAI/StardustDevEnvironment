@@ -361,27 +361,33 @@ def _assign_enemy_units_to_bases() -> None:
         return ((unit_util.is_combat_unit(unit.type) or unit.last_seen_attacking >= frame - 120)
                 and (unit.is_transport() or unit_util.can_attack_ground(unit.type)))
 
-    def get_base(unit: Unit) -> Base | None:
+    # (Per-base values are looked up once rather than for every unit)
+    me = game.self()
+    bases = [(base, base.get_tile_position(), base.get_position()) for base in game_map.all_bases()]
+
+    def get_base(unit: Unit, is_combat: bool) -> Base | None:
         if not unit.last_position_valid:
             return None
 
         closest: Base | None = None
         closest_dist = 1000
-        is_combat = combat_unit(unit)
-        for base in game_map.all_bases():
+        unit_tile = unit.get_tile_position()
+        ignore_if_ours = not unit.type.isBuilding() and unit.last_seen < frame - 240
+        last_position = unit.last_position
+        for base, base_tile, base_position in bases:
             # Only consider combat units and units that block untaken bases
-            if not is_combat and (base.owner is not None or not geo.overlaps_tiles(
-                    base.get_tile_position(), 4, 3, unit.get_tile_position(), 2, 2)):
+            if not is_combat and (base.owner is not None
+                                  or not geo.overlaps_tiles(base_tile, 4, 3, unit_tile, 2, 2)):
                 continue
 
             # For our bases, ignore units we haven't seen for a while
-            if base.owner == game.self() and not unit.type.isBuilding() and unit.last_seen < frame - 240:
+            if ignore_if_ours and base.owner == me:
                 continue
 
             if unit.is_flying:
-                dist = unit.last_position.getApproxDistance(base.get_position())
+                dist = last_position.getApproxDistance(base_position)
             else:
-                dist = path_finding.get_ground_distance(unit.last_position, base.get_position(), unit.type)
+                dist = path_finding.get_ground_distance(last_position, base_position, unit.type)
             if dist == -1 or dist > closest_dist:
                 continue
 
@@ -390,8 +396,8 @@ def _assign_enemy_units_to_bases() -> None:
                 if base.owner is None:
                     continue
                 predicted_position = unit.predict_position(1)
-                if (predicted_position.getApproxDistance(base.get_position())
-                        > unit.last_position.getApproxDistance(base.get_position())):
+                if (predicted_position.getApproxDistance(base_position)
+                        > last_position.getApproxDistance(base_position)):
                     continue
 
             closest = base
@@ -400,7 +406,8 @@ def _assign_enemy_units_to_bases() -> None:
         return closest
 
     for unit in list(_enemy_units):
-        base = get_base(unit)
+        is_combat = combat_unit(unit)
+        base = get_base(unit, is_combat)
 
         # Remove from current base if it is different from the new one
         current = _enemy_units_to_base.get(unit)
@@ -419,7 +426,7 @@ def _assign_enemy_units_to_bases() -> None:
             _bases_to_enemy_units.setdefault(base, set()).add(unit)
             _enemy_units_to_base[unit] = base
 
-        if combat_unit(unit) and (base is None or base.owner != game.enemy()):
+        if is_combat and (base is None or base.owner != game.enemy()):
             _enemy_units_not_at_enemy_base.add(unit)
         else:
             _enemy_units_not_at_enemy_base.discard(unit)
