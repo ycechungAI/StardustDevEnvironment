@@ -161,6 +161,13 @@ struct ui_functions: bwgame::ui_functions {
   }
 };
 
+// The HUD panel below the game view: whether to show it, and the players it names
+struct hud_settings {
+  bool enabled = true;
+  int local_player = -1;
+  std::array<bwgame::a_string, 12> player_names;
+};
+
 struct ui_wrapper {
   std::chrono::high_resolution_clock clock;
   std::chrono::high_resolution_clock::time_point last_update;
@@ -185,11 +192,14 @@ struct ui_wrapper {
     player.set_st(st);
     return player;
   }
-  ui_wrapper(bwgame::state& st, std::string mpq_path) {
+  ui_wrapper(bwgame::state& st, std::string mpq_path, hud_settings hud) {
 
-    ui_thread = ui_thread_t([this, player = get_player(st), mpq_path]() mutable {
+    ui_thread = ui_thread_t([this, player = get_player(st), mpq_path, hud = std::move(hud)]() mutable {
       std::unique_lock<std::mutex> l(mut);
       ui_functions ui(std::move(player));
+      ui.hud_height = hud.enabled ? bwgame::hud::panel_height : 0;
+      ui.hud_local_player = hud.local_player;
+      ui.hud_player_names = hud.player_names;
 
       ui.exit_on_close = false;
       ui.global_volume = 0;
@@ -309,8 +319,14 @@ struct draw_ui_wrapper {
 };
 
 #else
+struct hud_settings {
+  bool enabled = true;
+  int local_player = -1;
+  std::array<bwgame::a_string, 12> player_names;
+};
+
 struct ui_wrapper {
-  ui_wrapper(bwgame::state& st, std::string mpq_path) {}
+  ui_wrapper(bwgame::state& st, std::string mpq_path, hud_settings hud) {}
   void update() {}
   bool closed() {
     return false;
@@ -854,9 +870,22 @@ struct openbwapi_impl {
     ui_enabled = false;
   }
 
+  // OPENBW_HUD=0 turns the HUD panel off
+  hud_settings make_hud_settings() {
+    hud_settings hud;
+    auto str = game_setup_helper.env("OPENBW_HUD", "1");
+    for (auto& v : str) {
+      if (v >= 'a' && v <= 'z') v &= ~0x20;
+    }
+    hud.enabled = str != "0" && str != "OFF" && str != "NO" && str != "FALSE" && str != "N";
+    hud.local_player = vars.is_replay ? -1 : vars.local_player_id;
+    hud.player_names = vars.is_replay ? replay_funcs.replay_st.player_name : sync_funcs.sync_st.player_names;
+    return hud;
+  }
+
   void next_frame() {
     if (!ui && ui_enabled) {
-      ui = std::make_unique<ui_wrapper>(st, game_setup_helper.env("OPENBW_MPQ_PATH", "."));
+      ui = std::make_unique<ui_wrapper>(st, game_setup_helper.env("OPENBW_MPQ_PATH", "."), make_hud_settings());
     }
     if (ui) {
       auto l = ui->get_lock();

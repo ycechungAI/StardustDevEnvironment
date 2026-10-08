@@ -70,6 +70,7 @@ Test harness options, as environment variables:
 | `STARDUST_PROFILE_FRAMES` | write a cProfile of all `onFrame` calls to this file (every 1000 frames and at the end) |
 | `STARDUST_LOG_GC` | log Python garbage collections taking at least this many milliseconds to the bot log |
 | `OPENBW_GAME_SPEED` | milliseconds per frame in the game window (42 is StarCraft's "fastest"); by default it runs as fast as the bot allows |
+| `OPENBW_HUD` | `0` hides the panel with resources, timer and armies below the game window |
 
 `kill -USR1 <pid>` on a running `tests` process prints the bot's Python stack.
 
@@ -86,6 +87,15 @@ cmake --build build-ui -j
 ```
 
 Put the MPQ files in `build-ui/test/` as well, then run games from there (or with `tools/run_games.py ... --build build-ui`). Only our bot's game gets a window, not the opponent's. Drawing the window slows the game a little.
+
+Below the game view, a panel shows both players live:
+
+- **Toolbar:** the game time (as StarCraft shows it on Fastest) and frame number; then for each player, their minerals (M), gas (G), supply used and available (S) and workers (w).
+- **Army table:** for each player, the size of their army (units, supply, and its mineral/gas cost), then its composition by unit type.
+
+The army counts completed combat units and spellcasters, not workers, overlords, buildings, eggs, spider mines or hallucinations. Siege tanks in both modes count together. The player whose bot owns the window is marked `*`. `OPENBW_HUD=0` turns the panel off. The window is 146 pixels taller than the 800×600 game view.
+
+To change the panel's layout without running a game, edit `3rdparty/openbw/openbw/ui/hud.h`, then render it with sample numbers: `cmake --build build --target hud_preview && build/hud_preview hud.ppm`.
 
 Keys in the game window:
 
