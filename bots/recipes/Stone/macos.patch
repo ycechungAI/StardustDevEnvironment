@@ -1,0 +1,68 @@
+diff -ruN a/Stone/bwem/src/map.h b/Stone/bwem/src/map.h
+--- a/Stone/bwem/src/map.h	2026-10-07 21:37:57
++++ b/Stone/bwem/src/map.h	2026-10-07 21:37:57
+@@ -106,7 +106,7 @@
+ 	// Returns a Tile or a MiniTile, given its position
+ 	// Provided for support of generic algorithms.
+ 	template<class TPosition>
+-	typename const utils::TileOfPosition<TPosition>::type & GetTTile(const TPosition & p, bool noCheck = false) const;
++	const typename utils::TileOfPosition<TPosition>::type & GetTTile(const TPosition & p, bool noCheck = false) const;
+ 
+ 	// Provides access to the internal array of Tiles 
+ 	const std::vector<Tile> &			Tiles() const									{ return m_Tiles; }
+@@ -224,13 +224,13 @@
+ 
+ 
+ template<>
+-inline typename const Tile & Map::GetTTile<BWAPI::TilePosition>(const BWAPI::TilePosition & t, bool noCheck) const
++inline const Tile & Map::GetTTile<BWAPI::TilePosition>(const BWAPI::TilePosition & t, bool noCheck) const
+ {
+ 	return GetTile(t, noCheck);
+ }
+ 
+ template<>
+-inline typename const MiniTile & Map::GetTTile<BWAPI::WalkPosition>(const BWAPI::WalkPosition & w, bool noCheck) const
++inline const MiniTile & Map::GetTTile<BWAPI::WalkPosition>(const BWAPI::WalkPosition & w, bool noCheck) const
+ {
+ 	return GetMiniTile(w, noCheck);
+ }
+@@ -259,10 +259,10 @@
+ 			TPosition next = current + delta;
+ 			if (Valid(next))
+ 			{
+-				const Tile_t & Next = GetTTile(next, no_check); 
++				const Tile_t & Next = GetTTile(next, utils::no_check); 
+ 				if (findCond(Next, next)) return next;
+ 
+-				if (visitCond(Next, next) && !contains(Visited, next))
++				if (visitCond(Next, next) && !utils::contains(Visited, next))
+ 				{
+ 					ToVisit.push(next);
+ 					Visited.push_back(next);
+diff -ruN a/Stone/bwem/src/utils.h b/Stone/bwem/src/utils.h
+--- a/Stone/bwem/src/utils.h	2026-10-07 21:37:57
++++ b/Stone/bwem/src/utils.h	2026-10-07 21:37:57
+@@ -109,7 +109,7 @@
+     const auto n = std::distance(begin, end);
+     const auto divisor = (RAND_MAX + 1) / n;
+ 
+-	std::remove_const<decltype(n)>::type k;
++	typename std::remove_const<decltype(n)>::type k;
+     do { k = std::rand() / divisor; } while (k >= n);
+ 
+     std::advance(begin, k);
+@@ -118,12 +118,12 @@
+ 
+ 
+ template<class T>
+-inline typename const T::value_type & random_element(const T & Container)
++inline const typename T::value_type & random_element(const T & Container)
+ {
+     const auto n = Container.size();
+     const auto divisor = (RAND_MAX + 1) / n;
+ 
+-	std::remove_const<decltype(n)>::type k;
++	typename std::remove_const<decltype(n)>::type k;
+     do { k = std::rand() / divisor; } while (k >= n);
+ 
+ 	return Container[k];

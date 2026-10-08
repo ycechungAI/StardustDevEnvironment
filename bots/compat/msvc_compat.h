@@ -131,6 +131,16 @@ inline int localtime_s(struct tm *result, const time_t *time)
 inline int _stricmp(const char *a, const char *b) { return strcasecmp(a, b); }
 inline int _strnicmp(const char *a, const char *b, size_t n) { return strncasecmp(a, b, n); }
 
+// MSVC gives a null buffer for a missing variable; this gives an empty string, so bots that print the result (Windows
+// always has the variables they ask for) don't print a null pointer.
+inline int _dupenv_s(char **buffer, size_t *size, const char *name)
+{
+    const char *value = getenv(name);
+    *buffer = strdup(value ? value : "");
+    if (size) *size = strlen(*buffer) + 1;
+    return 0;
+}
+
 // Plain fopen gets the same path conversion. (The standard headers that use std::fopen are included above, so they
 // aren't affected.)
 #define fopen stardust_compat_fopen

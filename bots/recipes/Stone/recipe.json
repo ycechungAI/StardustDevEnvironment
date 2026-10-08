@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2015/bots/Stone.zip",
+  "sha256": "4e401dab5c60d1c7fb383f0a9121e8075de57be4eaea55e83413f5abdc0ddfe4",
+  "strip": "Stone/src",
+  "race": "Terran",
+  "license": "MIT (LICENSE.txt)",
+  "notes": "Stone (Terran) as entered in AIIDE 2015, by Igor Dimitrijevic: an SCV-only rush with many worker behaviours (harass, chase, flee, repair); Iron's predecessor"
+}

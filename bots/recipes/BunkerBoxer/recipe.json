@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2019/bots/BunkerBoxer.zip",
+  "sha256": "a6c6d08a45bde895171b25c4d9d5a8654d88b6b80842937fde3cc33bc5b43168",
+  "strip": "BunkerBoxerAiide2019",
+  "race": "Terran",
+  "license": "None stated. Keep it to local testing",
+  "notes": "BunkerBoxer (Terran) as entered in AIIDE 2019: a bunker rush with a hard-coded build order and timing attacks"
+}
