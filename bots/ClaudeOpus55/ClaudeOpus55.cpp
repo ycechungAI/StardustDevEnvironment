@@ -11,7 +11,7 @@ using namespace Filter;
 
 namespace
 {
-    const int ProbesPerBase = 21;      // ~2 per mineral patch plus 3 on gas
+    const int ProbesPerBase = 24;      // ~2.5 per mineral patch plus 3 on gas
     const int MaxProbes = 60;
     const int FirstAttackArmy = 12;
     const int LaterAttackArmy = 16;
@@ -37,10 +37,23 @@ namespace
         if (type == UnitTypes::Terran_Bunker || type == UnitTypes::Terran_Siege_Tank_Siege_Mode
             || type == UnitTypes::Terran_Siege_Tank_Tank_Mode || type == UnitTypes::Protoss_Reaver
             || type == UnitTypes::Zerg_Lurker) return 4;
+        // A shuttle carries the reaver (or zealots) in and out of range: shooting it down takes them with it
+        if (type == UnitTypes::Protoss_Shuttle || type == UnitTypes::Terran_Dropship) return 4;
         if (type.canAttack() && !type.isWorker()) return 3;
         if (type.isWorker()) return 2;
         if (type == UnitTypes::Protoss_Pylon || type.isResourceDepot()) return 1;
         return 0;
+    }
+
+    // An enemy that is fighting rather than walking past: anything with a weapon except a worker, or a worker that is
+    // attacking or building (a bunker or cannon in our base)
+    bool hostile(Unit enemy)
+    {
+        auto type = enemy->getType();
+        if (!type.isWorker()) return type.canAttack() || type.isBuilding();
+        if (enemy->isAttacking() || enemy->isConstructing()) return true;
+        auto target = enemy->getOrderTarget();
+        return enemy->getOrder() == Orders::AttackUnit && target && target->getPlayer() == Broodwar->self();
     }
 
     Position towards(Position from, Position to, int distance)
@@ -139,7 +152,8 @@ void ClaudeOpus55::onStart()
     if (scoutTargets.size() == 1) enemyBase = Position(scoutTargets[0]) + Position(64, 48);
 
     findBases();
-    rally = findRampTop();
+    rampTop = findRampTop();
+    rally = rampTop;
     if (natural)
     {
         // The natural's front: from its minerals, past the nexus and on a little, where attacks come from
@@ -328,6 +342,18 @@ void ClaudeOpus55::onUnitDestroy(Unit unit)
     enemyBuildings.erase(unit->getID());
     enemyArmy.erase(unit->getID());
     builders.erase(unit);
+    // CO55_DEBUG: each unit we lose, where, and what enemies stood near it
+    if (getenv("CO55_DEBUG") && unit->getPlayer() == Broodwar->self())
+    {
+        std::map<std::string, int> near;
+        for (auto enemy : Broodwar->getUnitsInRadius(unit->getPosition(), 256, IsEnemy && IsVisible))
+            near[enemy->getType().getName()]++;
+        printf("LOST %d %s %d from home at %d,%d (rally %d,%d):", Broodwar->getFrameCount(),
+               unit->getType().getName().c_str(), unit->getPosition().getApproxDistance(home), unit->getTilePosition().x,
+               unit->getTilePosition().y, TilePosition(rally).x, TilePosition(rally).y);
+        for (auto &[name, n] : near) printf(" %s=%d", name.c_str(), n);
+        printf("\n");
+    }
     if (unit == scout) scout = nullptr;
     if (unit == mainNexus) mainNexus = nullptr;
 }
@@ -361,6 +387,12 @@ void ClaudeOpus55::onFrame()
             for (auto u : Broodwar->self()->getUnits())
                 if (u->getType().isBuilding()) printf("     have %s at %d,%d\n", u->getType().c_str(), u->getTilePosition().x, u->getTilePosition().y);
         }
+        std::map<std::string, int> orders;
+        for (auto u : Broodwar->self()->getUnits())
+            if (u->getType().isWorker()) orders[u->getOrder().getName()]++;
+        printf("     probe orders:");
+        for (auto &[name, n] : orders) printf(" %s=%d", name.c_str(), n);
+        printf("\n");
         std::map<std::string, int> seen;
         for (auto &[id, s] : enemyArmy) seen[s.type.getName()]++;
         printf("     enemy army:");
@@ -466,6 +498,7 @@ void ClaudeOpus55::manageWorkers()
         if (started || !builder->exists() || Broodwar->getFrameCount() - pending.frame > 900)
         {
             if (builder->exists()) builder->stop();
+            if (!started) retryOpeningStep(pending.type);
             it = builders.erase(it);
             continue;
         }
@@ -483,8 +516,24 @@ void ClaudeOpus55::manageWorkers()
             {
                 // Something is in the way: the nearest free spot close by, or give it up
                 auto spot = findBuildSpot(pending.type, pending.tile);
+                // A nexus has only its one spot: wait for the army to clear whatever stands there
+                if (pending.type.isResourceDepot())
+                {
+                    if (builder->getDistance(Position(pending.tile)) > 96) builder->move(Position(pending.tile) + Position(64, 48));
+                    ++it;
+                    continue;
+                }
+                if ((!spot.isValid() || spot.getApproxDistance(pending.tile) > 6)
+                    && placeableIgnoringUnits(pending.tile, pending.type, true))
+                {
+                    // Only units in the way: wait next to the spot for them to move (until the build times out)
+                    if (builder->getDistance(Position(pending.tile)) > 64) builder->move(Position(pending.tile) + Position(32, 32));
+                    ++it;
+                    continue;
+                }
                 if (!spot.isValid() || spot.getApproxDistance(pending.tile) > 6)
                 {
+                    retryOpeningStep(pending.type);
                     it = builders.erase(it);
                     continue;
                 }
@@ -525,7 +574,18 @@ void ClaudeOpus55::manageWorkers()
         }
     }
 
-    // Idle probes mine at the base that needs them most
+    // Idle probes mine at the base that needs them most, each on the patch there with the fewest probes (the closest
+    // first). Sending each to the one closest patch made them queue on it and wander off to others: 48 minerals fewer
+    // than UAlbertaBot by 1:00 with the same 8 probes, and the pylon and gateways 10 seconds later
+    std::map<Unit, int> onPatch;
+    for (auto probe : Broodwar->self()->getUnits())
+    {
+        auto target = probe->getOrderTarget();
+        if (probe->getType().isWorker() && probe->isGatheringMinerals() && target && target->getType().isMineralField())
+        {
+            onPatch[target]++;
+        }
+    }
     for (auto probe : Broodwar->self()->getUnits())
     {
         if (!probe->getType().isWorker() || !probe->isCompleted() || probe == scout || builders.count(probe)) continue;
@@ -537,8 +597,23 @@ void ClaudeOpus55::manageWorkers()
         }
         auto nexus = nexusNeedingWorkers();
         if (!nexus) continue;
-        auto mineral = nexus->getClosestUnit(IsMineralField, 400);
-        if (mineral) probe->gather(mineral);
+        Unit mineral = nullptr;
+        int bestScore = INT_MAX;
+        for (auto patch : nexus->getUnitsInRadius(320, IsMineralField))
+        {
+            int score = onPatch[patch] * 1000 + nexus->getDistance(patch);
+            if (score < bestScore)
+            {
+                mineral = patch;
+                bestScore = score;
+            }
+        }
+        if (!mineral) mineral = nexus->getClosestUnit(IsMineralField, 400);
+        if (mineral)
+        {
+            probe->gather(mineral);
+            onPatch[mineral]++;
+        }
     }
 
     // Every 10 seconds, move mineral probes from an oversaturated base to one that needs them
@@ -595,6 +670,13 @@ TilePosition ClaudeOpus55::pylonSpot()
     return TilePosition(away + offset);
 }
 
+// A building of the opening that was given up (its builder killed, or its spot blocked) is tried again rather than lost
+void ClaudeOpus55::retryOpeningStep(UnitType type)
+{
+    if (buildOrderStep == 0 || buildOrderStep > buildOrder.size()) return;
+    if (buildOrder[buildOrderStep - 1].type == type) buildOrderStep--;
+}
+
 bool ClaudeOpus55::build(UnitType type, TilePosition near)
 {
     if (Broodwar->self()->minerals() - reservedMinerals() < type.mineralPrice()) return false;
@@ -625,6 +707,8 @@ bool ClaudeOpus55::build(UnitType type, TilePosition near)
     else
     {
         tile = findBuildSpot(type, near, Broodwar->isExplored(near));  // the natural may not be seen yet
+        // Every spot taken by units standing about: one that is free apart from them, where the probe waits
+        if (!tile.isValid()) tile = findBuildSpot(type, near, Broodwar->isExplored(near), true);
     }
     if (!tile.isValid()) return false;
 
@@ -639,7 +723,28 @@ bool ClaudeOpus55::build(UnitType type, TilePosition near)
 
 // The nearest explored, buildable spot to `near` that leaves a free tile around the building (so the base doesn't wall
 // itself in) and stays out of the mineral line
-TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool checkExplored) const
+// Whether a building fits at `tile` if the units walking about there moved away: buildable, powered, off creep, and no
+// building, resource or other immobile unit in the way. Enemy workers standing on every free spot near our pylons
+// otherwise stop all building (an SCV army camped in our main kept us without a gateway for a whole game)
+bool ClaudeOpus55::placeableIgnoringUnits(TilePosition tile, UnitType type, bool checkExplored) const
+{
+    int w = type.tileWidth(), h = type.tileHeight();
+    if (tile.x < 0 || tile.y < 0 || tile.x + w > Broodwar->mapWidth() || tile.y + h > Broodwar->mapHeight()) return false;
+    for (int x = tile.x; x < tile.x + w; x++)
+    {
+        for (int y = tile.y; y < tile.y + h; y++)
+        {
+            if (!Broodwar->isBuildable(x, y, true) || Broodwar->hasCreep(x, y)) return false;
+            if (checkExplored && !Broodwar->isExplored(x, y)) return false;
+        }
+    }
+    if (type.requiresPsi() && !Broodwar->hasPower(tile, type)) return false;
+    auto blocking = Broodwar->getUnitsInRectangle(Position(tile), Position(tile + TilePosition(w, h)) - Position(1, 1),
+                                                  IsBuilding || !CanMove);
+    return blocking.empty();
+}
+
+TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool checkExplored, bool ignoreUnits) const
 {
     int w = type.tileWidth(), h = type.tileHeight();
     int homeToMinerals = home.getApproxDistance(mineralCenter);
@@ -651,12 +756,40 @@ TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool 
             {
                 if (std::abs(dx) != radius && std::abs(dy) != radius) continue;  // the ring at this radius only
                 TilePosition tile(near.x + dx, near.y + dy);
-                if (!tile.isValid() || !Broodwar->canBuildHere(tile, type, nullptr, checkExplored)) continue;
+                if (!tile.isValid()) continue;
+                if (ignoreUnits ? !placeableIgnoringUnits(tile, type, checkExplored)
+                                : !Broodwar->canBuildHere(tile, type, nullptr, checkExplored)) continue;
                 Position center = Position(tile) + Position(w * 16, h * 16);
-                if (center.getApproxDistance(mineralCenter) < homeToMinerals && center.getApproxDistance(home) < 400)
+                if (type != UnitTypes::Protoss_Photon_Cannon && center.getApproxDistance(mineralCenter) < homeToMinerals
+                    && center.getApproxDistance(home) < 400)
                 {
-                    continue;  // between the nexus and its minerals
+                    continue;  // between the nexus and its minerals (where only cannons belong)
                 }
+                // Never on (or touching) a base's nexus spot: the natural's front buildings went down before its nexus
+                bool onDepot = false;
+                if (!type.isResourceDepot())
+                {
+                    for (auto &base : bases)
+                    {
+                        if (tile.x + w >= base.depot.x - 1 && tile.x <= base.depot.x + 4
+                            && tile.y + h >= base.depot.y - 1 && tile.y <= base.depot.y + 3)
+                        {
+                            onDepot = true;
+                        }
+                    }
+                }
+                if (onDepot) continue;
+                // Nor where a probe is already on its way to build something else
+                bool taken = false;
+                for (auto &[builder, pending] : builders)
+                {
+                    if (tile.x + w >= pending.tile.x && tile.x <= pending.tile.x + pending.type.tileWidth()
+                        && tile.y + h >= pending.tile.y && tile.y <= pending.tile.y + pending.type.tileHeight())
+                    {
+                        taken = true;
+                    }
+                }
+                if (taken) continue;
                 bool clear = true;
                 for (int x = tile.x - 1; x <= tile.x + w && clear; x++)
                 {
@@ -686,35 +819,51 @@ void ClaudeOpus55::chooseBuildOrder()
     // way in, which cannons can hold, and the map isn't so small that zerglings arrive before them
     bool forgeExpandMap = natural && naturalFront.isValid() && naturalEntrances == 1 && widestEntrance <= 12
                           && rushDistance >= 150 && rushDistance != INT_MAX;
-    if (enemyRace == Races::Zerg && forgeExpandMap)
+    // Off: in practice games the forge, cannon and gateway came too slowly to hold a 9-pool (no zealot before frame
+    // 6500, 0 wins in 8 games), while two gateways first won some
+    const bool useForgeExpand = false;
+    if (enemyRace == Races::Zerg && forgeExpandMap && useForgeExpand)
     {
         forgeExpand = true;
-        buildOrder = {{8, Protoss_Pylon, true}, {10, Protoss_Forge, true}, {12, Protoss_Nexus},
-                      {13, Protoss_Photon_Cannon, true}, {14, Protoss_Pylon}, {15, Protoss_Gateway},
-                      {15, Protoss_Photon_Cannon, true}, {16, Protoss_Assimilator}, {17, Protoss_Cybernetics_Core},
-                      {19, Protoss_Pylon}, {20, Protoss_Gateway}, {22, Protoss_Gateway}, {24, Protoss_Assimilator}};
+        // The first cannon and a gateway go down before the nexus, so a 9-pool finds defences already there
+        buildOrder = {{8, Protoss_Pylon, true}, {10, Protoss_Forge, true}, {11, Protoss_Photon_Cannon, true},
+                      {12, Protoss_Gateway, true}, {13, Protoss_Nexus}, {14, Protoss_Pylon},
+                      {15, Protoss_Photon_Cannon, true}, {16, Protoss_Gateway}, {17, Protoss_Assimilator},
+                      {18, Protoss_Cybernetics_Core}, {19, Protoss_Pylon}, {21, Protoss_Gateway}, {24, Protoss_Assimilator}};
     }
     else if (enemyRace == Races::Zerg)
     {
-        // Two gateways early for the zergling rushes, then the core
-        buildOrder = {{8, Protoss_Pylon}, {10, Protoss_Gateway}, {12, Protoss_Gateway}, {14, Protoss_Pylon},
+        // A gateway as soon as the first pylon allows, then zealots without pause; the second gateway only once two
+        // zealots are out or zerglings have been beaten off (secondGatewayWaits), then the core
+        buildOrder = {{8, Protoss_Pylon}, {9, Protoss_Gateway}, {12, Protoss_Gateway}, {14, Protoss_Pylon},
                       {16, Protoss_Assimilator}, {17, Protoss_Cybernetics_Core}, {21, Protoss_Pylon},
                       {24, Protoss_Gateway}};
     }
     else if (enemyRace == Races::Terran)
     {
-        // One gateway, core, then an early natural: Terran is slow to attack
-        buildOrder = {{8, Protoss_Pylon}, {10, Protoss_Gateway}, {11, Protoss_Assimilator},
-                      {13, Protoss_Cybernetics_Core}, {14, Protoss_Pylon}, {20, Protoss_Nexus}, {22, Protoss_Gateway},
-                      {24, Protoss_Pylon}, {26, Protoss_Gateway}};
+        // Two gateways of zealots, then the core. No early natural: marine, bunker and SCV rushes punish it, so the
+        // natural waits for an army like against the other races. With one gateway and the core first, 13 marines met
+        // 4 army supply at 4:28, beat it twice, and the game was won too late to finish
+        buildOrder = {{8, Protoss_Pylon}, {9, Protoss_Gateway}, {11, Protoss_Gateway}, {14, Protoss_Pylon},
+                      {15, Protoss_Assimilator}, {16, Protoss_Cybernetics_Core}, {20, Protoss_Pylon},
+                      {24, Protoss_Gateway}};
     }
     else
     {
-        // Protoss (or unknown): two gateways with zealots early, then the core and dragoons
-        buildOrder = {{8, Protoss_Pylon}, {10, Protoss_Gateway}, {12, Protoss_Gateway}, {14, Protoss_Pylon},
+        // Protoss (or unknown): an early gateway and zealot, a second gateway, then the core and dragoons
+        buildOrder = {{8, Protoss_Pylon}, {9, Protoss_Gateway}, {12, Protoss_Gateway}, {14, Protoss_Pylon},
                       {16, Protoss_Assimilator}, {17, Protoss_Cybernetics_Core}, {21, Protoss_Pylon},
                       {24, Protoss_Gateway}};
     }
+}
+
+// Against Zerg the second gateway waits until the first has made two zealots, or one has held off zerglings: two
+// gateways at once left no money for the first zealot when a four-pool arrived
+bool ClaudeOpus55::secondGatewayWaits(const Step &step) const
+{
+    auto self = Broodwar->self();
+    return enemyRace == Races::Zerg && step.type == UnitTypes::Protoss_Gateway && count(UnitTypes::Protoss_Gateway) == 1
+           && self->allUnitCount(UnitTypes::Protoss_Zealot) < 2 && self->killedUnitCount(UnitTypes::Zerg_Zergling) < 2;
 }
 
 // The nearest base we can walk to without a nexus yet
@@ -778,16 +927,59 @@ void ClaudeOpus55::buildStructures()
     if (!forgeExpand && rushSeen && Broodwar->getFrameCount() < 9000
         && self->completedUnitCount(UnitTypes::Protoss_Pylon) > 0)
     {
-        auto spot = TilePosition((home + mineralCenter) / 2);
-        if (count(UnitTypes::Protoss_Forge) < 1 && count(UnitTypes::Protoss_Gateway) >= 1)
+        // Two barracks of marines: a second gateway at once, and zealots rather than a forge and cannons (eleven marines
+        // were in our main by 5:21 while one gateway made zealots and the money went into the forge)
+        if (barracksRush)
+        {
+            if (count(UnitTypes::Protoss_Gateway) == 1) build(UnitTypes::Protoss_Gateway, nearPylon);
+        }
+        // A gateway rush likewise: the forge and two cannons cost four zealots, and the first cannon finished at 5:08,
+        // after 16 supply of zealots had beaten our 10 at 4:33
+        // ... and a third gateway to match theirs: two made 12 army supply by 5:00 against their 22 to 28
+        else if (enemyRace == Races::Protoss)
+        {
+            if (count(UnitTypes::Protoss_Gateway) == 2 && army >= 2) build(UnitTypes::Protoss_Gateway, nearPylon);
+        }
+        // Zealots first: a forge and cannon take too long to stop a rush already on its way
+        else if (count(UnitTypes::Protoss_Forge) < 1 && count(UnitTypes::Protoss_Gateway) >= 1 && army >= 3)
         {
             build(UnitTypes::Protoss_Forge, nearPylon);
         }
-        else if (self->completedUnitCount(UnitTypes::Protoss_Forge) > 0 && count(UnitTypes::Protoss_Photon_Cannon) < 2)
+        else if (self->completedUnitCount(UnitTypes::Protoss_Forge) > 0)
         {
-            if (Broodwar->hasPower(spot, UnitTypes::Protoss_Photon_Cannon)) build(UnitTypes::Protoss_Photon_Cannon, spot);
-            else if (pendingCount(UnitTypes::Protoss_Pylon) == 0) build(UnitTypes::Protoss_Pylon, spot);
+            cannonsNear((home + mineralCenter) / 2, 2);
         }
+    }
+
+    // Detection, ahead of the opening: cannons by the minerals as soon as cloaked units (or the tech for them) are seen;
+    // a robotics facility for observers against Templar Archives or a Citadel, and against Protoss right after the core
+    // (later against a gateway rush, when zealots come first). A dark templar at 6:02 beat a robotics facility started
+    // at 4:54 behind the opening, and killed 27 probes
+    // Against Protoss one cannon there anyway once the core is started and no rush needs every mineral: a dark templar
+    // at 5:46 came before the robotics facility (6:40) and killed 30 probes, and a forge and cannon are quicker
+    bool cannonInsurance = enemyRace == Races::Protoss && count(UnitTypes::Protoss_Cybernetics_Core) > 0 && !rushMode();
+    if (cloakSeen || cannonInsurance)
+    {
+        if (count(UnitTypes::Protoss_Forge) < 1)
+        {
+            build(UnitTypes::Protoss_Forge, nearPylon);
+        }
+        else if (self->completedUnitCount(UnitTypes::Protoss_Forge) > 0)
+        {
+            cannonsNear((home + mineralCenter) / 2, cloakSeen ? 2 : 1);
+        }
+    }
+    bool wantRobo = templarArchivesSeen
+                    || enemyRace == Races::Protoss
+                       && (!rushSeen || gateways >= 3 || Broodwar->getFrameCount() >= 7000);
+    if (coreDone && wantRobo && count(UnitTypes::Protoss_Robotics_Facility) < 1)
+    {
+        build(UnitTypes::Protoss_Robotics_Facility, nearPylon);
+    }
+    else if (self->completedUnitCount(UnitTypes::Protoss_Robotics_Facility) > 0
+             && count(UnitTypes::Protoss_Observatory) < 1)
+    {
+        build(UnitTypes::Protoss_Observatory, nearPylon);
     }
 
     // The opening, step by step; a step waits for its requirements (and money), never skipped
@@ -795,7 +987,8 @@ void ClaudeOpus55::buildStructures()
     if (buildOrderStep < buildOrder.size())
     {
         auto &step = buildOrder[buildOrderStep];
-        bool supplyBlocked = supplyTotal - supplyUsed <= 1 && supplyTotal < 200
+        // Supply runs short when the opening's pylons can't keep up with the gateways: keep room for a round of units
+        bool supplyBlocked = supplyTotal - supplyUsed <= 1 + 2 * finishedGateways && supplyTotal < 200
                              && pendingCount(UnitTypes::Protoss_Pylon) + self->incompleteUnitCount(UnitTypes::Protoss_Pylon) == 0;
         // Forge expand against an early pool: both cannons before the nexus
         bool cannonsFirst = forgeExpand && rushSeen && step.type == UnitTypes::Protoss_Nexus
@@ -833,6 +1026,14 @@ void ClaudeOpus55::buildStructures()
         {
             build(UnitTypes::Protoss_Photon_Cannon, frontTile);
         }
+        else if (rushMode() && (step.type.isRefinery() || step.type.isResourceDepot()))
+        {
+            // During a rush, gas and the natural wait until a few zealots are out
+        }
+        else if (secondGatewayWaits(step))
+        {
+            // Zealots from the first gateway come first
+        }
         else if (supplyUsed >= step.supply && (step.type == UnitTypes::Protoss_Pylon || Broodwar->canMake(step.type))
                  && build(step.type, step.atNatural && frontTile.isValid() ? frontTile : placeFor(step.type)))
         {
@@ -851,34 +1052,9 @@ void ClaudeOpus55::buildStructures()
         return;
     }
 
-    // Detection: cannons as soon as cloaked units (or the tech for them) are seen; a robotics facility for observers
-    // only against Templar Archives
-    if (cloakSeen)
-    {
-        if (count(UnitTypes::Protoss_Forge) < 1)
-        {
-            build(UnitTypes::Protoss_Forge, nearPylon);
-        }
-        else if (self->completedUnitCount(UnitTypes::Protoss_Forge) > 0 && count(UnitTypes::Protoss_Photon_Cannon) < 2)
-        {
-            auto spot = TilePosition((home + mineralCenter) / 2);
-            bool powered = Broodwar->hasPower(spot, UnitTypes::Protoss_Photon_Cannon);
-            if (!powered && pendingCount(UnitTypes::Protoss_Pylon) == 0) build(UnitTypes::Protoss_Pylon, spot);
-            else if (powered) build(UnitTypes::Protoss_Photon_Cannon, spot);
-        }
-    }
-    if (coreDone && templarArchivesSeen && count(UnitTypes::Protoss_Robotics_Facility) < 1)
-    {
-        build(UnitTypes::Protoss_Robotics_Facility, nearPylon);
-    }
-    else if (self->completedUnitCount(UnitTypes::Protoss_Robotics_Facility) > 0
-             && count(UnitTypes::Protoss_Observatory) < 1)
-    {
-        build(UnitTypes::Protoss_Observatory, nearPylon);
-    }
-
-    // Mutalisks (or their spire) seen: cannons in every mineral line, and a stargate for corsairs
-    if (airSeen)
+    // Mutalisks (or their spire) seen: cannons in every mineral line, and a stargate for corsairs. Dark templar or
+    // lurkers too: with cannons only in the main, 7 dark templar killed 63 probes at the natural
+    if (airSeen || hiddenArmySeen)
     {
         buildMineralLineCannons();
         if (coreDone && enemyRace == Races::Zerg && count(UnitTypes::Protoss_Stargate) < 1)
@@ -891,9 +1067,20 @@ void ClaudeOpus55::buildStructures()
     // have only one base); otherwise more gateways to strengthen the army
     auto base = nextBase();
     bool holding = army >= 6 && Broodwar->getFrameCount() - lastRetreatFrame > 480;
+    // Never expand into an enemy army clearly bigger than ours: against Protoss, the natural waits for parity
+    double myDurability = 0, myDps = 0, theirDurability = 0, theirDps = 0;
+    for (auto unit : self->getUnits())
+    {
+        if (isArmy(unit->getType()) && unit->isCompleted())
+            addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), myDurability, myDps);
+    }
+    for (auto &[id, seen] : enemyArmy) addToGroup(seen.type, seen.health, theirDurability, theirDps);
+    bool notOutmatched = groupStrength(myDurability, myDps) >= 0.8 * groupStrength(theirDurability, theirDps);
+    int armyForNatural = enemyRace == Races::Protoss ? 8 : 6;
     bool wantBase = base && !underAttack && coreDone && pendingCount(UnitTypes::Protoss_Nexus) == 0
                     && !(rushSeen && Broodwar->getFrameCount() < 9000)
-                    && (nexusCount < 2 ? army >= 6 : holding && self->allUnitCount(UnitTypes::Protoss_Probe) >= 18 * nexusCount);
+                    && notOutmatched
+                    && (nexusCount < 2 ? army >= armyForNatural : holding && self->allUnitCount(UnitTypes::Protoss_Probe) >= 18 * nexusCount);
     expansionDue = wantBase;
     int gatewayCap = std::min(12, 4 + 3 * (self->completedUnitCount(UnitTypes::Protoss_Nexus) - 1));
     if (wantBase && freeMinerals >= 400)
@@ -914,6 +1101,13 @@ void ClaudeOpus55::buildStructures()
     {
         build(UnitTypes::Protoss_Forge, nearPylon);
     }
+    // Zealot speed with the spare gas: slow zealots chased marines that kited them, the gas banked up to 1,220, and
+    // games against marines ran out of time while we were ahead
+    else if (self->completedUnitCount(UnitTypes::Protoss_Nexus) >= 2 && gateways >= 5 && coreDone
+             && count(UnitTypes::Protoss_Citadel_of_Adun) < 1 && self->gas() >= 150)
+    {
+        build(UnitTypes::Protoss_Citadel_of_Adun, nearPylon);
+    }
 
     // Upgrades: dragoon range first, then ground weapons and armor from the forge
     for (auto building : self->getUnits())
@@ -924,6 +1118,12 @@ void ClaudeOpus55::buildStructures()
             && !self->isUpgrading(UpgradeTypes::Singularity_Charge) && self->gas() >= 150 && self->minerals() >= 150)
         {
             building->upgrade(UpgradeTypes::Singularity_Charge);
+        }
+        if (building->getType() == UnitTypes::Protoss_Citadel_of_Adun
+            && self->getUpgradeLevel(UpgradeTypes::Leg_Enhancements) == 0
+            && !self->isUpgrading(UpgradeTypes::Leg_Enhancements) && self->gas() >= 150 && freeMinerals >= 150)
+        {
+            building->upgrade(UpgradeTypes::Leg_Enhancements);
         }
         if (building->getType() == UnitTypes::Protoss_Forge && freeMinerals >= 200)
         {
@@ -950,27 +1150,35 @@ void ClaudeOpus55::buildMineralLineCannons()
     {
         auto minerals = nexus->getUnitsInRadius(320, IsMineralField);
         if (minerals.empty()) continue;
-        auto spot = (nexus->getPosition() + minerals.getPosition()) / 2;
-        int cannons = (int) Broodwar->getUnitsInRadius(spot, 192, IsOwned && GetType == UnitTypes::Protoss_Photon_Cannon).size();
-        for (auto &[builder, pending] : builders)
-        {
-            if (pending.type == UnitTypes::Protoss_Photon_Cannon && Position(pending.tile).getApproxDistance(spot) < 192)
-            {
-                cannons++;
-            }
-        }
-        if (cannons >= 2) continue;
-        if (Broodwar->hasPower(TilePosition(spot), UnitTypes::Protoss_Photon_Cannon))
-        {
-            build(UnitTypes::Protoss_Photon_Cannon, TilePosition(spot));
-        }
-        else if (Broodwar->getUnitsInRadius(spot, 192, IsOwned && GetType == UnitTypes::Protoss_Pylon).empty()
-                 && pendingCount(UnitTypes::Protoss_Pylon) == 0)
-        {
-            build(UnitTypes::Protoss_Pylon, TilePosition(spot));
-        }
-        return;  // one base at a time
+        if (!cannonsNear((nexus->getPosition() + minerals.getPosition()) / 2, 2)) return;  // one base at a time
     }
+}
+
+// Cannons by a spot, with a pylon there first; true once `wanted` cannons are there or on their way. Pylons and cannons
+// still building or about to be count: a pylon only gives power once finished, and buildings stay out of the mineral
+// line, so the pylon lands a few tiles off. Counting neither made 16 pylons in a row while the first one went up
+bool ClaudeOpus55::cannonsNear(Position spot, int wanted)
+{
+    int cannons = 0;
+    Unit pylon = nullptr;
+    bool pylonComing = false;
+    for (auto unit : Broodwar->getUnitsInRadius(spot, 448, IsOwned))
+    {
+        if (unit->getType() == UnitTypes::Protoss_Photon_Cannon) cannons++;
+        if (unit->getType() != UnitTypes::Protoss_Pylon || unit->getDistance(spot) >= 320) continue;
+        if (!unit->isCompleted()) pylonComing = true;
+        else if (!pylon || unit->getDistance(spot) < pylon->getDistance(spot)) pylon = unit;
+    }
+    for (auto &[builder, pending] : builders)
+    {
+        int distance = Position(pending.tile).getApproxDistance(spot);
+        if (pending.type == UnitTypes::Protoss_Photon_Cannon && distance < 448) cannons++;
+        if (pending.type == UnitTypes::Protoss_Pylon && distance < 320) pylonComing = true;
+    }
+    if (cannons >= wanted) return true;
+    if (pylon) build(UnitTypes::Protoss_Photon_Cannon, TilePosition(spot));
+    else if (!pylonComing) build(UnitTypes::Protoss_Pylon, TilePosition(spot));
+    return false;
 }
 
 void ClaudeOpus55::trainUnits()
@@ -979,22 +1187,63 @@ void ClaudeOpus55::trainUnits()
     int probes = self->allUnitCount(UnitTypes::Protoss_Probe);
     int freeMinerals = self->minerals() - reservedMinerals();
     int freeGas = self->gas() - reservedGas();
-    int probeTarget = std::min(MaxProbes, ProbesPerBase * (int) nexuses(false).size());
-
-    // The next opening building comes first: once it is due (e.g. the pylon at 8/9 supply), keep its cost aside
-    if (buildOrderStep < buildOrder.size())
+    // Against Protoss the robotics facility and observatory come before more dragoons (the gateways make zealots
+    // meanwhile): with dragoons first the robotics facility waited until 5:57, and a dark templar at 7:12 killed 30
+    // probes before the observer was out
+    if (enemyRace == Races::Protoss && !rushMode() && self->completedUnitCount(UnitTypes::Protoss_Cybernetics_Core) > 0
+        && (!rushSeen || count(UnitTypes::Protoss_Gateway) >= 3 || Broodwar->getFrameCount() >= 7000))
     {
-        auto &step = buildOrder[buildOrderStep];
-        if (self->supplyUsed() / 2 >= step.supply)
+        if (count(UnitTypes::Protoss_Robotics_Facility) < 1) freeGas -= 200;
+        else if (count(UnitTypes::Protoss_Observatory) < 1) freeGas -= 100;
+    }
+    // On one base more than 22 probes add little mining; the money is better spent on the army. A few spare probes
+    // go ahead of the next nexus, so it starts mining at once
+    int nexusCount = (int) nexuses(false).size();
+    int probeTarget = std::min(MaxProbes, (nexusCount == 1 ? 22 : ProbesPerBase * nexusCount) + (expansionDue ? 6 : 0));
+
+    // Against Zerg the army has to keep growing from the start, as zerglings come in numbers we rarely see whole:
+    // while it is behind, probes and the opening wait for gateway units
+    int ourArmy = self->allUnitCount(UnitTypes::Protoss_Zealot) + self->allUnitCount(UnitTypes::Protoss_Dragoon);
+    int frame = Broodwar->getFrameCount();
+    bool armyBehind = enemyRace == Races::Zerg && frame > 4500 && ourArmy < (frame - 4000) / 600;
+
+    // During a rush the gateways come first: past 12 probes, a probe only with a zealot's cost to spare
+    int rushReserve = rushMode() && probes >= 12 ? 100 : 0;
+
+    int pylonDue = 0;
+    if (buildOrderStep < buildOrder.size() && buildOrder[buildOrderStep].type == UnitTypes::Protoss_Pylon
+        && self->supplyUsed() / 2 >= buildOrder[buildOrderStep].supply)
+    {
+        pylonDue = 100;
+    }
+    // The first gateway goes down the moment the pylon powers it, ahead of more probes
+    if (buildOrderStep < buildOrder.size() && buildOrder[buildOrderStep].type == UnitTypes::Protoss_Gateway
+        && count(UnitTypes::Protoss_Gateway) == 0 && count(UnitTypes::Protoss_Pylon) > 0)
+    {
+        pylonDue = 150;
+    }
+
+    // Against Zerg the gateway is never left idle for want of money while the first zealots are made (not against
+    // Protoss: holding money back for zealots there lost all 6 games to UAlbertaBot's zealot rush, against 2 of 4 before)
+    int zealotReserve = 0;
+    if (enemyRace == Races::Zerg && frame < 9000 && ourArmy < 6)
+    {
+        for (auto gateway : self->getUnits())
         {
-            freeMinerals -= step.type.mineralPrice();
-            freeGas -= step.type.gasPrice();
+            if (gateway->getType() != UnitTypes::Protoss_Gateway) continue;
+            if (gateway->isCompleted() ? gateway->isIdle() || gateway->getRemainingTrainTime() < 120
+                                       : gateway->getRemainingBuildTime() < 120)
+            {
+                zealotReserve = 100;
+            }
         }
     }
 
     for (auto nexus : nexuses(true))
     {
-        if (nexus->isIdle() && probes < probeTarget && freeMinerals >= 50 && self->supplyUsed() < self->supplyTotal())
+        if (nexus->isIdle() && probes < probeTarget
+            && freeMinerals - pylonDue - std::max({armyBehind ? 100 : 0, rushReserve, zealotReserve}) >= 50
+            && self->supplyUsed() < self->supplyTotal())
         {
             nexus->train(UnitTypes::Protoss_Probe);
             freeMinerals -= 50;
@@ -1002,8 +1251,30 @@ void ClaudeOpus55::trainUnits()
         }
     }
 
-    // Before the core, zealots from the two gateways (more when a rush is coming); one against Terran
-    int zealotsBeforeCore = enemyRace == Races::Terran ? 1 : (rushSeen ? 6 : 4);
+    // The next opening building comes before the army: once it is due, keep its cost aside. Probes come first, except
+    // that a due pylon waits for no one
+    // ... unless the enemy army we know of outnumbers ours: then units first, or the opening never finishes
+    int theirArmy = 0;
+    for (auto &[id, seen] : enemyArmy) theirArmy += seen.type == UnitTypes::Zerg_Zergling ? 1 : 2;
+    bool armyFirst = theirArmy > 2 * ourArmy || armyBehind || rushMode() || !threatsNearHome().empty();
+
+    // Before the core, zealots from the two gateways (more when a rush is coming); three against Terran, four against
+    // a marine rush
+    int zealotsBeforeCore = enemyRace == Races::Terran ? (barracksRush ? 4 : 3) : (rushSeen ? 6 : 4);
+    if (buildOrderStep < buildOrder.size())
+    {
+        auto &step = buildOrder[buildOrderStep];
+        // Once those zealots are out the core's money is kept aside whatever else is going on: while marines kept
+        // coming the zealots took every mineral, the core waited from 1:45 to 4:30 with 400 gas banked, and the
+        // dragoons came too late
+        bool coreDue = step.type == UnitTypes::Protoss_Cybernetics_Core
+                       && self->allUnitCount(UnitTypes::Protoss_Zealot) >= zealotsBeforeCore;
+        if ((!armyFirst || coreDue) && self->supplyUsed() / 2 >= step.supply && !secondGatewayWaits(step))
+        {
+            freeMinerals -= step.type.mineralPrice();
+            freeGas -= step.type.gasPrice();
+        }
+    }
     if (count(UnitTypes::Protoss_Cybernetics_Core) == 0
         && self->allUnitCount(UnitTypes::Protoss_Zealot) >= zealotsBeforeCore && threatsNearHome().empty()) return;
 
@@ -1024,7 +1295,8 @@ void ClaudeOpus55::trainUnits()
     {
         if (robo->getType() == UnitTypes::Protoss_Robotics_Facility && robo->isCompleted() && robo->isIdle()
             && self->completedUnitCount(UnitTypes::Protoss_Observatory) > 0
-            && self->allUnitCount(UnitTypes::Protoss_Observer) < 2 && freeMinerals >= 25 && freeGas >= 75)
+            && self->allUnitCount(UnitTypes::Protoss_Observer) < (hiddenArmySeen ? 3 : 2)
+            && freeMinerals >= 25 && freeGas >= 75)
         {
             robo->train(UnitTypes::Protoss_Observer);
             freeMinerals -= 25;
@@ -1051,11 +1323,23 @@ void ClaudeOpus55::trainUnits()
     // Against zerglings, mostly zealots with a few dragoons; against hydralisks, lurkers or mutalisks, dragoons only
     bool canMakeDragoons = self->completedUnitCount(UnitTypes::Protoss_Cybernetics_Core) > 0;
     int zealots = self->allUnitCount(UnitTypes::Protoss_Zealot), dragoons = self->allUnitCount(UnitTypes::Protoss_Dragoon);
+    // Against mostly marines, zealots alongside the dragoons: a dragoon's shot does half damage to small units, and 13
+    // marines twice beat our 4 dragoons before 5:30
+    int marines = 0, otherTerran = 0;
+    for (auto &[id, seen] : enemyArmy)
+    {
+        if (seen.type == UnitTypes::Terran_Marine || seen.type == UnitTypes::Terran_Medic) marines++;
+        else if (seen.type.getRace() == Races::Terran && !seen.type.isWorker()) otherTerran++;
+    }
+    bool marineArmy = enemyRace == Races::Terran && marines > 2 * otherTerran;
     for (auto gateway : self->getUnits())
     {
         if (gateway->getType() != UnitTypes::Protoss_Gateway || !gateway->isCompleted() || !gateway->isIdle()) continue;
         if (self->supplyUsed() + 4 > self->supplyTotal()) break;
-        bool wantZealot = enemyRace == Races::Zerg && !rangedNeeded && zealots < 2 * dragoons + 2;
+        // Against a zealot rush, zealots alongside the dragoons: they hold the ramp while the dragoons shoot
+        bool wantZealot = enemyRace == Races::Zerg && !rangedNeeded && zealots < 2 * dragoons + 2
+                          || enemyRace == Races::Protoss && rushSeen && zealots < dragoons + 1
+                          || marineArmy && zealots < dragoons + 2;
         if (wantZealot && freeMinerals >= 100)
         {
             gateway->train(UnitTypes::Protoss_Zealot);
@@ -1100,13 +1384,20 @@ void ClaudeOpus55::trackEnemy()
         for (auto unit : enemy->getUnits())
         {
             auto type = unit->getType();
-            if (unit->isCloaked() || unit->isBurrowed() || !unit->isDetected() || type == UnitTypes::Protoss_Dark_Templar
-                || type == UnitTypes::Zerg_Lurker || type == UnitTypes::Protoss_Templar_Archives
-                || type == UnitTypes::Terran_Vulture_Spider_Mine)
+            // Only what stays hidden from the army: a burrowed zergling or an enemy in the fog doesn't need detection
+            if (type == UnitTypes::Protoss_Dark_Templar || type == UnitTypes::Protoss_Templar_Archives
+                || type == UnitTypes::Protoss_Arbiter || type == UnitTypes::Protoss_Arbiter_Tribunal
+                || type == UnitTypes::Zerg_Lurker || type == UnitTypes::Zerg_Lurker_Egg
+                || type == UnitTypes::Terran_Vulture_Spider_Mine || type == UnitTypes::Terran_Ghost
+                || (type == UnitTypes::Terran_Wraith && unit->isCloaked()))
             {
                 cloakSeen = true;
             }
-            if (type == UnitTypes::Protoss_Templar_Archives) templarArchivesSeen = true;
+            if (type == UnitTypes::Protoss_Dark_Templar || type == UnitTypes::Zerg_Lurker) hiddenArmySeen = true;
+            if (type == UnitTypes::Protoss_Templar_Archives || type == UnitTypes::Protoss_Citadel_of_Adun)
+            {
+                templarArchivesSeen = true;
+            }
             if (type == UnitTypes::Zerg_Spire || type == UnitTypes::Zerg_Mutalisk || type == UnitTypes::Zerg_Greater_Spire)
             {
                 airSeen = true;
@@ -1116,19 +1407,35 @@ void ClaudeOpus55::trackEnemy()
             {
                 rangedNeeded = true;
             }
-            if (Broodwar->getFrameCount() < 5000 && !rushSeen)
+            if (Broodwar->getFrameCount() < 7500 && !rushSeen)
             {
                 auto counts = [&](UnitType t) { return Broodwar->enemy()->visibleUnitCount(t); };
+                // Zealots remembered rather than only those in sight: a gateway rush arrives a few at a time
+                int zealotsKnown = 0;
+                for (auto &[id, seen] : enemyArmy)
+                {
+                    if (seen.type == UnitTypes::Protoss_Zealot) zealotsKnown++;
+                }
+                int frame = Broodwar->getFrameCount();
+                if (zealotsKnown >= 3 && frame < 6000 || zealotsKnown >= 5) rushSeen = true;
                 int enemyWorkersNearHome = 0;
                 for (auto worker : Broodwar->enemy()->getUnits())
                 {
                     if (worker->getType().isWorker() && worker->getDistance(home) < 500) enemyWorkersNearHome++;
                 }
-                if (enemyWorkersNearHome >= 3
-                    || counts(UnitTypes::Protoss_Gateway) >= 2 && Broodwar->getFrameCount() < 3600
+                if (frame < 5000 && counts(UnitTypes::Terran_Barracks) >= 2) barracksRush = true;
+                bool coreKnown = false;
+                for (auto &[id, building] : enemyBuildings)
+                {
+                    if (building.first == UnitTypes::Protoss_Cybernetics_Core) coreKnown = true;
+                }
+                if (frame < 5000 && (enemyWorkersNearHome >= 3
+                    // Two gateways and no core yet: zealots coming. A core alongside means dragoons or dark templar
+                    || counts(UnitTypes::Protoss_Gateway) >= 2
+                       && (frame < 3600 || frame < 4300 && !coreKnown)
                     || counts(UnitTypes::Terran_Barracks) >= 2 || counts(UnitTypes::Zerg_Zergling) >= 4
                     || counts(UnitTypes::Protoss_Zealot) >= 3
-                    || type == UnitTypes::Zerg_Spawning_Pool && Broodwar->getFrameCount() < 2400)
+                    || type == UnitTypes::Zerg_Spawning_Pool && Broodwar->getFrameCount() < 2400))
                 {
                     rushSeen = true;
                 }
@@ -1176,12 +1483,48 @@ void ClaudeOpus55::trackEnemy()
 void ClaudeOpus55::scoutEnemy()
 {
     auto self = Broodwar->self();
+    int frame = Broodwar->getFrameCount();
+    auto finish = [&]()
+    {
+        if (scout && scout->exists()) scout->stop();  // idle, so it goes back to mining
+        scout = nullptr;
+        scoutingDone = true;
+    };
+    if (scoutingDone) return;
     if (enemyBase != Positions::Unknown)
     {
-        if (scout && scout->exists())
+        // The main is known (a two-player map, or just found): the scout looks round it once, for an early pool, a
+        // proxy-free main (so the gateways are elsewhere), tech buildings and the size of the army
+        if (frame > 6000 || scout && !scout->exists())
         {
-            scout->stop();
-            scout = nullptr;
+            finish();
+            return;
+        }
+        if (self->supplyUsed() / 2 < 9) return;
+        if (!scout)
+        {
+            scout = chooseBuilder(home);
+            if (!scout) return;
+        }
+        if (scoutArrivedFrame < 0)
+        {
+            if (scout->getDistance(enemyBase) > 320)
+            {
+                if (scout->getTargetPosition().getApproxDistance(enemyBase) > 64) scout->move(enemyBase);
+                return;
+            }
+            scoutArrivedFrame = frame;
+        }
+        int elapsed = frame - scoutArrivedFrame;
+        if (elapsed > 720 || scout->isUnderAttack() && scout->getShields() < 10)
+        {
+            finish();
+            return;
+        }
+        if (elapsed % 12 == 0)
+        {
+            double angle = elapsed / 720.0 * 2 * 3.14159 * 1.5;  // a lap and a half
+            scout->move(Position(enemyBase.x + int(std::cos(angle) * 256), enemyBase.y + int(std::sin(angle) * 256)).makeValid());
         }
         return;
     }
@@ -1217,11 +1560,36 @@ Unitset ClaudeOpus55::threatsNearHome() const
             if (!unit->isDetected()) continue;  // nothing the army can do about it; observers and cannons can
             bool near = unit->getDistance(home) < 900 || haveNatural && unit->getDistance(natural->center) < 600;
             if (!near) continue;
-            (unit->getType().isWorker() ? workers : threats).insert(unit);
+            // A worker attacking ours (or building in our base) is a threat on its own: a lone drone or SCV left
+            // alone kills probe after probe. Workers only walking about count when there are several
+            if (unit->getType().isWorker() && !hostile(unit)) workers.insert(unit);
+            else threats.insert(unit);
         }
     }
     if (workers.size() >= 3) threats.insert(workers.begin(), workers.end());
     return threats;
+}
+
+bool ClaudeOpus55::rushMode() const
+{
+    if (!rushSeen || Broodwar->getFrameCount() >= 9000) return false;
+
+    // Four units are not enough while the rush keeps coming (5 zealots killed 4 of ours at the ramp once the gas and
+    // probes had started again): the rush lasts until our army, those in production too, matches the one seen
+    double myDurability = 0, myDps = 0, theirDurability = 0, theirDps = 0;
+    int units = 0;
+    for (auto unit : Broodwar->self()->getUnits())
+    {
+        if (unit->getType() == UnitTypes::Protoss_Photon_Cannon && unit->isCompleted())
+        {
+            addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), myDurability, myDps);
+        }
+        if (!isArmy(unit->getType())) continue;
+        units++;
+        addToGroup(unit->getType(), unit->isCompleted() ? unit->getHitPoints() + unit->getShields() : 0, myDurability, myDps);
+    }
+    for (auto &[id, seen] : enemyArmy) addToGroup(seen.type, seen.health, theirDurability, theirDps);
+    return units < 4 || groupStrength(myDurability, myDps) < groupStrength(theirDurability, theirDps);
 }
 
 void ClaudeOpus55::addToGroup(UnitType type, int health, double &durability, double &dps)
@@ -1270,7 +1638,7 @@ void ClaudeOpus55::fight(Unit unit, Position goal)
     }
 
     // Dragoons step back from melee units while their weapon reloads
-    if (unit->getType() == UnitTypes::Protoss_Dragoon && unit->getGroundWeaponCooldown() > 0)
+    if (unit->getType() == UnitTypes::Protoss_Dragoon && unit->getGroundWeaponCooldown() > 8)
     {
         auto melee = unit->getClosestUnit(IsEnemy && IsVisible && !IsFlying && !IsWorker
                                           && [](Unit u) { return isMelee(u->getType()); }, 96);
@@ -1281,27 +1649,43 @@ void ClaudeOpus55::fight(Unit unit, Position goal)
         }
     }
 
+    // Pick a target: the most important kind first, then one already in weapon range (walking to a far target
+    // while something close hits us loses fights), then the one closest to dying
     Unit best = nullptr;
-    int bestPriority = -1, bestHealth = INT_MAX;
-    bool hitsGround = unit->getType().groundWeapon() != WeaponTypes::None;
-    bool hitsAir = unit->getType().airWeapon() != WeaponTypes::None;
-    int range = std::max({hitsGround ? unit->getType().groundWeapon().maxRange() : 0,
-                          hitsAir ? unit->getType().airWeapon().maxRange() : 0, 32}) + 64;
+    int bestScore = INT_MIN;
+    auto self = Broodwar->self();
+    auto groundWeapon = unit->getType().groundWeapon(), airWeapon = unit->getType().airWeapon();
+    bool hitsGround = groundWeapon != WeaponTypes::None, hitsAir = airWeapon != WeaponTypes::None;
+    int groundRange = hitsGround ? self->weaponMaxRange(groundWeapon) : 0;
+    int airRange = hitsAir ? self->weaponMaxRange(airWeapon) : 0;
+    int range = std::max({groundRange, airRange, 32}) + 64;
+    auto inReach = [&](Unit enemy, int slack) {
+        return unit->getDistance(enemy) <= (enemy->isFlying() ? airRange : groundRange) + slack;
+    };
     for (auto enemy : unit->getUnitsInRadius(range + 96, IsEnemy && IsVisible))
     {
         if (!enemy->isDetected() || (enemy->isFlying() ? !hitsAir : !hitsGround)) continue;
-        int priority = targetPriority(enemy);
         int health = enemy->getHitPoints() + enemy->getShields();
-        if (priority > bestPriority || priority == bestPriority && health < bestHealth)
+        int score = targetPriority(enemy) * 10000 + (inReach(enemy, 16) ? 5000 : 0) - health - unit->getDistance(enemy);
+        if (score > bestScore)
         {
             best = enemy;
-            bestPriority = priority;
-            bestHealth = health;
+            bestScore = score;
         }
     }
     if (best)
     {
-        if (unit->getOrderTarget() != best) unit->attack(best);
+        // Keep shooting the current target while it is as important and still in weapon range: re-targeting every
+        // frame cancels the attack before it fires (a dragoon's shot takes several frames to come out)
+        auto current = unit->getOrderTarget();
+        if (current && current->exists() && current->isVisible() && current->getPlayer() == Broodwar->enemy()
+            && targetPriority(current) >= targetPriority(best) && (inReach(current, 16) || !inReach(best, 16)))
+        {
+            if (unit->getOrder() != Orders::AttackUnit) unit->attack(current);
+            return;
+        }
+        if (Broodwar->getFrameCount() - unit->getLastCommandFrame() < 6 && unit->getOrder() == Orders::AttackUnit) return;
+        unit->attack(best);
         return;
     }
     if (unit->getOrder() != Orders::AttackMove || unit->getTargetPosition().getApproxDistance(goal) > 64)
@@ -1319,45 +1703,183 @@ void ClaudeOpus55::controlArmy()
         if (isArmy(unit->getType()) && unit->isCompleted()) army.insert(unit);
     }
 
+    // CO55_DEBUG=3: what each unit is doing while enemies are close
+    static bool fightDebug = getenv("CO55_DEBUG") && atoi(getenv("CO55_DEBUG")) >= 3;
+    if (fightDebug && frame % 24 == 0)
+    {
+        for (auto unit : army)
+        {
+            auto enemy = unit->getClosestUnit(IsEnemy && IsVisible && !IsWorker && !IsBuilding, 320);
+            if (!enemy) continue;
+            printf("FIGHT %d %s hp %d order %s target %s dist %d cd %d attacking %d enemyDist %d\n", frame,
+                   unit->getType().getName().c_str() + 8, unit->getHitPoints() + unit->getShields(),
+                   unit->getOrder().getName().c_str(),
+                   unit->getOrderTarget() ? unit->getOrderTarget()->getType().getName().c_str() : "-",
+                   unit->getOrderTarget() ? unit->getDistance(unit->getOrderTarget()) : -1,
+                   unit->getGroundWeaponCooldown(), attacking, unit->getDistance(enemy));
+        }
+    }
+
     controlObservers(army);
     controlCorsairs(army);
 
     // Once the natural is ours, the army waits in front of it rather than at the top of the main ramp
-    if (naturalFront.isValid() && Broodwar->self()->allUnitCount(UnitTypes::Protoss_Nexus) >= 2)
+    // (or as soon as it is due, to clear the spot and cover the new nexus)
+    if (naturalFront.isValid() && (Broodwar->self()->allUnitCount(UnitTypes::Protoss_Nexus) >= 2 || expansionDue))
     {
         rally = towards(naturalFront, Position(natural->depot) + Position(64, 48), 64);
+    }
+    // During a rush it waits in front of the main nexus instead: at the ramp, outside the home defence's reach, the
+    // zealots arrived one at a time and died to the rush there; by the nexus the probes and cannons fight with them
+    else if (rushMode())
+    {
+        rally = towards(home, rampTop, 160);
+    }
+    else
+    {
+        rally = rampTop;
+    }
+
+    // Dark templar (or lurkers) the army can see but not hit: it falls back to the cannons by the main's minerals, which
+    // detect them, rather than standing in them (7 dragoons died at once to two dark templar at the natural)
+    bool observerOut = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Observer) > 0;
+    bool hiddenNearArmy = false;
+    for (auto enemy : Broodwar->enemy()->getUnits())
+    {
+        auto type = enemy->getType();
+        if (type != UnitTypes::Protoss_Dark_Templar && type != UnitTypes::Zerg_Lurker) continue;
+        if (!enemy->isVisible() || enemy->isDetected()) continue;
+        for (auto unit : army)
+        {
+            if (unit->getDistance(enemy) < 480) hiddenNearArmy = true;
+        }
+    }
+    if (hiddenNearArmy)
+    {
+        if (attacking)
+        {
+            attacking = false;
+            wave++;
+            lastRetreatFrame = frame;
+        }
+        Position cannons = (home + mineralCenter) / 2;
+        for (auto unit : army)
+        {
+            if (unit->getDistance(cannons) > 128)
+            {
+                if (unit->getTargetPosition().getApproxDistance(cannons) > 64) unit->move(cannons);
+            }
+            else
+            {
+                fight(unit, cannons);
+            }
+        }
+        return;
     }
 
     // Defend first: everything goes for enemies near home, with probes helping against an early rush
     auto threats = threatsNearHome();
+    int fighterThreats = 0;
+    for (auto threat : threats)
+    {
+        if (!threat->getType().isWorker()) fighterThreats++;
+    }
+
+    // Only workers about (an SCV army, a worker harass): a home guard deals with them and the rest of the army is free
+    // to attack, or it waits at home for as long as they keep wandering in
+    Unitset guard;
+    if (!threats.empty() && fighterThreats == 0 && army.size() >= 4)
+    {
+        size_t guards = std::min(army.size() / 2, std::max<size_t>(2, threats.size() / 3 + 1));
+        std::vector<Unit> byDistance(army.begin(), army.end());
+        std::sort(byDistance.begin(), byDistance.end(),
+                  [&](Unit a, Unit b) { return a->getDistance(home) < b->getDistance(home); });
+        for (size_t i = 0; i < guards; i++) guard.insert(byDistance[i]);
+    }
+
     if (!threats.empty())
     {
-        if (threats.size() >= 3 && attacking)
+        if (fighterThreats >= 3 && attacking)
         {
             attacking = false;
             wave++;
             lastRetreatFrame = frame;
         }
         Position target = threats.getPosition();
-        for (auto unit : army)
-        {
-            if (!attacking || unit->getDistance(home) < 1200) fight(unit, target);
-        }
 
-        // Probes only help against enemies right at the nexus, when the army can't cope alone
-        int atNexus = 0;
+        // Outmatched: hold by the nexus (with the probes and cannons to help) and fight only what reaches the base,
+        // rather than walking out to an army that is waiting for us
+        double ourDurability = 0, ourDps = 0, threatDurability = 0, threatDps = 0;
+        for (auto unit : army) addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), ourDurability, ourDps);
+        for (auto threat : threats) addToGroup(threat->getType(), threat->getHitPoints() + threat->getShields(), threatDurability, threatDps);
+        // During a rush the few zealots we can see are scouts for the rest: the army met the whole rush in the open
+        // when it went out to them, so it stays home until it is a match for everything seen
+        bool outmatched = groupStrength(ourDurability, ourDps) < 1.2 * groupStrength(threatDurability, threatDps)
+                          || rushMode();
+        bool atBase = false;
         for (auto threat : threats)
         {
-            if (threat->getDistance(home) < 300) atNexus++;
+            if (threat->getDistance(home) < 400
+                || threat->getClosestUnit(IsOwned && IsBuilding, 160) && threat->getDistance(home) < 700)
+            {
+                atBase = true;
+            }
         }
-        int toPull = std::min(16, atNexus * 3 / 2 + 1 - (int) army.size() * 2);
+        // Against zerglings it holds in the mineral line, where the probes fight beside it: a zealot met 5 zerglings
+        // in front of the nexus alone and died, and the probes then fought them a few at a time (13 lost for 4)
+        bool zerglingsIn = false;
+        for (auto threat : threats)
+        {
+            if (threat->getType() == UnitTypes::Zerg_Zergling && threat->getDistance(home) < 400) zerglingsIn = true;
+        }
+        Position holdAt = towards(home, mineralCenter, zerglingsIn ? 96 : -96);
+
+        for (auto unit : guard.empty() ? army : guard)
+        {
+            if (attacking && unit->getDistance(home) >= 1200 && guard.empty()) continue;
+            if (!outmatched || atBase || unit->getClosestUnit(IsEnemy && IsVisible && !IsFlying, 160))
+            {
+                fight(unit, atBase && outmatched ? holdAt : target);
+            }
+            else if (unit->getDistance(holdAt) > 128 && unit->getTargetPosition().getApproxDistance(holdAt) > 64)
+            {
+                unit->move(holdAt);
+            }
+        }
+
+        // Probes only help against enemies right at the nexus that are fighting, when the army can't cope alone.
+        // Enemy workers that only walk through are left to the army: chasing them stops the mining, which is what a
+        // worker harass is after
+        int fightersAtNexus = 0, workersAtNexus = 0, defenders = 0, zerglings = 0;
+        for (auto threat : threats)
+        {
+            if (threat->getDistance(home) < 300 && hostile(threat))
+            {
+                (threat->getType().isWorker() ? workersAtNexus : fightersAtNexus)++;
+                if (threat->getType() == UnitTypes::Zerg_Zergling) zerglings++;
+            }
+        }
+        for (auto unit : army)
+        {
+            if (unit->getDistance(home) < 600) defenders++;
+        }
+        // Two probes beat an attacking worker (one loses to an SCV); the army nearby takes some of that on
+        // A zergling outfights two probes one at a time, so against them two probes each go: six four-pool zerglings
+        // met one zealot and eight probes and killed 13 of them for 4 zerglings
+        int toPull = fightersAtNexus > 0
+                     ? std::max(0, fightersAtNexus * 3 / 2 + zerglings / 2 + 1 - defenders * 2) : 0;
+        toPull = std::min(16, toPull + std::max(0, workersAtNexus * 2 - defenders));
+        for (auto probe : Broodwar->self()->getUnits())
+        {
+            if (probe->getType().isWorker() && probe->getOrder() == Orders::AttackUnit) toPull--;
+        }
         for (auto probe : Broodwar->self()->getUnits())
         {
             if (toPull <= 0) break;
             if (!probe->getType().isWorker() || probe == scout || builders.count(probe)) continue;
             if (probe->getOrder() == Orders::AttackUnit) continue;
-            auto enemy = probe->getClosestUnit(IsEnemy && !IsFlying && IsVisible, 200);
-            if (enemy && enemy->getDistance(home) < 300)
+            auto enemy = probe->getClosestUnit(IsEnemy && !IsFlying && IsVisible, zerglings > 0 ? 320 : 200);
+            if (enemy && enemy->getDistance(home) < 300 && hostile(enemy))
             {
                 probe->attack(enemy);
                 toPull--;
@@ -1372,13 +1894,23 @@ void ClaudeOpus55::controlArmy()
         if (!mineNexus || !probe->getType().isWorker() || probe == scout || builders.count(probe)) continue;
         if (probe->getOrder() != Orders::AttackUnit) continue;
         auto target = probe->getOrderTarget();
-        if (!target || !target->exists() || target->getDistance(home) >= 300)
+        if (!target || !target->exists() || target->getDistance(home) >= 300 || probe->getDistance(target) > 160
+            || !hostile(target))
         {
+            // Zerglings dodge between probes: one that steps away is replaced by the next one close by, or the probes
+            // go back to mining one at a time while the rest are eaten (12 probes lost for 2 zerglings)
+            auto next = probe->getClosestUnit(IsEnemy && IsVisible && !IsFlying && GetType == UnitTypes::Zerg_Zergling, 96);
+            if (next && next->getDistance(home) < 300)
+            {
+                probe->attack(next);
+                continue;
+            }
             auto mineral = mineNexus->getClosestUnit(IsMineralField, 400);
             if (mineral) probe->gather(mineral);
         }
     }
-    if (!threats.empty() && !attacking) return;
+    if (!threats.empty() && guard.empty() && !attacking) return;
+    for (auto unit : guard) army.erase(unit);
 
     // Attack once the army is big enough and clearly stronger than the enemy army we know about (or nearly maxed)
     int needed = wave == 0 ? FirstAttackArmy : LaterAttackArmy;
@@ -1387,7 +1919,8 @@ void ClaudeOpus55::controlArmy()
     for (auto unit : army) addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), myDurability, myDps);
     for (auto &[id, seen] : enemyArmy) addToGroup(seen.type, seen.health, theirDurability, theirDps);
     bool stronger = groupStrength(myDurability, myDps) >= 1.5 * groupStrength(theirDurability, theirDps);
-    if (!attacking && ((int) army.size() >= needed && stronger || maxed) && frame - lastRetreatFrame > 480)
+    if (!attacking && ((int) army.size() >= needed && stronger || maxed) && frame - lastRetreatFrame > 480
+        && (observerOut || !hiddenArmySeen))
     {
         attacking = true;
     }
@@ -1479,7 +2012,17 @@ void ClaudeOpus55::controlArmy()
             }
             int spread = 0;
             for (auto unit : group) spread = std::max(spread, unit->getDistance(center));
-            if (!contact && (group.size() < army.size() * 3 / 4 || spread > 250) && center.getApproxDistance(target) > 600)
+            // Only units close enough to catch up count: with ten gateways the stream of new units from home never
+            // made three quarters of the army, and the front stood still for five minutes killing marines one by
+            // one until the frame limit. And no wave gathers for more than about 15 seconds
+            size_t closeBy = 0;
+            for (auto unit : army)
+            {
+                if (unit->getDistance(center) < 1200) closeBy++;
+            }
+            if (contact || gatherStart < 0 || frame - gatherStart > 1500) gatherStart = frame;
+            bool gathering = !contact && (group.size() < closeBy * 3 / 4 || spread > 250) && frame - gatherStart < 360;
+            if (gathering && center.getApproxDistance(target) > 600)
             {
                 for (auto unit : army)
                 {
@@ -1579,14 +2122,50 @@ void ClaudeOpus55::controlObservers(const Unitset &army)
     {
         if (unit->getType() == UnitTypes::Protoss_Observer && unit->isCompleted()) observers.push_back(unit);
     }
+    // Cloaked enemies at our bases come first for the observers not with the army: 7 dark templar killed 63 probes at
+    // the natural while one observer sat over the army and the other over the main's minerals
+    std::vector<Position> hidden;
+    for (auto enemy : Broodwar->enemy()->getUnits())
+    {
+        if (!enemy->isVisible() || enemy->isDetected() || enemy->getType().isBuilding()) continue;
+        for (auto nexus : nexuses(false))
+        {
+            if (enemy->getDistance(nexus) < 640)
+            {
+                hidden.push_back(enemy->getPosition());
+                break;
+            }
+        }
+    }
+    std::vector<Unit> otherNexuses;
+    for (auto nexus : nexuses(true))
+    {
+        if (nexus != mainNexus) otherNexuses.push_back(nexus);
+    }
     for (size_t i = 0; i < observers.size(); i++)
     {
         Position goal = (home + mineralCenter) / 2;
-        if (i == 0 && !army.empty())
+        bool withArmy = i == 0 && !army.empty();
+        if (withArmy)
         {
             // Over the army, a little behind its front
             goal = army.getPosition();
             if (attacking) goal = towards(goal, home, 64);
+        }
+        else if (!hidden.empty())
+        {
+            auto closest = std::min_element(hidden.begin(), hidden.end(), [&](Position a, Position b) {
+                return observers[i]->getDistance(a) < observers[i]->getDistance(b);
+            });
+            goal = *closest;
+            hidden.erase(closest);
+        }
+        else if (i >= 2 && !otherNexuses.empty())
+        {
+            // The third watches the other mineral lines in turn
+            auto nexus = otherNexuses[(Broodwar->getFrameCount() / 720 + i) % otherNexuses.size()];
+            auto minerals = nexus->getUnitsInRadius(320, IsMineralField);
+            goal = minerals.empty() ? nexus->getPosition() : (nexus->getPosition() + minerals.getPosition()) / 2;
         }
         if (observers[i]->getDistance(goal) > 64) observers[i]->move(goal);
     }

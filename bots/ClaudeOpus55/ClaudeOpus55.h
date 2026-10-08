@@ -35,6 +35,7 @@ private:
     // Map
     BWAPI::Position home;
     BWAPI::Position rally;
+    BWAPI::Position rampTop;
     BWAPI::Position mineralCenter;
     std::vector<Base> bases;          // resource clusters, nearest to home first
     const Base *natural = nullptr;
@@ -48,6 +49,8 @@ private:
     // Units
     BWAPI::Unit mainNexus = nullptr;
     BWAPI::Unit scout = nullptr;
+    int scoutArrivedFrame = -1;       // when the scout reached the enemy main; it circles there for a while
+    bool scoutingDone = false;
     std::map<BWAPI::Unit, PendingBuild> builders;
 
     // What we know about the enemy
@@ -68,9 +71,14 @@ private:
     // Cloaked enemies (dark templar, lurkers, wraiths, mines) seen: detection becomes urgent
     bool cloakSeen = false;
     bool templarArchivesSeen = false;
+    bool hiddenArmySeen = false;  // dark templar or lurkers: the army waits for an observer before attacking
     bool airSeen = false;              // a spire or mutalisks: cannons in the mineral lines and corsairs
     bool rangedNeeded = false;         // hydralisks, lurkers or mutalisks: zealots are poor, dragoons only
     bool rushSeen = false;             // early mass gateways/barracks or early zealots/zerglings: hold the expansion
+    bool barracksRush = false;         // two early barracks: marines are coming, zealots answer them best
+    // A rush seen early and our gateway units not yet a match for it: zealots before probes, gas or the natural, and
+    // the army waits by the nexus
+    bool rushMode() const;
 
     // Set when the natural is due, so production leaves money for it
     bool expansionDue = false;
@@ -91,6 +99,7 @@ private:
     bool attacking = false;
     int wave = 0;
     int lastRetreatFrame = -10000;
+    int gatherStart = -1;  // when the attacking army last began gathering before contact
 
     // Economy
     void findBases();
@@ -105,8 +114,12 @@ private:
     int reservedGas() const;
     BWAPI::Unit chooseBuilder(BWAPI::Position near);
     BWAPI::TilePosition pylonSpot();
-    BWAPI::TilePosition findBuildSpot(BWAPI::UnitType type, BWAPI::TilePosition near, bool checkExplored = true) const;
+    BWAPI::TilePosition findBuildSpot(BWAPI::UnitType type, BWAPI::TilePosition near, bool checkExplored = true,
+                                      bool ignoreUnits = false) const;
+    bool placeableIgnoringUnits(BWAPI::TilePosition tile, BWAPI::UnitType type, bool checkExplored) const;
+    bool secondGatewayWaits(const Step &step) const;
     void buildMineralLineCannons();
+    bool cannonsNear(BWAPI::Position spot, int wanted);
     std::vector<BWAPI::Unit> nexuses(bool completedOnly) const;
     BWAPI::Unit nexusNeedingWorkers() const;
 
@@ -121,5 +134,6 @@ private:
     static double strength(BWAPI::Unit unit);
     // Fighting power of a group: (total durability) x (total damage per frame), which values concentration
     static double groupStrength(double durability, double dps) { return durability * dps; }
+    void retryOpeningStep(BWAPI::UnitType type);
     static void addToGroup(BWAPI::UnitType type, int health, double &durability, double &dps);
 };
