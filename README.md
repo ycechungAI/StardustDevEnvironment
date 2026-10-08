@@ -66,6 +66,8 @@ Test harness options, as environment variables:
 |---|---|
 | `STARDUST_TEST_MAP` | map to play on (a name such as `Benzene`) instead of a random one |
 | `STARDUST_TEST_FRAME_LIMIT` | end the game after this many frames, e.g. to look only at startup |
+| `STARDUST_TEST_SEED` | random seed for games against other bots (`--opponent`), to replay the same game |
+| `STARDUST_OBSERVE` | print both players' unit counts every this many frames, like watching the replay |
 | `STARDUST_PROFILE_STARTUP` | write a cProfile of the bot's `onStart` to this file |
 | `STARDUST_PROFILE_FRAMES` | write a cProfile of all `onFrame` calls to this file (every 1000 frames and at the end) |
 | `STARDUST_LOG_GC` | log Python garbage collections taking at least this many milliseconds to the bot log |

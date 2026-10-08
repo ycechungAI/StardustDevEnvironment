@@ -130,7 +130,7 @@ def main() -> int:
 
     # Tests that loop over many games internally can't be split between workers
     splittable = args.opponent is not None or "RunTwenty" not in args.filter
-    window_build = "ui" in args.build
+    window_build = Path(args.build).name.endswith("-ui")  # build-ui; a plain "in" would match "build" itself
     parallel = args.parallel or (1 if window_build else DEFAULT_PARALLEL)
     parallel = max(1, min(parallel, games if splittable else 1))
 

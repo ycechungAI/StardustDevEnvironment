@@ -27,4 +27,5 @@ add_subdirectory(src)
 
 IF(NOT MSVC)
     add_subdirectory(test)
+    add_subdirectory(tools/replay)
 ENDIF(NOT MSVC)
