@@ -41,6 +41,7 @@ private:
     const Base *natural = nullptr;
     BWAPI::Position naturalFront = BWAPI::Positions::Invalid;  // in front of the natural nexus, away from its minerals
     bool cannonOpening = false;       // against Zerg: forge and cannons by the main's minerals before the gateway
+    bool hurtNeeded = false;          // this frame's attack needs its damaged units to be decisive
     bool openingCannonsStarted = false;  // the cannon opening's cannons have all been started at least once
     bool forgeExpand = false;         // against Zerg: forge and cannons at the natural, then the nexus there
     int rushDistance = INT_MAX;       // ground distance in tiles to the nearest enemy start

@@ -1027,6 +1027,21 @@ void ClaudeOpus55::buildStructures()
         build(UnitTypes::Protoss_Robotics_Support_Bay, nearPylon);
     }
 
+    // A shield battery where the army waits, once two gateways and the core are up, and one more with the natural
+    // (the user's advice: shields recharged at a battery, or left to regenerate, keep units alive far longer)
+    if (coreDone && self->completedUnitCount(UnitTypes::Protoss_Gateway) >= 2 && !rushMode()
+        && count(UnitTypes::Protoss_Shield_Battery) < (self->completedUnitCount(UnitTypes::Protoss_Nexus) >= 2 ? 2 : 1))
+    {
+        Unit rallyPylon = nullptr;
+        for (auto pylon : self->getUnits())
+        {
+            if (pylon->getType() != UnitTypes::Protoss_Pylon || !pylon->isCompleted() || pylon->getDistance(rally) > 480)
+                continue;
+            if (!rallyPylon || pylon->getDistance(rally) < rallyPylon->getDistance(rally)) rallyPylon = pylon;
+        }
+        if (rallyPylon) build(UnitTypes::Protoss_Shield_Battery, rallyPylon->getTilePosition());
+    }
+
     // The opening, step by step; a step waits for its requirements (and money), never skipped
     expansionDue = false;
     if (buildOrderStep < buildOrder.size())
@@ -1743,6 +1758,21 @@ void ClaudeOpus55::fight(Unit unit, Position goal)
             return;
         }
     }
+    // ... and so does any unit low on shields while a fresher one beside it can take its place (the user's advice:
+    // shields come back, hit points don't)
+    auto maxShields = unit->getType().maxShields();
+    if (maxShields > 0 && !hurtNeeded && unit->getShields() * 4 < maxShields && unit->getType() != UnitTypes::Protoss_Reaver)
+    {
+        auto closest = unit->getClosestUnit(IsEnemy && IsVisible && CanAttack && !IsWorker, 192);
+        auto fresher = unit->getClosestUnit(IsOwned && IsCompleted && [&](Unit u) {
+            return isArmy(u->getType()) && u->getShields() * 2 >= u->getType().maxShields();
+        }, 128);
+        if (closest && fresher)
+        {
+            unit->move(towards(unit->getPosition(), unit->getPosition() * 2 - closest->getPosition(), 64));
+            return;
+        }
+    }
 
     // Dragoons step back from melee units while their weapon reloads
     if (unit->getType() == UnitTypes::Protoss_Dragoon && unit->getGroundWeaponCooldown() > 8)
@@ -1828,6 +1858,7 @@ void ClaudeOpus55::controlArmy()
         if (isArmy(unit->getType()) && unit->isCompleted()) army.insert(unit);
     }
     aimedDamage.clear();
+    hurtNeeded = false;
     for (auto unit : army)
     {
         auto target = unit->getOrderTarget();
@@ -2057,7 +2088,15 @@ void ClaudeOpus55::controlArmy()
     for (auto unit : army) addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), myDurability, myDps);
     for (auto &[id, seen] : enemyArmy) addToGroup(seen.type, seen.health, theirDurability, theirDps);
     bool stronger = groupStrength(myDurability, myDps) >= 1.5 * groupStrength(theirDurability, theirDps);
-    if (!attacking && ((int) army.size() >= needed && stronger || maxed) && frame - lastRetreatFrame > 480
+    // ... and with its shields back: they regenerate (or recharge at a battery) for free
+    int shields = 0, maxShields = 0;
+    for (auto unit : army)
+    {
+        shields += unit->getShields();
+        maxShields += unit->getType().maxShields();
+    }
+    bool shieldsUp = shields * 10 >= maxShields * 4;  // 40% is enough (the user), not a full recharge
+    if (!attacking && ((int) army.size() >= needed && stronger && shieldsUp || maxed) && frame - lastRetreatFrame > 480
         && (observerOut || !hiddenArmySeen))
     {
         attacking = true;
@@ -2133,6 +2172,15 @@ void ClaudeOpus55::controlArmy()
             }
         }
         double ours = groupStrength(groupDurability, groupDps), theirs = groupStrength(nearDurability, nearDps);
+        // Damaged units stay in only when they are what makes the fight decisive (the user's advice): 1.5 times the
+        // enemy nearby with them, short of it without
+        double freshDurability = 0, freshDps = 0;
+        for (auto unit : army)
+        {
+            if (unit->getDistance(center) < 600 && unit->getShields() * 4 >= unit->getType().maxShields())
+                addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), freshDurability, freshDps);
+        }
+        hurtNeeded = theirs > 0 && ours >= 1.5 * theirs && groupStrength(freshDurability, freshDps) < 1.5 * theirs;
         if (theirs * (uphill ? 2.0 : 1.0) > ours * RetreatRatio && !maxed)
         {
             attacking = false;
@@ -2172,8 +2220,20 @@ void ClaudeOpus55::controlArmy()
                 return;
             }
 
+            Unit battery = nullptr;
+            for (auto unit : Broodwar->self()->getUnits())
+            {
+                if (unit->getType() == UnitTypes::Protoss_Shield_Battery && unit->isCompleted()) battery = unit;
+            }
             for (auto unit : army)
             {
+                // Units out of shields and down to half their hit points go home to defend it and recharge
+                if (battery && !hurtNeeded && unit->getShields() == 0 && unit->getHitPoints() * 2 < unit->getType().maxHitPoints()
+                    && unit->getType() != UnitTypes::Protoss_Reaver && unit->getDistance(battery) > 640)
+                {
+                    if (unit->getTargetPosition().getApproxDistance(battery->getPosition()) > 96) unit->move(battery->getPosition());
+                    continue;
+                }
                 // Stragglers join the group before it engages
                 bool engaged = unit->getClosestUnit(IsEnemy && IsVisible && !IsFlying, 320) != nullptr;
                 if (!engaged && unit->getDistance(center) > RegroupDistance)
@@ -2191,6 +2251,17 @@ void ClaudeOpus55::controlArmy()
 
     for (auto unit : army)
     {
+        // Units with their shields down recharge at a battery nearby when nothing is close
+        if (unit->getShields() * 2 < unit->getType().maxShields() && !unit->getClosestUnit(IsEnemy && IsVisible && CanAttack, 224))
+        {
+            auto battery = unit->getClosestUnit(IsOwned && IsCompleted && GetType == UnitTypes::Protoss_Shield_Battery
+                                                && Energy >= 20, 640);
+            if (battery)
+            {
+                if (unit->getOrder() != Orders::RechargeShieldsUnit) unit->rightClick(battery);
+                continue;
+            }
+        }
         if (unit->getDistance(rally) > 192)
         {
             // Retreating units still shoot back at anything right next to them

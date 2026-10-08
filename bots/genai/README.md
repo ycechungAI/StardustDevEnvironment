@@ -76,5 +76,8 @@ In the user's words, lightly condensed:
 28. Against Protoss, only stay on one gateway if they don't rush you. If they rush, a second and third gateway are necessary: that is the stable strategy.
 29. If a bot stays stuck on the two Protoss bots, PylonPuller and UAlbertaBotProtoss, leave them: they are simply better, closer to Tier 1 than Tier 2. Tier 2 only needs 4 of the 7 bots beaten.
 30. Against the Tier 2 bots already beaten, raise the average Elo and win more consistently: 100% of games, or close to it, if possible.
+31. Protoss units have shields: shield batteries, and waiting for shields to regenerate, greatly improve how long units last. The attack need not wait for full shields: about 40% recharged is a worthwhile delay.
+32. Units low on shields should move to the back of a fight, or go home to defend the base, unless adding the damaged units gives a decisive edge.
+33. Newly made units, with full shields, make good front-line attackers and defenders.
 
 The user also chose to carry LunaOpus55's new ideas (from ChatGPT's plan in `prompts/LunaOpus55-reply.md`) over to ClaudeOpus55 once LunaOpus55 was dropped: dragoon focus fire, and reavers against siege tanks and static defence. Its third idea, dragoons kiting melee units, was already in ClaudeOpus55.
