@@ -40,6 +40,8 @@ private:
     std::vector<Base> bases;          // resource clusters, nearest to home first
     const Base *natural = nullptr;
     BWAPI::Position naturalFront = BWAPI::Positions::Invalid;  // in front of the natural nexus, away from its minerals
+    bool cannonOpening = false;       // against Zerg: forge and cannons by the main's minerals before the gateway
+    bool openingCannonsStarted = false;  // the cannon opening's cannons have all been started at least once
     bool forgeExpand = false;         // against Zerg: forge and cannons at the natural, then the nexus there
     int rushDistance = INT_MAX;       // ground distance in tiles to the nearest enemy start
     int naturalEntrances = 0;         // ways into the natural from the enemy's side
@@ -97,6 +99,11 @@ private:
 
     // Army
     bool attacking = false;
+    // Damage our units' next shots will do to each enemy they are aiming at, refreshed every frame: dragoons pile onto
+    // a target others are already shooting, but not past what kills it
+    std::map<BWAPI::Unit, int> aimedDamage;
+    // Siege tanks, static defence or a heavy ground army seen: reavers from the robotics facility
+    bool reaversWanted = false;
     int wave = 0;
     int lastRetreatFrame = -10000;
     int gatherStart = -1;  // when the attacking army last began gathering before contact
@@ -118,6 +125,9 @@ private:
                                       bool ignoreUnits = false) const;
     bool placeableIgnoringUnits(BWAPI::TilePosition tile, BWAPI::UnitType type, bool checkExplored) const;
     bool secondGatewayWaits(const Step &step) const;
+    // The cannon opening's cannons before the gateway: three if an early pool or zerglings are seen in time for them
+    // to matter, else two (a third that could not be placed held up the gateway until 3:30)
+    int openingCannons() const { return rushSeen && BWAPI::Broodwar->getFrameCount() < 3000 ? 3 : 2; }
     void buildMineralLineCannons();
     bool cannonsNear(BWAPI::Position spot, int wanted);
     std::vector<BWAPI::Unit> nexuses(bool completedOnly) const;

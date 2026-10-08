@@ -4,8 +4,8 @@ Three Protoss bots written by AI models under rules adapted from the [StarSkirmi
 
 | Bot | Strategy by | Code by | Status |
 |---|---|---|---|
-| `ClaudeOpus55` | Claude Opus 5.5 | Claude Opus 5.5 | training, budget extended to 6 hours; done when it beats half the Tier 2 bots |
-| `LunaOpus55` | ChatGPT, free and logged out (meant to be GPT-6 Luna; the page doesn't name the model) | Claude Opus 5.5 | strategy received, not yet coded |
+| `ClaudeOpus55` | Claude Opus 5.5 | Claude Opus 5.5 | first version done: beats 5 of the 7 Tier 2 bots |
+| `LunaOpus55` | ChatGPT, free and logged out (meant to be GPT-6 Luna; the page doesn't name the model) | — | dropped on 8 October 2026: its plan (two gateways, early range, robotics facility, then a safe expansion) is mostly what ClaudeOpus55 already plays; only dragoon focus fire and kiting, and reavers against tanks, were new |
 | `GrokOpus55` | Grok 4.7 | Claude Opus 5.5 | waiting: grok.com won't answer without an account |
 
 Opus 5.5 writes all three bots' code so that the comparison is about the strategy each model chooses, not about how well each one programs.
@@ -75,3 +75,6 @@ In the user's words, lightly condensed:
 27. To get better strategies against a Tier 2 bot you are stuck on, have the Tier 1 bots play it, and take ideas from how they win.
 28. Against Protoss, only stay on one gateway if they don't rush you. If they rush, a second and third gateway are necessary: that is the stable strategy.
 29. If a bot stays stuck on the two Protoss bots, PylonPuller and UAlbertaBotProtoss, leave them: they are simply better, closer to Tier 1 than Tier 2. Tier 2 only needs 4 of the 7 bots beaten.
+30. Against the Tier 2 bots already beaten, raise the average Elo and win more consistently: 100% of games, or close to it, if possible.
+
+The user also chose to carry LunaOpus55's new ideas (from ChatGPT's plan in `prompts/LunaOpus55-reply.md`) over to ClaudeOpus55 once LunaOpus55 was dropped: dragoon focus fire, and reavers against siege tanks and static defence. Its third idea, dragoons kiting melee units, was already in ClaudeOpus55.

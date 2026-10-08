@@ -21,7 +21,7 @@ namespace
 
     bool isArmy(UnitType type)
     {
-        return type == UnitTypes::Protoss_Zealot || type == UnitTypes::Protoss_Dragoon;
+        return type == UnitTypes::Protoss_Zealot || type == UnitTypes::Protoss_Dragoon || type == UnitTypes::Protoss_Reaver;
     }
 
     bool isMelee(UnitType type)
@@ -706,7 +706,12 @@ bool ClaudeOpus55::build(UnitType type, TilePosition near)
     }
     else
     {
-        tile = findBuildSpot(type, near, Broodwar->isExplored(near));  // the natural may not be seen yet
+        // The cannon opening's pylon and cannons go among the mining probes, whom the first pass treats as in the way:
+        // it put them 6 to 8 tiles off, out of range of the mineral line
+        bool amongProbes = cannonOpening && (type == UnitTypes::Protoss_Photon_Cannon
+                                             || type == UnitTypes::Protoss_Pylon && count(UnitTypes::Protoss_Pylon) == 0);
+        if (amongProbes) tile = findBuildSpot(type, near, Broodwar->isExplored(near), true);
+        if (!tile.isValid()) tile = findBuildSpot(type, near, Broodwar->isExplored(near));  // the natural may not be seen yet
         // Every spot taken by units standing about: one that is free apart from them, where the probe waits
         if (!tile.isValid()) tile = findBuildSpot(type, near, Broodwar->isExplored(near), true);
     }
@@ -760,8 +765,11 @@ TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool 
                 if (ignoreUnits ? !placeableIgnoringUnits(tile, type, checkExplored)
                                 : !Broodwar->canBuildHere(tile, type, nullptr, checkExplored)) continue;
                 Position center = Position(tile) + Position(w * 16, h * 16);
-                if (type != UnitTypes::Protoss_Photon_Cannon && center.getApproxDistance(mineralCenter) < homeToMinerals
-                    && center.getApproxDistance(home) < 400)
+                // ... and the cannon opening's first pylon, to power them: put a few tiles off, the cannons were out of
+                // range of the mineral line where zerglings killed 10 probes
+                bool cannonPylon = cannonOpening && type == UnitTypes::Protoss_Pylon && count(UnitTypes::Protoss_Pylon) == 0;
+                if (type != UnitTypes::Protoss_Photon_Cannon && !cannonPylon
+                    && center.getApproxDistance(mineralCenter) < homeToMinerals && center.getApproxDistance(home) < 400)
                 {
                     continue;  // between the nexus and its minerals (where only cannons belong)
                 }
@@ -790,6 +798,10 @@ TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool 
                     }
                 }
                 if (taken) continue;
+                // The cannon opening's pylon and cannons fit in the gap between the nexus and its minerals only if
+                // they may touch the nexus and each other; the free tile is kept from the minerals, for the probes
+                bool amongProbes = cannonOpening && (type == UnitTypes::Protoss_Photon_Cannon
+                                                     || type == UnitTypes::Protoss_Pylon && count(UnitTypes::Protoss_Pylon) == 0);
                 bool clear = true;
                 for (int x = tile.x - 1; x <= tile.x + w && clear; x++)
                 {
@@ -797,10 +809,15 @@ TilePosition ClaudeOpus55::findBuildSpot(UnitType type, TilePosition near, bool 
                     {
                         if (x < 0 || y < 0 || x >= Broodwar->mapWidth() || y >= Broodwar->mapHeight()) continue;
                         bool border = x == tile.x - 1 || x == tile.x + w || y == tile.y - 1 || y == tile.y + h;
-                        if (border && !Broodwar->getUnitsOnTile(x, y, IsBuilding || IsMineralField
-                                                                || GetType == UnitTypes::Resource_Vespene_Geyser).empty())
+                        if (!border) continue;
+                        for (auto unit : Broodwar->getUnitsOnTile(x, y))
                         {
-                            clear = false;
+                            auto blocker = unit->getType();
+                            if (blocker.isMineralField() || blocker == UnitTypes::Resource_Vespene_Geyser
+                                || blocker.isBuilding() && !amongProbes)
+                            {
+                                clear = false;
+                            }
                         }
                     }
                 }
@@ -833,11 +850,15 @@ void ClaudeOpus55::chooseBuildOrder()
     }
     else if (enemyRace == Races::Zerg)
     {
-        // A gateway as soon as the first pylon allows, then zealots without pause; the second gateway only once two
-        // zealots are out or zerglings have been beaten off (secondGatewayWaits), then the core
-        buildOrder = {{8, Protoss_Pylon}, {9, Protoss_Gateway}, {12, Protoss_Gateway}, {14, Protoss_Pylon},
-                      {16, Protoss_Assimilator}, {17, Protoss_Cybernetics_Core}, {21, Protoss_Pylon},
-                      {24, Protoss_Gateway}};
+        // Forge and cannons in the main first, as Locutus was seen to hold ZZZKBot's four-pool without losing a unit
+        // (forge at 1:14, three cannons at 1:44). A gateway first lost 5 of 12 games to four- and five-pools, each time
+        // two zealots and the probes against the first zerglings. The first pylon goes by the minerals to power them
+        // (cannonsWait); the second gateway still waits for two zealots (secondGatewayWaits), then the core
+        cannonOpening = true;
+        // A second pylon, away from the minerals, before the gateway: the first powers too little room for one
+        buildOrder = {{8, Protoss_Pylon}, {9, Protoss_Forge}, {10, Protoss_Pylon}, {11, Protoss_Gateway},
+                      {14, Protoss_Pylon}, {15, Protoss_Gateway}, {16, Protoss_Assimilator},
+                      {17, Protoss_Cybernetics_Core}, {21, Protoss_Pylon}, {24, Protoss_Gateway}};
     }
     else if (enemyRace == Races::Terran)
     {
@@ -900,18 +921,24 @@ void ClaudeOpus55::buildStructures()
     bool underAttack = !threatsNearHome().empty();
     int freeMinerals = self->minerals() - reservedMinerals();
 
+    Position cannonSpot = (home + mineralCenter) / 2;
     TilePosition nearPylon = pylonSpot();
     for (auto pylon : self->getUnits())
     {
         if (pylon->getType() == UnitTypes::Protoss_Pylon && pylon->isCompleted() && pylon->getDistance(home) < 600)
         {
             nearPylon = pylon->getTilePosition();
-            break;
+            // The cannon opening's pylon by the minerals only while there is no other
+            if (!cannonOpening || pylon->getDistance(cannonSpot) > 160) break;
         }
     }
     TilePosition frontTile = naturalFront.isValid() ? TilePosition(naturalFront) : TilePositions::Invalid;
     auto placeFor = [&](UnitType type) -> TilePosition
     {
+        if (type == UnitTypes::Protoss_Pylon && cannonOpening && count(UnitTypes::Protoss_Pylon) == 0)
+        {
+            return TilePosition(cannonSpot);
+        }
         if (type == UnitTypes::Protoss_Pylon) return pylonSpot();
         if (type.isResourceDepot())
         {
@@ -921,6 +948,18 @@ void ClaudeOpus55::buildStructures()
         if (type.isRefinery()) return TilePosition(home);
         return nearPylon;
     };
+
+    // The cannon opening against Zerg: after the forge, nothing else in the opening until two cannons by the minerals
+    // are on their way, three once an early pool or zerglings are seen
+    // Once they have all been started it goes on: waiting to replace a lost cannon kept the gateway from ever starting,
+    // and ZZZKBot's zerglings killed the probes and the cannons one by one
+    if (cannonOpening && self->allUnitCount(UnitTypes::Protoss_Photon_Cannon) >= openingCannons()) openingCannonsStarted = true;
+    bool cannonsWait = false;
+    if (cannonOpening && !openingCannonsStarted && Broodwar->getFrameCount() < 5000 && buildOrderStep < buildOrder.size()
+        && buildOrder[buildOrderStep].type != UnitTypes::Protoss_Forge && count(UnitTypes::Protoss_Forge) > 0)
+    {
+        cannonsWait = self->completedUnitCount(UnitTypes::Protoss_Forge) == 0 || !cannonsNear(cannonSpot, openingCannons());
+    }
 
     // An early rush seen (an early pool, zerglings, mass gateways or a worker rush): a forge and cannons by the minerals,
     // alongside as many zealots as the gateways can make
@@ -945,7 +984,8 @@ void ClaudeOpus55::buildStructures()
         {
             build(UnitTypes::Protoss_Forge, nearPylon);
         }
-        else if (self->completedUnitCount(UnitTypes::Protoss_Forge) > 0)
+        // ... but not ahead of the cannon opening's gateway
+        else if (self->completedUnitCount(UnitTypes::Protoss_Forge) > 0 && !(cannonOpening && count(UnitTypes::Protoss_Gateway) == 0))
         {
             cannonsNear((home + mineralCenter) / 2, 2);
         }
@@ -972,7 +1012,7 @@ void ClaudeOpus55::buildStructures()
     bool wantRobo = templarArchivesSeen
                     || enemyRace == Races::Protoss
                        && (!rushSeen || gateways >= 3 || Broodwar->getFrameCount() >= 7000);
-    if (coreDone && wantRobo && count(UnitTypes::Protoss_Robotics_Facility) < 1)
+    if (coreDone && (wantRobo || reaversWanted) && count(UnitTypes::Protoss_Robotics_Facility) < 1)
     {
         build(UnitTypes::Protoss_Robotics_Facility, nearPylon);
     }
@@ -980,6 +1020,11 @@ void ClaudeOpus55::buildStructures()
              && count(UnitTypes::Protoss_Observatory) < 1)
     {
         build(UnitTypes::Protoss_Observatory, nearPylon);
+    }
+    else if (reaversWanted && self->completedUnitCount(UnitTypes::Protoss_Robotics_Facility) > 0
+             && count(UnitTypes::Protoss_Robotics_Support_Bay) < 1)
+    {
+        build(UnitTypes::Protoss_Robotics_Support_Bay, nearPylon);
     }
 
     // The opening, step by step; a step waits for its requirements (and money), never skipped
@@ -1025,6 +1070,10 @@ void ClaudeOpus55::buildStructures()
         else if (cannonsFirst)
         {
             build(UnitTypes::Protoss_Photon_Cannon, frontTile);
+        }
+        else if (cannonsWait)
+        {
+            // The cannons by the minerals come first
         }
         else if (rushMode() && (step.type.isRefinery() || step.type.isResourceDepot()))
         {
@@ -1217,8 +1266,12 @@ void ClaudeOpus55::trainUnits()
         pylonDue = 100;
     }
     // The first gateway goes down the moment the pylon powers it, ahead of more probes
-    if (buildOrderStep < buildOrder.size() && buildOrder[buildOrderStep].type == UnitTypes::Protoss_Gateway
-        && count(UnitTypes::Protoss_Gateway) == 0 && count(UnitTypes::Protoss_Pylon) > 0)
+    // ... and so does the cannon opening's forge (at 1:23 rather than Locutus's 1:14, its cannons were still building
+    // when the zerglings came)
+    if (buildOrderStep < buildOrder.size() && count(UnitTypes::Protoss_Pylon) > 0
+        && (buildOrder[buildOrderStep].type == UnitTypes::Protoss_Gateway && count(UnitTypes::Protoss_Gateway) == 0
+               && (!cannonOpening || openingCannonsStarted)
+            || buildOrder[buildOrderStep].type == UnitTypes::Protoss_Forge && count(UnitTypes::Protoss_Forge) == 0))
     {
         pylonDue = 150;
     }
@@ -1239,10 +1292,20 @@ void ClaudeOpus55::trainUnits()
         }
     }
 
+    // The cannon opening banks for all its cannons at once from 10 probes, as Locutus does: started one at a time
+    // between probes, only one of three was finished when ZZZKBot's zerglings arrived at 2:25
+    int cannonReserve = 0;
+    int cannonsWanted = openingCannons();
+    if (cannonOpening && !openingCannonsStarted && frame < 5000 && probes >= 10 && count(UnitTypes::Protoss_Forge) > 0
+        && count(UnitTypes::Protoss_Photon_Cannon) < cannonsWanted)
+    {
+        cannonReserve = 150 * (cannonsWanted - count(UnitTypes::Protoss_Photon_Cannon));
+    }
+
     for (auto nexus : nexuses(true))
     {
         if (nexus->isIdle() && probes < probeTarget
-            && freeMinerals - pylonDue - std::max({armyBehind ? 100 : 0, rushReserve, zealotReserve}) >= 50
+            && freeMinerals - pylonDue - std::max({armyBehind ? 100 : 0, rushReserve, zealotReserve, cannonReserve}) >= 50
             && self->supplyUsed() < self->supplyTotal())
         {
             nexus->train(UnitTypes::Protoss_Probe);
@@ -1301,6 +1364,26 @@ void ClaudeOpus55::trainUnits()
             robo->train(UnitTypes::Protoss_Observer);
             freeMinerals -= 25;
             freeGas -= 75;
+        }
+        // Up to four reavers once the support bay is up, ahead of the gateways
+        else if (robo->getType() == UnitTypes::Protoss_Robotics_Facility && robo->isCompleted() && robo->isIdle()
+                 && reaversWanted && self->completedUnitCount(UnitTypes::Protoss_Robotics_Support_Bay) > 0
+                 && self->allUnitCount(UnitTypes::Protoss_Reaver) < 4 && freeMinerals >= 200 && freeGas >= 100
+                 && self->supplyUsed() + 8 <= self->supplyTotal())
+        {
+            robo->train(UnitTypes::Protoss_Reaver);
+            freeMinerals -= 200;
+            freeGas -= 100;
+        }
+    }
+    // Each reaver keeps its scarabs topped up
+    for (auto reaver : self->getUnits())
+    {
+        if (reaver->getType() == UnitTypes::Protoss_Reaver && reaver->isCompleted() && !reaver->isTraining()
+            && reaver->getScarabCount() < 5 && freeMinerals >= 15)
+        {
+            reaver->train(UnitTypes::Protoss_Scarab);
+            freeMinerals -= 15;
         }
     }
 
@@ -1459,6 +1542,30 @@ void ClaudeOpus55::trackEnemy()
     {
         if (now - it->second.frame > 2200) it = enemyArmy.erase(it);
         else ++it;
+    }
+
+    // Reavers (ChatGPT's plan for LunaOpus55) against what dragoons attack badly: two siege tanks, three bunkers or
+    // other static defences, or eight large ground units
+    if (!reaversWanted)
+    {
+        int tanks = 0, large = 0, defences = 0, infantry = 0;
+        for (auto &[id, seen] : enemyArmy)
+        {
+            if (seen.type == UnitTypes::Terran_Siege_Tank_Tank_Mode || seen.type == UnitTypes::Terran_Siege_Tank_Siege_Mode)
+                tanks++;
+            if (seen.type.size() == UnitSizeTypes::Large && !seen.type.isFlyer()) large++;
+            if (seen.type == UnitTypes::Terran_Marine || seen.type == UnitTypes::Terran_Firebat
+                || seen.type == UnitTypes::Terran_Medic)
+                infantry++;
+        }
+        for (auto &[id, building] : enemyBuildings)
+        {
+            if (building.first == UnitTypes::Terran_Bunker || building.first == UnitTypes::Protoss_Photon_Cannon
+                || building.first == UnitTypes::Zerg_Sunken_Colony)
+                defences++;
+        }
+        // ... and against massed marines: 32 of them with medics beat 10 dragoons and 9 zealots in the open at 12:45
+        if (tanks >= 2 || defences >= 3) reaversWanted = true;
     }
 
     for (auto it = enemyBuildings.begin(); it != enemyBuildings.end();)
@@ -1662,11 +1769,28 @@ void ClaudeOpus55::fight(Unit unit, Position goal)
     auto inReach = [&](Unit enemy, int slack) {
         return unit->getDistance(enemy) <= (enemy->isFlying() ? airRange : groundRange) + slack;
     };
+    // Focus fire (ChatGPT's plan for LunaOpus55): dragoons prefer a target in range that others are already shooting,
+    // so it dies before it can do more harm, but not one their shots in flight will already kill
+    bool focus = unit->getType() == UnitTypes::Protoss_Dragoon;
+    auto othersAim = [&](Unit enemy) {
+        auto it = aimedDamage.find(enemy);
+        int aimed = it == aimedDamage.end() ? 0 : it->second;
+        if (unit->getOrderTarget() == enemy) aimed -= Broodwar->getDamageFrom(unit->getType(), enemy->getType(), self, enemy->getPlayer());
+        return aimed;
+    };
+    auto overkilled = [&](Unit enemy) {
+        return focus && othersAim(enemy) >= enemy->getHitPoints() + enemy->getShields();
+    };
     for (auto enemy : unit->getUnitsInRadius(range + 96, IsEnemy && IsVisible))
     {
         if (!enemy->isDetected() || (enemy->isFlying() ? !hitsAir : !hitsGround)) continue;
         int health = enemy->getHitPoints() + enemy->getShields();
         int score = targetPriority(enemy) * 10000 + (inReach(enemy, 16) ? 5000 : 0) - health - unit->getDistance(enemy);
+        if (focus && inReach(enemy, 16))
+        {
+            if (overkilled(enemy)) score -= 3000;
+            else if (othersAim(enemy) > 0) score += 400;
+        }
         if (score > bestScore)
         {
             best = enemy;
@@ -1679,7 +1803,8 @@ void ClaudeOpus55::fight(Unit unit, Position goal)
         // frame cancels the attack before it fires (a dragoon's shot takes several frames to come out)
         auto current = unit->getOrderTarget();
         if (current && current->exists() && current->isVisible() && current->getPlayer() == Broodwar->enemy()
-            && targetPriority(current) >= targetPriority(best) && (inReach(current, 16) || !inReach(best, 16)))
+            && targetPriority(current) >= targetPriority(best) && (inReach(current, 16) || !inReach(best, 16))
+            && !(overkilled(current) && current != best))
         {
             if (unit->getOrder() != Orders::AttackUnit) unit->attack(current);
             return;
@@ -1701,6 +1826,15 @@ void ClaudeOpus55::controlArmy()
     for (auto unit : Broodwar->self()->getUnits())
     {
         if (isArmy(unit->getType()) && unit->isCompleted()) army.insert(unit);
+    }
+    aimedDamage.clear();
+    for (auto unit : army)
+    {
+        auto target = unit->getOrderTarget();
+        if (unit->getOrder() != Orders::AttackUnit || !target || !target->exists() || target->getPlayer() != Broodwar->enemy())
+            continue;
+        if (unit->getDistance(target) > 256) continue;
+        aimedDamage[target] += Broodwar->getDamageFrom(unit->getType(), target->getType(), Broodwar->self(), target->getPlayer());
     }
 
     // CO55_DEBUG=3: what each unit is doing while enemies are close
@@ -1863,6 +1997,10 @@ void ClaudeOpus55::controlArmy()
         {
             if (unit->getDistance(home) < 600) defenders++;
         }
+        // A finished cannon by the minerals counts as two defenders: probes pulled out after zerglings left its range
+        // and died there (11 lost beside three cannons)
+        defenders += 2 * int(Broodwar->getUnitsInRadius(home, 400, IsOwned && IsCompleted
+                                                                   && GetType == UnitTypes::Protoss_Photon_Cannon).size());
         // Two probes beat an attacking worker (one loses to an SCV); the army nearby takes some of that on
         // A zergling outfights two probes one at a time, so against them two probes each go: six four-pool zerglings
         // met one zealot and eight probes and killed 13 of them for 4 zerglings
