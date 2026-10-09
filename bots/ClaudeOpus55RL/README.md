@@ -71,6 +71,8 @@ A pairing that fails 3 times in a row is skipped until training restarts, so one
 
 Each issue is a JSON line in `training/issues.log` with the bot, the opponent, the weights it played with and the last 30 lines of the game's output; the whole output is kept in `training/issues/`. `--issues` sums the log up, most frequent first. Parameters can't fix a bug in the code: give `issues.log` to a Claude session to find and fix the cause in `ClaudeOpus55RL.cpp` (or work around an opponent's), then rebuild and carry on training.
 
+While games run, a line at the bottom of the terminal shows a spinner and moving dots (it is working), a bar of the round's games, self-play games done, games playing now and the time the round has taken. Log lines print above it.
+
 Stopping (Ctrl+C) and running again resumes. `--status` shows where training stands, `--issues` what went wrong.
 
 Useful options:

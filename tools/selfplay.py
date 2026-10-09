@@ -381,6 +381,48 @@ ERROR_MARKERS = ("Segmentation fault", "Assertion failed", "assertion failed", "
 GAME_MEMORY_LIMIT = 4e9  # a single game using more than this is a bot leaking memory: it is stopped and reported
 
 
+class Progress:
+    """A status line at the bottom of the terminal, redrawn in place while games run, so it never looks stuck:
+    a spinner, moving dots, a progress bar and counts. Log lines print above it. Off when not a terminal."""
+
+    SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self) -> None:
+        self.line = ""
+        self.tick = 0
+        self.enabled = sys.stdout.isatty()
+
+    def show(self, done: int, total: int, details: str) -> None:
+        if not self.enabled:
+            return
+        self.tick += 1
+        width = 24
+        filled = round(width * done / total) if total else 0
+        bar = "█" * filled + "░" * (width - filled)
+        dots = "." * (self.tick // 2 % 4)
+        text = f"{self.SPINNER[self.tick % len(self.SPINNER)]} [{bar}] {done}/{total} games · {details}{dots:<3}"
+        self.line = text[:shutil.get_terminal_size((100, 20)).columns - 1]
+        sys.stdout.write("\r\033[K" + self.line)
+        sys.stdout.flush()
+
+    def clear(self) -> None:
+        if self.enabled and self.line:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+
+    def restore(self) -> None:
+        if self.enabled and self.line:
+            sys.stdout.write(self.line)
+            sys.stdout.flush()
+
+    def done(self) -> None:
+        self.clear()
+        self.line = ""
+
+
+PROGRESS = Progress()
+
+
 def physical_memory() -> float:
     """Bytes of RAM in this computer (macOS or Linux), or 16 GB if it can't be told."""
     try:
@@ -488,6 +530,8 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         last_memory_check = time.time()
         extras: set[int] = set()  # slots playing a fill() game, which isn't replayed if it has to be stopped
         progress: dict[int, tuple[float, float]] = {}  # slot: (CPU seconds, when they last went up)
+        round_started = time.time()
+        ended = [0]  # games finished or stopped this round
         for job in jobs:
             if (job[0], job[1]) in skipped:
                 queue.remove(job)
@@ -502,6 +546,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
             free.append(slot)
             extras.discard(slot)
             progress.pop(slot, None)
+            ended[0] += 1
             issue(kind, job, test_dir / "parallel" / str(slot) / "selfplay.log")
             pair = (job[0], job[1])
             wanted[pair] -= 1  # reported already: not a missing result as well
@@ -556,6 +601,13 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                     else:
                         break
                 time.sleep(0.5)
+                self_total = sum(1 for job in jobs if job[2] == "self")
+                self_done = self_total - sum(1 for job in queue if job[2] == "self") - sum(
+                    1 for _, _, job in running.values() if job[2] == "self")
+                minutes, seconds = divmod(int(time.time() - round_started), 60)
+                PROGRESS.show(ended[0], sum(wanted.values()),
+                              (f"self-play {self_done}/{self_total} · " if self_total else "")
+                              + f"{len(running)} playing (max {cap[0]}) · {minutes}m{seconds:02d}s")
                 if running and time.time() - last_memory_check >= MEMORY_CHECK_SECONDS:
                     last_memory_check = time.time()
                     now = time.time()
@@ -608,12 +660,14 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                     extras.discard(slot)
                     progress.pop(slot, None)
                     failures[(job[0], job[1])] = 0
+                    ended[0] += 1
                     text = output.read_text(errors="replace") if output.exists() else ""
                     marker = next((line.strip() for line in text.splitlines()
                                    if any(m in line for m in ERROR_MARKERS)), None)
                     if marker:
                         issue(f"error in the output, though the game finished: {marker[:200]}", job, output)
         finally:
+            PROGRESS.done()
             for process, _, _ in running.values():
                 stop(process)
             shutil.rmtree(socket_root, ignore_errors=True)
@@ -716,7 +770,9 @@ def main() -> int:
 
     def log(message: str) -> None:
         line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}"
+        PROGRESS.clear()
         print(line, flush=True)
+        PROGRESS.restore()
         with log_file.open("a") as f:
             f.write(line + "\n")
 
