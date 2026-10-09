@@ -1,0 +1,168 @@
+diff -ruN a/ZZZKBot/Source/ZZZKBotAIModule.cpp b/ZZZKBot/Source/ZZZKBotAIModule.cpp
+--- a/ZZZKBot/Source/ZZZKBotAIModule.cpp	2026-10-07 21:37:57
++++ b/ZZZKBot/Source/ZZZKBotAIModule.cpp	2026-10-07 21:37:57
+@@ -1890,7 +1890,7 @@
+                                 continue;
+                             }
+         
+-                            auto& ssToLossesIter = mapWithNumOutcomesMap.numOutcomes[false].find(ssTmp);
++                            auto ssToLossesIter = mapWithNumOutcomesMap.numOutcomes[false].find(ssTmp);
+                             const double numOutcomes =
+                                 numWins +
+                                 (ssToLossesIter == mapWithNumOutcomesMap.numOutcomes[false].end() ? 0.0 : ssToLossesIter->second);
+@@ -1929,27 +1929,27 @@
+             // same strategy settings as we used then.
+             bool isUpdatedStratSettings = false;
+             auto& enemyRaceInitMap = learningMap.enemyRaceInitMap;
+-            auto& enemyRaceInitIter = enemyRaceInitMap.val.find(enemyRaceInit.getName());
++            auto enemyRaceInitIter = enemyRaceInitMap.val.find(enemyRaceInit.getName());
+             if (enemyRaceInitIter != learningMap.enemyRaceInitMap.val.end())
+             {
+                 auto& enemyRaceScoutedMap = enemyRaceInitIter->second;
+-                auto& enemyRaceScoutedIter = enemyRaceScoutedMap.val.find(enemyRaceInit.getName());
++                auto enemyRaceScoutedIter = enemyRaceScoutedMap.val.find(enemyRaceInit.getName());
+                 if (enemyRaceScoutedIter != enemyRaceScoutedMap.val.end())
+                 {
+                     auto& numStartLocationsMap = enemyRaceScoutedIter->second;
+-                    auto& numStartLocationsIter = numStartLocationsMap.val.find(Broodwar->getStartLocations().size());
++                    auto numStartLocationsIter = numStartLocationsMap.val.find(Broodwar->getStartLocations().size());
+                     if (numStartLocationsIter != numStartLocationsMap.val.end())
+                     {
+                         auto& mapHashMap = numStartLocationsIter->second;
+-                        auto& mapHashIter = mapHashMap.val.find(Broodwar->mapHash());
++                        auto mapHashIter = mapHashMap.val.find(Broodwar->mapHash());
+                         if (mapHashIter != mapHashMap.val.end())
+                         {
+                             auto& myStartLocationMap = mapHashIter->second;
+-                            auto& myStartLocIter = myStartLocationMap.val.find(myStartLoc);
++                            auto myStartLocIter = myStartLocationMap.val.find(myStartLoc);
+                             if (myStartLocIter != myStartLocationMap.val.end())
+                             {
+                                 auto& enemyStartLocDeducedMap = myStartLocIter->second;
+-                                auto& enemyStartLocDeducedIter = enemyStartLocDeducedMap.val.find(enemyStartLocDeduced);
++                                auto enemyStartLocDeducedIter = enemyStartLocDeducedMap.val.find(enemyStartLocDeduced);
+                                 if (enemyStartLocDeducedIter != enemyStartLocDeducedMap.val.end())
+                                 {
+                                     auto& outcomeMap = enemyStartLocDeducedIter->second;
+@@ -2640,8 +2640,8 @@
+ 
+         if (u->getType() != BWAPI::UnitTypes::Zerg_Overlord)
+         {
+-            const int tmpX = (int) u->getClientInfo(scoutingTargetStartLocXInd);
+-            const int tmpY = (int) u->getClientInfo(scoutingTargetStartLocYInd);
++            const int tmpX = (int)(intptr_t) u->getClientInfo(scoutingTargetStartLocXInd);
++            const int tmpY = (int)(intptr_t) u->getClientInfo(scoutingTargetStartLocYInd);
+             if (tmpX != 0 || tmpY != 0)
+             {
+                 ++numNonOverlordUnitsTargetingStartLoc[TilePosition(tmpX, tmpY)];
+@@ -3837,9 +3837,9 @@
+                     // If idle or were targeting an enemy unit or are no longer carrying minerals...
+                     const bool isNewCmdNeeded = u->isIdle() || (u->getTarget() && u->getTarget()->getPlayer() && u->getTarget()->getPlayer()->isEnemy(Broodwar->self()));
+                     if (isNewCmdNeeded ||
+-                        (!u->isCarryingMinerals() && (int) u->getClientInfo(wasJustCarryingMineralsInd) == wasJustCarryingMineralsTrueVal))
++                        (!u->isCarryingMinerals() && (int)(intptr_t) u->getClientInfo(wasJustCarryingMineralsInd) == wasJustCarryingMineralsTrueVal))
+                     {
+-                        if (!u->isCarryingMinerals() && (int) u->getClientInfo(wasJustCarryingMineralsInd) == wasJustCarryingMineralsTrueVal)
++                        if (!u->isCarryingMinerals() && (int)(intptr_t) u->getClientInfo(wasJustCarryingMineralsInd) == wasJustCarryingMineralsTrueVal)
+                         {
+                             // Reset indicator about carrying minerals because we aren't carrying minerals now.
+                             // Note: setClientInfo may also be called at the end of this and some other frames
+@@ -3849,7 +3849,7 @@
+                             u->setClientInfo(Broodwar->getFrameCount(), frameLastReturnedMineralsInd);
+                         }
+ 
+-                        if (u != scoutingWorker || (int) u->getClientInfo(frameLastReturnedMineralsInd) == 0)
++                        if (u != scoutingWorker || (int)(intptr_t) u->getClientInfo(frameLastReturnedMineralsInd) == 0)
+                         {
+                             // Order workers carrying a resource to return them to the center,
+                             // otherwise find a mineral patch to harvest.
+@@ -3879,7 +3879,7 @@
+                 }
+             }
+ 
+-            if (u != scoutingWorker || (int) u->getClientInfo(frameLastReturnedMineralsInd) == 0)
++            if (u != scoutingWorker || (int)(intptr_t) u->getClientInfo(frameLastReturnedMineralsInd) == 0)
+             {
+                 continue;
+             }
+@@ -4115,9 +4115,9 @@
+                  u->canMove() &&
+                  !u->isFlying() &&
+                  !u->isAttacking() &&
+-                 (int) u->getClientInfo(frameLastStoppedInd) + (3 * 24) < Broodwar->getFrameCount() &&
+-                 (int) u->getClientInfo(frameLastAttackingInd) + std::max(Broodwar->self()->weaponDamageCooldown(u->getType()), u->getType().airWeapon().damageCooldown()) + (3 * 24) < Broodwar->getFrameCount() &&
+-                 (int) u->getClientInfo(frameLastChangedPosInd) > 0 && (int) u->getClientInfo(frameLastChangedPosInd) + (3 * 24) < Broodwar->getFrameCount() &&
++                 (int)(intptr_t) u->getClientInfo(frameLastStoppedInd) + (3 * 24) < Broodwar->getFrameCount() &&
++                 (int)(intptr_t) u->getClientInfo(frameLastAttackingInd) + std::max(Broodwar->self()->weaponDamageCooldown(u->getType()), u->getType().airWeapon().damageCooldown()) + (3 * 24) < Broodwar->getFrameCount() &&
++                 (int)(intptr_t) u->getClientInfo(frameLastChangedPosInd) > 0 && (int)(intptr_t) u->getClientInfo(frameLastChangedPosInd) + (3 * 24) < Broodwar->getFrameCount() &&
+                  noCmdPending(u))
+         {
+             u->stop();
+@@ -4570,8 +4570,8 @@
+ 
+             if (targetStartLocs.empty() && !unscoutedOtherStartLocs.empty())
+             {
+-                const int tmpX = (int) u->getClientInfo(scoutingTargetStartLocXInd);
+-                const int tmpY = (int) u->getClientInfo(scoutingTargetStartLocYInd);
++                const int tmpX = (int)(intptr_t) u->getClientInfo(scoutingTargetStartLocXInd);
++                const int tmpY = (int)(intptr_t) u->getClientInfo(scoutingTargetStartLocYInd);
+                 if ((tmpX != 0 || tmpY != 0) &&
+                     unscoutedOtherStartLocs.find(TilePosition(tmpX, tmpY)) != unscoutedOtherStartLocs.end())
+                 {
+@@ -4615,8 +4615,8 @@
+ 
+             if (targetPos == BWAPI::Positions::Unknown && targetStartLocs.empty())
+             {
+-                const int tmpX = (int) u->getClientInfo(scoutingTargetPosXInd);
+-                const int tmpY = (int) u->getClientInfo(scoutingTargetPosYInd);
++                const int tmpX = (int)(intptr_t) u->getClientInfo(scoutingTargetPosXInd);
++                const int tmpY = (int)(intptr_t) u->getClientInfo(scoutingTargetPosYInd);
+                 // If en-route to a position that isn't visible or isn't clear then continue going there.
+                 // Occasionally re-randomize late-game cos the unit may not have a path to get there.
+                 if ((tmpX != 0 || tmpY != 0) &&
+@@ -4817,8 +4817,8 @@
+             if (targetPos == BWAPI::Positions::Unknown && targetStartLoc == BWAPI::TilePositions::Unknown && !unscoutedOtherStartLocs.empty() &&
+                 ((ss.isSpeedlingBO || ss.isHydraRushBO) || Broodwar->getFrameCount() < (5 * 60 * 24)))
+             {
+-                const int tmpX = (int) u->getClientInfo(scoutingTargetStartLocXInd);
+-                const int tmpY = (int) u->getClientInfo(scoutingTargetStartLocYInd);
++                const int tmpX = (int)(intptr_t) u->getClientInfo(scoutingTargetStartLocXInd);
++                const int tmpY = (int)(intptr_t) u->getClientInfo(scoutingTargetStartLocYInd);
+                 if ((tmpX != 0 || tmpY != 0) &&
+                     unscoutedOtherStartLocs.find(TilePosition(tmpX, tmpY)) != unscoutedOtherStartLocs.end())
+                 {
+@@ -4917,7 +4917,7 @@
+         // to the same mineral patch but never mind).
+         if (mainBase)
+         {
+-            Unitset& freeMinerals =
++            Unitset freeMinerals =
+                 mainBase->getUnitsInRadius(
+                     256,
+                     BWAPI::Filter::IsMineralField &&
+@@ -5161,7 +5161,7 @@
+         {
+             const int newX = u->getPosition().x;
+             const int newY = u->getPosition().y;
+-            if ((int) u->getClientInfo(posXInd) != newX || (int) u->getClientInfo(posYInd) != newY)
++            if ((int)(intptr_t) u->getClientInfo(posXInd) != newX || (int)(intptr_t) u->getClientInfo(posYInd) != newY)
+             {
+                 u->setClientInfo(Broodwar->getFrameCount(), frameLastChangedPosInd);
+             }
+@@ -5189,14 +5189,14 @@
+                 u->setClientInfo(wasJustCarryingMineralsTrueVal, wasJustCarryingMineralsInd);
+             }
+ 
+-            if (u->getGroundWeaponCooldown() > (int) u->getClientInfo(lastGroundWeaponCooldownInd))
++            if (u->getGroundWeaponCooldown() > (int)(intptr_t) u->getClientInfo(lastGroundWeaponCooldownInd))
+             {
+                 u->setClientInfo(u->getGroundWeaponCooldown(), lastPeakGroundWeaponCooldownInd);
+                 u->setClientInfo(Broodwar->getFrameCount(), lastPeakGroundWeaponCooldownFrameInd);
+             }
+             u->setClientInfo(u->getGroundWeaponCooldown(), lastGroundWeaponCooldownInd);
+             
+-            if (u->getAirWeaponCooldown() > (int) u->getClientInfo(lastAirWeaponCooldownInd))
++            if (u->getAirWeaponCooldown() > (int)(intptr_t) u->getClientInfo(lastAirWeaponCooldownInd))
+             {
+                 u->setClientInfo(u->getAirWeaponCooldown(), lastPeakAirWeaponCooldownInd);
+                 u->setClientInfo(Broodwar->getFrameCount(), lastPeakAirWeaponCooldownFrameInd);

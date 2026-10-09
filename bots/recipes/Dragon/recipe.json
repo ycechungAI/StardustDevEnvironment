@@ -1,0 +1,9 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2021/bots/Dragon.zip",
+  "sha256": "ed2c519f698e2da4bf0b44aa2b425009ee20db41a8f3b5b252e1d9695e1fd0ab",
+  "inner_zip": "src.zip",
+  "strip": "",
+  "race": "Terran",
+  "license": "MIT (built on Facebook's CherryPi/TorchCraftAI), plus its bundled libraries' own licences",
+  "notes": "Dragon (Terran) as entered in AIIDE 2021: CherryPi's framework with a Terran build"
+}

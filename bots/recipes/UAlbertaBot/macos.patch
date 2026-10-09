@@ -1,0 +1,209 @@
+diff -ruN a/BOSS/source/GameState.cpp b/BOSS/source/GameState.cpp
+--- a/BOSS/source/GameState.cpp	2026-10-07 22:02:29
++++ b/BOSS/source/GameState.cpp	2026-10-07 22:02:29
+@@ -14,7 +14,7 @@
+     
+ }
+ 
+-#ifdef _MSC_VER
++#if 1 // was #ifdef _MSC_VER; Stardust builds this against BWAPI with clang
+ GameState::GameState(BWAPI::GameWrapper & game, BWAPI::PlayerInterface * self, const std::vector<BWAPI::UnitType> & buildingsQueued)
+     : _race                 (Races::GetRaceID(self->getRace()))
+     , _currentFrame         (game->getFrameCount())
+diff -ruN a/BOSS/source/GameState.h b/BOSS/source/GameState.h
+--- a/BOSS/source/GameState.h	2026-10-07 22:02:28
++++ b/BOSS/source/GameState.h	2026-10-07 22:02:29
+@@ -67,7 +67,7 @@
+ 
+ // constructor based on BWAPI::Game only makes sense if using VS
+ // we won't be using this if we're compiling to emscripten or linux
+-#ifdef _MSC_VER
++#if 1 // was #ifdef _MSC_VER; Stardust builds this against BWAPI with clang
+     GameState(BWAPI::GameWrapper & game, BWAPI::PlayerInterface * player, const std::vector<BWAPI::UnitType> & buildingsQueued);
+ #endif
+ 
+diff -ruN a/SparCraft/source/MoveArray.cpp b/SparCraft/source/MoveArray.cpp
+--- a/SparCraft/source/MoveArray.cpp	2026-10-07 22:02:29
++++ b/SparCraft/source/MoveArray.cpp	2026-10-07 22:02:29
+@@ -1,4 +1,5 @@
+ #include "MoveArray.h"
++#include <random>
+ 
+ using namespace SparCraft;
+ 
+@@ -67,7 +68,7 @@
+         // shuffle the movement actions for this unit
+         if (moveEnd != -1 && moveBegin != -1 && moveEnd != moveBegin)
+         {
+-            std::random_shuffle(&_moves[u][moveBegin], &_moves[u][moveEnd]);
++            { static std::mt19937 rng; std::shuffle(&_moves[u][moveBegin], &_moves[u][moveEnd], rng); } // std::random_shuffle is gone in C++17
+             resetMoveIterator();
+         }
+     }
+diff -ruN a/UAlbertaBot/Source/BuildingData.cpp b/UAlbertaBot/Source/BuildingData.cpp
+--- a/UAlbertaBot/Source/BuildingData.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/BuildingData.cpp	2026-10-07 22:02:29
+@@ -9,7 +9,7 @@
+ 
+ void BuildingData::removeBuilding(const Building & b)
+ {
+-    auto & building = std::find(m_buildings.begin(), m_buildings.end(), b);
++    auto building = std::find(m_buildings.begin(), m_buildings.end(), b);
+ 
+     if (building != m_buildings.end())
+     {
+diff -ruN a/UAlbertaBot/Source/BuildingManager.cpp b/UAlbertaBot/Source/BuildingManager.cpp
+--- a/UAlbertaBot/Source/BuildingManager.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/BuildingManager.cpp	2026-10-07 22:02:29
+@@ -455,7 +455,7 @@
+ {
+     for (auto & b : toRemove)
+     {
+-        auto & it = std::find(m_buildings.begin(), m_buildings.end(), b);
++        auto it = std::find(m_buildings.begin(), m_buildings.end(), b);
+ 
+         if (it != m_buildings.end())
+         {
+diff -ruN a/UAlbertaBot/Source/CombatSimulation.h b/UAlbertaBot/Source/CombatSimulation.h
+--- a/UAlbertaBot/Source/CombatSimulation.h	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/CombatSimulation.h	2026-10-07 22:02:29
+@@ -6,10 +6,10 @@
+ 	#include "Visualizer.h"
+ #endif
+ 
+-#include "..\..\SparCraft\source\GameState.h"
+-#include "..\..\SparCraft\source\Game.h"
+-#include "..\..\SparCraft\source\Unit.h"
+-#include "..\..\SparCraft\source\AllPlayers.h"
++#include "../../SparCraft/source/GameState.h"
++#include "../../SparCraft/source/Game.h"
++#include "../../SparCraft/source/Unit.h"
++#include "../../SparCraft/source/AllPlayers.h"
+ 
+ namespace UAlbertaBot
+ {
+diff -ruN a/UAlbertaBot/Source/Config.cpp b/UAlbertaBot/Source/Config.cpp
+--- a/UAlbertaBot/Source/Config.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/Config.cpp	2026-10-07 22:02:29
+@@ -12,7 +12,7 @@
+     {
+         bool ConfigFileFound                = false;
+         bool ConfigFileParsed               = false;
+-        std::string ConfigFileLocation      = "UAlbertaBot_Config.txt";
++        std::string ConfigFileLocation      = "bwapi-data/AI/UAlbertaBot_Config.txt";
+     }
+ 
+     namespace Strategy
+diff -ruN a/UAlbertaBot/Source/ParseUtils.cpp b/UAlbertaBot/Source/ParseUtils.cpp
+--- a/UAlbertaBot/Source/ParseUtils.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/ParseUtils.cpp	2026-10-07 22:02:29
+@@ -1,5 +1,5 @@
+ #include "ParseUtils.h"
+-#include "rapidjson\document.h"
++#include "rapidjson/document.h"
+ #include "JSONTools.h"
+ #include "BuildOrder.h"
+ #include "StrategyManager.h"
+@@ -221,7 +221,8 @@
+                     }
+                 }
+ 
+-                Global::Strategy().addStrategy(name, Strategy(name, strategyRace, buildOrder));
++                Strategy strategy(name, strategyRace, buildOrder);
++                Global::Strategy().addStrategy(name, strategy);
+             }
+         }
+     }
+diff -ruN a/UAlbertaBot/Source/ProductionManager.cpp b/UAlbertaBot/Source/ProductionManager.cpp
+--- a/UAlbertaBot/Source/ProductionManager.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/ProductionManager.cpp	2026-10-07 22:02:29
+@@ -33,7 +33,7 @@
+ 
+     PROFILE_FUNCTION();
+ 
+-    BuildOrder & buildOrder = m_bossManager.getBuildOrder();
++    BuildOrder buildOrder = m_bossManager.getBuildOrder();
+ 
+     if (buildOrder.size() > 0)
+     {
+diff -ruN a/UAlbertaBot/Source/SquadData.cpp b/UAlbertaBot/Source/SquadData.cpp
+--- a/UAlbertaBot/Source/SquadData.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/SquadData.cpp	2026-10-07 22:02:29
+@@ -39,7 +39,7 @@
+ 
+ void SquadData::removeSquad(const std::string & squadName)
+ {
+-    auto & squadPtr = m_squads.find(squadName);
++    auto squadPtr = m_squads.find(squadName);
+ 
+     UAB_ASSERT_WARNING(squadPtr != m_squads.end(), "Trying to clear a squad that didn't exist: %s", squadName.c_str());
+     if (squadPtr == m_squads.end())
+@@ -190,7 +190,7 @@
+ 
+ Squad & SquadData::getSquad(const std::string & squadName)
+ {
+-    UAB_ASSERT_WARNING(squadExists(squadName), "Trying to access squad that doesn't exist: %s", squadName);
++    UAB_ASSERT_WARNING(squadExists(squadName), "Trying to access squad that doesn't exist: %s", squadName.c_str());
+     
+     return m_squads[squadName];
+ }
+\ No newline at end of file
+diff -ruN a/UAlbertaBot/Source/UAlbertaBotAIModule.h b/UAlbertaBot/Source/UAlbertaBotAIModule.h
+--- a/UAlbertaBot/Source/UAlbertaBotAIModule.h	1969-12-31 19:00:00
++++ b/UAlbertaBot/Source/UAlbertaBotAIModule.h	2026-10-07 22:02:29
+@@ -0,0 +1,43 @@
++#pragma once
++
++// Added for Stardust's test harness, which loads bots as BWAPI AIModules: UAlbertaBot's own module is a plain class
++// driven by the client loop in main.cpp, so this forwards the AIModule events to it the same way main.cpp does.
++
++#include <memory>
++
++#include "UAlbertaBotModule.h"
++#include "../../SparCraft/source/SparCraft.h"
++#include "../../BOSS/source/BOSS.h"
++
++class UAlbertaBotAIModule : public BWAPI::AIModule
++{
++    std::unique_ptr<UAlbertaBot::UAlbertaBotModule> bot;
++
++public:
++    // Made here rather than in a constructor because it reads the game as it is built
++    void onStart() override
++    {
++        // main.cpp sets up the combat simulator and build-order search once, before its first game
++        static bool initialized = false;
++        if (!initialized)
++        {
++            SparCraft::init();
++            BOSS::init();
++            initialized = true;
++        }
++
++        bot = std::make_unique<UAlbertaBot::UAlbertaBotModule>();
++        bot->onStart();
++    }
++
++    void onFrame() override { bot->onFrame(); }
++    void onEnd(bool isWinner) override { bot->onEnd(isWinner); }
++    void onUnitShow(BWAPI::Unit unit) override { bot->onUnitShow(unit); }
++    void onUnitHide(BWAPI::Unit unit) override { bot->onUnitHide(unit); }
++    void onUnitCreate(BWAPI::Unit unit) override { bot->onUnitCreate(unit); }
++    void onUnitMorph(BWAPI::Unit unit) override { bot->onUnitMorph(unit); }
++    void onUnitDestroy(BWAPI::Unit unit) override { bot->onUnitDestroy(unit); }
++    void onUnitRenegade(BWAPI::Unit unit) override { bot->onUnitRenegade(unit); }
++    void onUnitComplete(BWAPI::Unit unit) override { bot->onUnitComplete(unit); }
++    void onSendText(std::string text) override { bot->onSendText(text); }
++};
+diff -ruN a/UAlbertaBot/Source/UnitData.cpp b/UAlbertaBot/Source/UnitData.cpp
+--- a/UAlbertaBot/Source/UnitData.cpp	2026-10-07 22:02:28
++++ b/UAlbertaBot/Source/UnitData.cpp	2026-10-07 22:02:29
+@@ -22,7 +22,7 @@
+ 	if (!unit) { return; }
+ 
+     bool firstSeen = false;
+-    auto & it = unitMap.find(unit);
++    auto it = unitMap.find(unit);
+     if (it == unitMap.end())
+     {
+         firstSeen = true;

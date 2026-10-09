@@ -5,6 +5,8 @@ Usage: python tools/fetch_bot.py <Name> [<Name> ...] | --all | --list
 A recipe is a folder with:
   recipe.json   where the source comes from:
                   {"zip": url, "sha256": ..., "strip": "top/level/folder"}  or  {"git": url, "commit": sha}
+                (a zip may add "inner_zip": "path/in/zip.zip" when the source is a zip inside the zip; "strip" is
+                then a folder inside that one)
                 plus "race", "license" and "notes" for people reading it
   bot.cmake     how to build it (see bots/README.md); copied into the bot folder
   macos.patch   optional changes needed to build it here (unified diff, applied with patch -p1 in the bot folder)
@@ -54,10 +56,15 @@ def download(url: str, expected_sha256: str | None) -> Path:
     return target
 
 
-def extract_zip(archive: Path, strip: str, destination: Path) -> None:
+def extract_zip(archive: Path, strip: str, destination: Path, inner_zip: str | None = None) -> None:
     with tempfile.TemporaryDirectory() as tmp, zipfile.ZipFile(archive) as zf:
-        zf.extractall(tmp)
-        source = Path(tmp) / strip if strip else Path(tmp)
+        root = Path(tmp)
+        if inner_zip:
+            with zf.open(inner_zip) as inner, zipfile.ZipFile(inner) as inner_zf:
+                inner_zf.extractall(root)
+        else:
+            zf.extractall(root)
+        source = root / strip if strip else root
         if not source.is_dir():
             raise SystemExit(f"  {strip!r} not found in {archive.name}")
         shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".DS_Store", "__MACOSX"))
@@ -78,7 +85,8 @@ def fetch(name: str) -> None:
         shutil.rmtree(destination)
 
     if "zip" in recipe:
-        extract_zip(download(recipe["zip"], recipe.get("sha256")), recipe.get("strip", ""), destination)
+        extract_zip(download(recipe["zip"], recipe.get("sha256")), recipe.get("strip", ""), destination,
+                    recipe.get("inner_zip"))
     elif "git" in recipe:
         clone(recipe["git"], recipe["commit"], destination)
     else:

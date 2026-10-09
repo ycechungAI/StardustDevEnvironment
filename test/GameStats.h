@@ -30,6 +30,7 @@ struct PlayerStats
     int supplyUsed = 0;  // in StarCraft's displayed units (BW counts half-supply)
     int supplyMax = 0;
     int workers = 0;
+    int armySupply = 0;  // supply used by everything but workers
     int mineralsGathered = 0;
     int gasGathered = 0;
     int unitsKilled = 0;
@@ -42,12 +43,19 @@ struct PlayerStats
                                            const Losses &losses);
 };
 
+// Every unit type the player has (made or in production) with its count, e.g. " Opponent: Zerg_Drone=9 Zerg_Zergling=6"
+std::string ObserveUnitCounts(BW::Game game, const std::string &characterName, const std::string &name);
+
 // Elo ratings written by tools/elo.py to replays/ratings.json, by player name; empty if there are none yet
 std::map<std::string, double> ReadRatings();
 
 // Draws the stats screen in the top-left corner of the game window
 void DrawStatsScreen(BWAPI::Game *game, const PlayerStats &me, const PlayerStats &opponent,
                      const std::map<std::string, double> &ratings);
+
+// Draws a one-line toolbar along the top of the game window: each player's army supply (and the most it has had),
+// minerals and gas right now
+void DrawToolbar(BWAPI::Game *game, const PlayerStats &me, const PlayerStats &opponent);
 
 // One-line summary of a finished game, for the test output
 std::string StatsSummary(const PlayerStats &me, const PlayerStats &opponent);

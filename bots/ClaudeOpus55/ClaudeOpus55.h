@@ -2,6 +2,7 @@
 
 #include <BWAPI.h>
 
+#include <climits>
 #include <map>
 #include <set>
 #include <vector>
@@ -34,13 +35,25 @@ private:
     // Map
     BWAPI::Position home;
     BWAPI::Position rally;
+    BWAPI::Position rampTop;
     BWAPI::Position mineralCenter;
     std::vector<Base> bases;          // resource clusters, nearest to home first
     const Base *natural = nullptr;
+    BWAPI::Position naturalFront = BWAPI::Positions::Invalid;  // in front of the natural nexus, away from its minerals
+    bool cannonOpening = false;       // against Zerg: forge and cannons by the main's minerals before the gateway
+    bool hurtNeeded = false;          // this frame's attack needs its damaged units to be decisive
+    bool openingCannonsStarted = false;  // the cannon opening's cannons have all been started at least once
+    bool forgeExpand = false;         // against Zerg: forge and cannons at the natural, then the nexus there
+    int rushDistance = INT_MAX;       // ground distance in tiles to the nearest enemy start
+    int naturalEntrances = 0;         // ways into the natural from the enemy's side
+    int widestEntrance = 0;           // in tiles
+    void analyseMap();
 
     // Units
     BWAPI::Unit mainNexus = nullptr;
     BWAPI::Unit scout = nullptr;
+    int scoutArrivedFrame = -1;       // when the scout reached the enemy main; it circles there for a while
+    bool scoutingDone = false;
     std::map<BWAPI::Unit, PendingBuild> builders;
 
     // What we know about the enemy
@@ -61,7 +74,14 @@ private:
     // Cloaked enemies (dark templar, lurkers, wraiths, mines) seen: detection becomes urgent
     bool cloakSeen = false;
     bool templarArchivesSeen = false;
+    bool hiddenArmySeen = false;  // dark templar or lurkers: the army waits for an observer before attacking
+    bool airSeen = false;              // a spire or mutalisks: cannons in the mineral lines and corsairs
+    bool rangedNeeded = false;         // hydralisks, lurkers or mutalisks: zealots are poor, dragoons only
     bool rushSeen = false;             // early mass gateways/barracks or early zealots/zerglings: hold the expansion
+    bool barracksRush = false;         // two early barracks: marines are coming, zealots answer them best
+    // A rush seen early and our gateway units not yet a match for it: zealots before probes, gas or the natural, and
+    // the army waits by the nexus
+    bool rushMode() const;
 
     // Set when the natural is due, so production leaves money for it
     bool expansionDue = false;
@@ -71,6 +91,7 @@ private:
     {
         int supply;
         BWAPI::UnitType type;
+        bool atNatural = false;  // placed at the natural's front (forge, cannons and their pylon) instead of the main
     };
     std::vector<Step> buildOrder;
     size_t buildOrderStep = 0;
@@ -79,8 +100,14 @@ private:
 
     // Army
     bool attacking = false;
+    // Damage our units' next shots will do to each enemy they are aiming at, refreshed every frame: dragoons pile onto
+    // a target others are already shooting, but not past what kills it
+    std::map<BWAPI::Unit, int> aimedDamage;
+    // Siege tanks, static defence or a heavy ground army seen: reavers from the robotics facility
+    bool reaversWanted = false;
     int wave = 0;
     int lastRetreatFrame = -10000;
+    int gatherStart = -1;  // when the attacking army last began gathering before contact
 
     // Economy
     void findBases();
@@ -95,7 +122,16 @@ private:
     int reservedGas() const;
     BWAPI::Unit chooseBuilder(BWAPI::Position near);
     BWAPI::TilePosition pylonSpot();
-    BWAPI::TilePosition findBuildSpot(BWAPI::UnitType type, BWAPI::TilePosition near) const;
+    BWAPI::TilePosition findBuildSpot(BWAPI::UnitType type, BWAPI::TilePosition near, bool checkExplored = true,
+                                      bool ignoreUnits = false) const;
+    bool placeableIgnoringUnits(BWAPI::TilePosition tile, BWAPI::UnitType type, bool checkExplored) const;
+    bool secondGatewayWaits(const Step &step) const;
+    // The cannon opening's cannons before the gateway: three if an early pool or zerglings are seen in time for them
+    // to matter, else two (a third that could not be placed held up the gateway until 3:30)
+    int openingCannons() const { return rushSeen && BWAPI::Broodwar->getFrameCount() < 3000 ? 3 : 2; }
+    void buildMineralLineCannons();
+    BWAPI::UpgradeType nextForgeUpgrade() const;
+    bool cannonsNear(BWAPI::Position spot, int wanted);
     std::vector<BWAPI::Unit> nexuses(bool completedOnly) const;
     BWAPI::Unit nexusNeedingWorkers() const;
 
@@ -105,9 +141,14 @@ private:
     void controlArmy();
     void fight(BWAPI::Unit unit, BWAPI::Position goal);
     void controlObservers(const BWAPI::Unitset &army);
+    void controlCorsairs(const BWAPI::Unitset &army);
+    // High templar: storm on clumps of enemies, else stay behind the army
+    void controlTemplar(const BWAPI::Unitset &army);
+    std::vector<std::pair<BWAPI::Position, int>> recentStorms;  // where and when, so two templar don't storm one spot
     BWAPI::Unitset threatsNearHome() const;
     static double strength(BWAPI::Unit unit);
     // Fighting power of a group: (total durability) x (total damage per frame), which values concentration
     static double groupStrength(double durability, double dps) { return durability * dps; }
+    void retryOpeningStep(BWAPI::UnitType type);
     static void addToGroup(BWAPI::UnitType type, int health, double &durability, double &dps);
 };

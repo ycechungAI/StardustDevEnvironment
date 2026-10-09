@@ -78,6 +78,7 @@ TEST(Bots, Play)
         test.opponentRace = bot->race;
         test.opponentModule = bot->create;
         test.opponentName = bot->name;
+        if (auto seed = std::getenv("STARDUST_TEST_SEED"); seed && *seed) test.randomSeed = std::atoi(seed);
         if (us)
         {
             test.myRace = us->race;

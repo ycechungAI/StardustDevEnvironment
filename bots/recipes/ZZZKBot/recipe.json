@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2020/bots/ZZZKBot.zip",
+  "sha256": "f77ee37d610b5d5f509b842ca6b36e60a31941c89c5559ca524f86814307a225",
+  "strip": "ZZZKBot-1.7.0/src",
+  "race": "Zerg",
+  "license": "LGPL v3 (LICENSE.txt, COPYING.LESSER.txt)",
+  "notes": "ZZZKBot 1.7.0 (Zerg) by Chris Coxe, as entered in AIIDE 2020: 4-pool and other early rushes chosen per opponent; won CIG 2017 and AIIDE 2017"
+}

@@ -1,0 +1,85 @@
+diff -ruN a/src/dragonbot.h b/src/dragonbot.h
+--- a/src/dragonbot.h	1969-12-31 19:00:00
++++ b/src/dragonbot.h	2026-10-07 08:32:09
+@@ -0,0 +1,6 @@
++#pragma once
++
++#include <BWAPI.h>
++
++// Creates Dragon's BWAPI module (replaces the Windows DLL's newAIModule export)
++BWAPI::AIModule *dragonNewAIModule();
+diff -ruN a/src/torchcraft/controller.cpp b/src/torchcraft/controller.cpp
+--- a/src/torchcraft/controller.cpp	2026-10-07 08:32:09
++++ b/src/torchcraft/controller.cpp	2026-10-07 08:32:09
+@@ -13,16 +13,14 @@
+ #include <torchcraft/state.h>
+ #include <torchcraft/client.h>
+ 
+-#define WIN32_LEAN_AND_MEAN
+-#include <Windows.h>
+-#undef min
+-#undef max
++#include "dragonbot.h"
+ #include <BWAPI.h>
+ 
+ #include <chrono>
+ #include <memory>
+ #include <thread>
+ #include <optional>
++#include <cstdlib>
+ 
+ using namespace torchcraft;
+ 
+@@ -801,6 +799,8 @@
+     // We need to init the logging after we have parsed the command
+     // line flags since it depends on flags set by it
+     cherrypi::initLogging(argv[0], FLAGS_logsinkdir, FLAGS_logsinktostderr);
++    // Its info and warning logs run to tens of thousands of lines a game; set DRAGON_LOG to see them
++    if (!std::getenv("DRAGON_LOG")) FLAGS_minloglevel = google::GLOG_ERROR;
+ 
+     try {
+       using namespace cherrypi;
+@@ -926,20 +926,7 @@
+   }
+ };
+ 
+-extern "C" __declspec(dllexport) void gameInit(BWAPI::Game* game) { BWAPI::BroodwarPtr = game; }
+-BOOL APIENTRY DllMain( HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved )
+-{
+-  switch (ul_reason_for_call)
+-  {
+-  case DLL_PROCESS_ATTACH:
+-    break;
+-  case DLL_PROCESS_DETACH:
+-    break;
+-  }
+-  return TRUE;
+-}
+-
+-extern "C" __declspec(dllexport) BWAPI::AIModule* newAIModule()
++BWAPI::AIModule *dragonNewAIModule()
+ {
+   return new ExampleAIModule();
+ }
+diff -ruN a/src/unitsinfo.cpp b/src/unitsinfo.cpp
+--- a/src/unitsinfo.cpp	2026-10-07 08:32:09
++++ b/src/unitsinfo.cpp	2026-10-07 08:32:09
+@@ -81,15 +81,15 @@
+     }
+   }
+   if (prevMove != kInvalidPosition) {
+-    if (prevMove == targetPos) return nullptr;
++    if (prevMove == targetPos) return false;
+     auto moveAhead = [&]() {
+       if (flying() || type == buildtypes::Terran_Vulture) return 4.0f * 8;
+       return 12.0f;
+     };
+     if (utils::distance(pos(), prevMove) >= moveAhead()) {
+-      if (((Vec2)prevMove - posf()).normalize().dot(((Vec2)targetPos - posf()).normalize()) >= 0.86f) return nullptr;
++      if (((Vec2)prevMove - posf()).normalize().dot(((Vec2)targetPos - posf()).normalize()) >= 0.86f) return false;
+     }
+-    if (state->currentFrame() - lastMove <= 8 && ((Vec2)prevMove - posf()).dot(((Vec2)targetPos - posf())) >= 0) return nullptr;
++    if (state->currentFrame() - lastMove <= 8 && ((Vec2)prevMove - posf()).dot(((Vec2)targetPos - posf())) >= 0) return false;
+   }
+ 
+   lastMove = state->currentFrame();

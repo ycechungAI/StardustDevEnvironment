@@ -1,0 +1,120 @@
+diff -ruN a/Source/DropManager.cpp b/Source/DropManager.cpp
+--- a/Source/DropManager.cpp	2026-10-07 05:31:15
++++ b/Source/DropManager.cpp	2026-10-07 05:31:42
+@@ -230,7 +230,8 @@
+ 
+ bool DropManager::load_raiders()
+ {
+-	raiders_update(1, dropship->getPosition(), dropship->getPosition(), dropship);
++	BWAPI::Position dropship_pos = dropship->getPosition();
++	raiders_update(1, dropship_pos, dropship_pos, dropship);
+ 	bool all_loaded = true;
+ 	for (BWAPI::Unit u : raiders) {
+ 		if (u->exists() && !u->isLoaded())
+diff -ruN a/Source/Fighter2.cpp b/Source/Fighter2.cpp
+--- a/Source/Fighter2.cpp	2026-10-07 05:31:15
++++ b/Source/Fighter2.cpp	2026-10-07 05:31:42
+@@ -254,7 +254,8 @@
+ }
+ void Fighter2::set_swarm(bool immediately) {
+ 	if (immediately || unit->isIdle()) {
+-		set_target(get_random_position(), false);
++		BWAPI::Position random_position = get_random_position();
++		set_target(random_position, false);
+ 	}
+ 	return;
+ }
+diff -ruN a/Source/Learner.cpp b/Source/Learner.cpp
+--- a/Source/Learner.cpp	2026-10-07 05:31:15
++++ b/Source/Learner.cpp	2026-10-07 05:31:42
+@@ -3,7 +3,8 @@
+ int choose_strategy(  )
+ {
+ 	wilenemy::name = write_name();
+-	wilenemy::history = filter_results(read_learning_data(wilenemy::name));
++	auto learning_data = read_learning_data(wilenemy::name);
++	wilenemy::history = filter_results(learning_data);
+ 	count_results();
+ 	wilenemy::score = write_score();
+ 	return analyze_results_random();
+diff -ruN a/Source/MapAnalysis.cpp b/Source/MapAnalysis.cpp
+--- a/Source/MapAnalysis.cpp	2026-10-07 05:31:15
++++ b/Source/MapAnalysis.cpp	2026-10-07 05:31:42
+@@ -620,7 +620,8 @@
+ 		if (base_pos.x > wilmap::wp / 2) { z = -1; }
+ 		int x = base_pos.x + z * 256;
+ 		int y = base_pos.y - z * 128;
+-		find_additional_choke(i, BWAPI::Position(x, y), choke_pos, 24);
++		BWAPI::Position search_pos(x, y);
++		find_additional_choke(i, search_pos, choke_pos, 24);
+ 		//BWAPI::Broodwar->printf("add specific choke for: Destination");
+ 	}
+ 	return;
+diff -ruN a/Source/MapInfo.cpp b/Source/MapInfo.cpp
+--- a/Source/MapInfo.cpp	2026-10-07 05:31:15
++++ b/Source/MapInfo.cpp	2026-10-07 05:31:42
+@@ -364,7 +364,8 @@
+ 
+ void MapInfo::draw_unit_vec(std::vector<BWAPI::Unit> &my_list, int w, int h, int my_color) {
+ 	for (BWAPI::Unit &my_unit : my_list) {
+-		draw_tile_box(my_unit->getTilePosition(), w, h, my_color);
++		BWAPI::TilePosition unit_tile = my_unit->getTilePosition();
++		draw_tile_box(unit_tile, w, h, my_color);
+ 	}
+ }
+ 
+diff -ruN a/Source/ReadWrite.cpp b/Source/ReadWrite.cpp
+--- a/Source/ReadWrite.cpp	2026-10-07 05:31:15
++++ b/Source/ReadWrite.cpp	2026-10-07 05:31:42
+@@ -6,8 +6,9 @@
+ std::vector<std::string> read_learning_data(std::string ename)
+ {
+ 	//check per opponent file and eventually original log file
+-	std::string my_path = ".\\bwapi-data\\read\\WillyT_" + ename + ".txt";
+-	std::string my_path_orig = ".\\bwapi-data\\read\\willytlog.txt";
++	// (Read back what earlier games wrote, as tournaments do by copying write/ to read/ between rounds)
++	std::string my_path = "bwapi-data/write/WillyT_" + ename + ".txt";
++	std::string my_path_orig = "bwapi-data/read/willytlog.txt";
+ 	std::vector<std::string> my_data;
+ 
+ 	my_data = read_file(my_path);
+@@ -38,7 +39,7 @@
+ std::string write_logfile(std::vector<std::string>& ehist, std::string& ename)
+ {
+ 	//open write file and append line into write file
+-	std::string my_path = ".\\bwapi-data\\write\\WillyT_" + ename + ".txt";
++	std::string my_path = "bwapi-data/write/WillyT_" + ename + ".txt";
+ 	std::ofstream my_file(my_path);
+ 	if (my_file.is_open()) {
+ 		for (std::string my_line : ehist) {
+@@ -55,7 +56,7 @@
+ void write_frame(int n)
+ {
+ 	//helper for debugging
+-	const char* my_path = "D:\\bwapi\\willytframe.txt";
++	const char* my_path = "bwapi-data/write/willytframe.txt";
+ 	std::ofstream my_file(my_path);
+ 	if (!my_file) { return; }
+ 	my_file << n;
+@@ -64,7 +65,7 @@
+ void write_string(std::string s)
+ {
+ 	//helper for debugging
+-	const char* my_path = "D:\\bwapi\\willytframe.txt";
++	const char* my_path = "bwapi-data/write/willytframe.txt";
+ 	std::ofstream my_file(my_path);
+ 	if (!my_file) { return; }
+ 	my_file << s;
+diff -ruN a/Source/WillytAI.cpp b/Source/WillytAI.cpp
+--- a/Source/WillytAI.cpp	2026-10-07 05:31:15
++++ b/Source/WillytAI.cpp	2026-10-07 05:31:42
+@@ -178,7 +178,8 @@
+ 			wilbuild::remove_building(unit);
+ 		}
+ 		if (unit->getType() == BWAPI::UnitTypes::Terran_Command_Center) {
+-			expomanager.desert_expo(unit->getTilePosition());
++			BWAPI::TilePosition expo_tile = unit->getTilePosition();
++			expomanager.desert_expo(expo_tile);
+ 		}
+ 	}
+ 	else if (unit->getPlayer()->isEnemy(BWAPI::Broodwar->self())) {

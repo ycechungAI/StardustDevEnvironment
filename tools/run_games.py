@@ -130,7 +130,7 @@ def main() -> int:
 
     # Tests that loop over many games internally can't be split between workers
     splittable = args.opponent is not None or "RunTwenty" not in args.filter
-    window_build = "ui" in args.build
+    window_build = Path(args.build).name.endswith("-ui")  # build-ui; a plain "in" would match "build" itself
     parallel = args.parallel or (1 if window_build else DEFAULT_PARALLEL)
     parallel = max(1, min(parallel, games if splittable else 1))
 
@@ -152,6 +152,8 @@ def main() -> int:
     socket_root = Path(tempfile.mkdtemp(prefix="ob", dir="/tmp")) if parallel > 1 else None
     for index, worker in enumerate(workers):
         env = dict(os.environ)
+        # A game making no progress for this long is a hang: the harness saves what led up to it to replays/unfinished/
+        env.setdefault("STARDUST_HANG_SECONDS", "120")
         command = [str(test_dir / "tests"), f"--gtest_filter={args.filter}"]
         if args.opponent:
             env["STARDUST_OPPONENT"] = args.opponent
@@ -234,6 +236,9 @@ def main() -> int:
     exit_code = max((worker.process.returncode or 0) if worker.process else 1 for worker in workers)
     print(f"DONE in {fmt(elapsed)} (exit {exit_code}): {len(reported_replays)} game(s): {tally or 'no replays'}; "
           f"{len(failed)} worker(s) with failed tests; Python errors: {python_errors}", flush=True)
+    for text in texts:
+        for line in re.findall(r"HUNG .*", text):
+            print(f"  {line}", flush=True)
     for text in texts:
         for line in re.findall(r"STATS .*|Python onFrame:.*", text):
             print(f"  {line}", flush=True)
