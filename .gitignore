@@ -20,6 +20,8 @@ __pycache__/
 .DS_Store
 .reference/
 .mypy_cache/
+training/
+tools/windows-bot/
 
 # StarCraft's data files are copyrighted and must never be committed, wherever they are put
 *.mpq
