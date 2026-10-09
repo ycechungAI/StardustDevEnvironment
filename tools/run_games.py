@@ -34,6 +34,15 @@ TYPICAL_FRAMES = 13_700
 TYPICAL_SECONDS_PER_GAME = 150
 FRAME_LIMIT = 30_000  # BWTest's default frame limit
 TIME_LIMIT = 600  # BWTest's default wall-time limit per game, in seconds
+
+# Watching at a set speed (OPENBW_GAME_SPEED, milliseconds per frame; 42 is normal speed), Bots.Play allows 90 minutes
+# of game time instead: 90 minutes at normal speed, 45 at x2
+_speed = os.environ.get("OPENBW_GAME_SPEED", "")
+MS_PER_FRAME = int(_speed) if _speed.isdigit() and int(_speed) > 0 else 0
+if MS_PER_FRAME:
+    FRAME_LIMIT = 90 * 60 * 1000 // 42
+    TIME_LIMIT = 90 * 60 * MS_PER_FRAME // 42
+    TYPICAL_SECONDS_PER_GAME = max(TYPICAL_SECONDS_PER_GAME, TYPICAL_FRAMES * MS_PER_FRAME // 1000)
 DEFAULT_PARALLEL = 4
 
 

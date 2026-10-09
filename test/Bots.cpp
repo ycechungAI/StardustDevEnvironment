@@ -71,6 +71,13 @@ TEST(Bots, Play)
         games = std::max(1, std::atoi(gamesSetting));
     }
 
+    // Watching at a set speed (OPENBW_GAME_SPEED=<milliseconds per frame>; 42 is normal, StarCraft's Fastest, and 21
+    // twice that): allow 90 minutes of game time, so the wall-time limit follows the speed: 90 minutes at normal
+    // speed, 45 at x2. Without a set speed games run as fast as the bots allow, with the usual limits.
+    int msPerFrame = 0;
+    if (auto speed = std::getenv("OPENBW_GAME_SPEED"); speed && *speed) msPerFrame = std::atoi(speed);
+    constexpr int watchedFrameLimit = 90 * 60 * 1000 / 42;
+
     int count = 0;
     int lost = 0;
     int drawn = 0;
@@ -81,6 +88,11 @@ TEST(Bots, Play)
         test.opponentModule = bot->create;
         test.opponentName = bot->name;
         if (auto seed = std::getenv("STARDUST_TEST_SEED"); seed && *seed) test.randomSeed = std::atoi(seed);
+        if (msPerFrame > 0)
+        {
+            test.frameLimit = watchedFrameLimit;
+            test.timeLimit = 90 * 60 * msPerFrame / 42;
+        }
         if (us)
         {
             test.myRace = us->race;
