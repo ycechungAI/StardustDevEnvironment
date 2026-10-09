@@ -29,11 +29,17 @@ class FakeGames:
     def install(self, best: dict[str, float], candidate: dict[str, float]) -> None:
         self.weights = {selfplay.BEST: best, selfplay.CANDIDATE: candidate}
 
-    def run(self, jobs: list[tuple[str, str, str]], fill: Any) -> dict[tuple[str, str], list[str]]:
+    def run(self, jobs: list[tuple[str, str, str]], fill: Any, lost: Any = None) -> dict[tuple[str, str], list[str]]:
         if fill:
             jobs = jobs + [fill() for _ in range(5)]  # the slots beside self-play keep playing
+        jobs = sorted(jobs, key=lambda job: job[2] != "self")  # self-play first, so it can stop the round early
         results: dict[tuple[str, str], list[str]] = {}
-        for us, opponent, _ in jobs:
+        self_left = sum(1 for job in jobs if job[2] == "self")
+        for us, opponent, lane in jobs:
+            if lane == "self":
+                self_left -= 1
+            elif lost and lost(selfplay.candidate_view(results), self_left):
+                break
             self.played += 1
             mine = strength(self.weights[us])
             theirs = strength(self.weights[opponent]) if opponent in self.weights else 0.15
@@ -129,8 +135,8 @@ def test_a_failed_test_waits_for_the_next_generation(tmp_path: Path) -> None:
     games.install(t.state.best, t.state.best)
     real_run = games.run
 
-    def lose_the_test(jobs: Any, fill: Any) -> Any:
-        results = real_run(jobs, fill)
+    def lose_the_test(jobs: Any, fill: Any, lost: Any = None) -> Any:
+        results = real_run(jobs, fill, lost)
         if (selfplay.BEST, selfplay.TEST) in results:
             results[(selfplay.BEST, selfplay.TEST)] = ["LOST"] * len(results[(selfplay.BEST, selfplay.TEST)])
         return results
@@ -262,3 +268,41 @@ def test_the_issue_summary_groups_by_kind_and_pairing(tmp_path: Path) -> None:
     assert summary[0].startswith("3 issue(s)")
     assert "2  crash" in summary[1] and "Stone" in summary[1]
     assert "stuck" in summary[2]
+
+
+def test_cannot_pass_is_exact() -> None:
+    # 20 games need 13 wins: 12 losses leave at most 8, 8 losses leave 12
+    assert selfplay.cannot_pass(["LOST"] * 8, 12)
+    assert not selfplay.cannot_pass(["LOST"] * 7, 13)
+    for wins in range(21):
+        for played in range(wins, 21):
+            results = ["WON"] * wins + ["LOST"] * (played - wins)
+            if selfplay.cannot_pass(results, 20 - played):  # then no ending of the remaining games passes
+                assert not selfplay.beats_old_version(results + ["WON"] * (20 - played))
+
+
+def test_a_candidate_that_cannot_pass_stops_the_round(tmp_path: Path, monkeypatch: Any) -> None:
+    # The old version wins every game, whichever side it plays
+    fake_harness(tmp_path, 'sleep 0.3\nif [ "$STARDUST_BOT" = ClaudeOpus55RL ]; then R=WON; else R=LOST; fi\n'
+                           'echo "t,$STARDUST_BOT,$STARDUST_OPPONENT,$R,100,map" >> replays/results.csv')
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    log: list[str] = []
+    issues: list[str] = []
+    runner = selfplay.make_runner("build", 3, log.append, lambda kind, job, output: issues.append(kind))
+    jobs = [(selfplay.CANDIDATE, selfplay.BEST, "self") if n % 2 == 0 else (selfplay.BEST, selfplay.CANDIDATE, "self")
+            for n in range(20)] + [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 10
+    played = runner(jobs, None, selfplay.cannot_pass)
+    assert len(selfplay.candidate_view(played)) == 8  # 8 losses of 20: 13 wins are out of reach
+    assert any("round stops here" in line for line in log)
+    assert not issues  # the games stopped aren't reported as missing
+
+
+def test_a_candidate_is_never_tried_twice_against_the_same_best(tmp_path: Path) -> None:
+    games = FakeGames(5)
+    t = trainer(tmp_path, games, approve=lambda report: False)
+    for _ in range(40):
+        t.generation()
+    tried = [json.dumps(json.loads(line)["params"], sort_keys=True)
+             for line in (tmp_path / "history.jsonl").read_text().splitlines()]
+    assert len(tried) == len(set(tried))
+    assert trainer(tmp_path, games).tried == set(tried)  # remembered after a restart

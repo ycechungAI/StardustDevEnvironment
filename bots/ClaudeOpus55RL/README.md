@@ -39,6 +39,7 @@ Each round, `tools/selfplay.py`:
    - **Self-play:** one slot is always the old version (`ClaudeOpus55RL`) against the new one (`ClaudeOpus55RLCandidate`), 20 games, taking turns at being "us".
    - **Training bots:** the other 5 slots play the new version against PylonPuller, UAlbertaBot (Terran, Zerg, Protoss) and Stone, at least 2 games each, and keep going round them while self-play lasts.
 3. **Gates it:** the candidate must score 55% against the old version, as in Leela Zero, by more than luck (a standard error clear of 50%: 13 of 20), and at least the best's score against the 5, less 5%.
+   - **Shortcuts that change no decision:** once a candidate can't reach 13 even by winning every self-play game left, the round stops there, games against the training bots included (they only matter for a candidate that passes). Most candidates fail, so most rounds end early. A candidate already tried against the current best is never played again.
 4. **Asks you:** a candidate that passes is shown with its results, and promoted only if you answer `y`. Instead, `--approver COMMAND` runs a command (another AI, say) with the report's path, where exit status 0 approves; `--auto-approve` promotes every one that passes.
 5. **Tracks Elo:** each promotion adds the self-play margin. Generation 0, ClaudeOpus55's own parameters, is 0 Elo.
 

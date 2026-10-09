@@ -52,7 +52,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ladder import LADDER  # noqa: E402
@@ -201,7 +201,26 @@ class State:
 Job = tuple[str, str, str]
 # Plays the games, and while self-play games remain, more games from `fill` in the slots self-play doesn't use.
 # Returns {(us, opponent): results for "us"} (WON, LOST or DRAW)
-Runner = Callable[[list[Job], Callable[[], Job] | None], dict[tuple[str, str], list[str]]]
+# `lost` (optional) is asked after each self-play game, with the candidate's self-play results so far and the number
+# of self-play games still to finish; once it answers True the round is stopped, as nothing it plays can matter.
+Lost = Callable[[list[str], int], bool]
+
+
+class Runner(Protocol):
+    def __call__(self, jobs: list[Job], fill: Callable[[], Job] | None,
+                 lost: Lost | None = None) -> dict[tuple[str, str], list[str]]: ...
+
+
+def candidate_view(played: dict[tuple[str, str], list[str]]) -> list[str]:
+    """Self-play results from the candidate's side, whichever side it played as."""
+    flipped = {"WON": "LOST", "LOST": "WON"}
+    return played.get((CANDIDATE, BEST), []) + [flipped.get(r, r) for r in played.get((BEST, CANDIDATE), [])]
+
+
+def cannot_pass(results: list[str], remaining: int) -> bool:
+    """True when the candidate fails the self-play gate even if it wins every game still to play. The gate's score
+    only rises with more wins, so this is exact: stopping then changes no decision."""
+    return not beats_old_version(results + ["WON"] * remaining)
 
 
 class Trainer:
@@ -218,6 +237,13 @@ class Trainer:
         self.test_games = test_games
         self.rng = rng
         self.state = State.load(training / "state.json")
+        # Candidates already tried against the current best: never played again
+        self.tried: set[str] = set()
+        history = training / "history.jsonl"
+        for line in history.read_text().splitlines() if history.exists() else []:
+            entry = json.loads(line)
+            if entry.get("generation") == self.state.generation and "params" in entry:
+                self.tried.add(json.dumps(entry["params"], sort_keys=True))
 
     def save(self) -> None:
         self.state.save(self.training / "state.json")
@@ -282,7 +308,11 @@ class Trainer:
         if self.check_goal():
             return True
         best = self.state.best or defaults()
-        candidate, changed = mutate(best, self.state.scale, self.rng)
+        for _ in range(100):
+            candidate, changed = mutate(best, self.state.scale, self.rng)
+            if json.dumps(candidate, sort_keys=True) not in self.tried:
+                break
+        self.tried.add(json.dumps(candidate, sort_keys=True))
         self.state.candidates_tried += 1
         trial = self.state.candidates_tried
         changes = ", ".join(f"{n} {best.get(n)} -> {candidate[n]}" for n in changed)
@@ -299,9 +329,8 @@ class Trainer:
         def fill() -> Job:
             return (CANDIDATE, TRAINING[next(extra) % len(TRAINING)], "gauntlet")
 
-        played = self.runner(jobs, fill)
-        selfplay = played.get((CANDIDATE, BEST), [])
-        selfplay += ["LOST" if r == "WON" else "WON" if r == "LOST" else r for r in played.get((BEST, CANDIDATE), [])]
+        played = self.runner(jobs, fill, cannot_pass)
+        selfplay = candidate_view(played)
         selfplay_score = score(selfplay)
         self.log(f"  self-play against the old version: {selfplay.count('WON')}/{len(selfplay)} won, "
                  f"score {selfplay_score:.0%} (needs {GATE:.0%}, clear of 50% by a standard error)")
@@ -328,6 +357,7 @@ class Trainer:
             self.state.best = candidate
             self.state.best_gauntlet = entry["gauntlet"]
             self.state.scale = min(3.0, self.state.scale * 1.2)
+            self.tried.clear()
             (self.training / "generations").mkdir(parents=True, exist_ok=True)
             (self.training / "generations" / f"{self.state.generation:03d}.json").write_text(
                 json.dumps(candidate, indent=2) + "\n")
@@ -518,7 +548,17 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
     failures: dict[tuple[str, str], int] = {}  # failures in a row, per pairing
     skipped: set[tuple[str, str]] = set()  # pairings that kept failing, not played again this run
 
-    def run(jobs: list[Job], fill: Callable[[], Job] | None) -> dict[tuple[str, str], list[str]]:
+    def read_results(before: int) -> dict[tuple[str, str], list[str]]:
+        results: dict[tuple[str, str], list[str]] = {}
+        lines = results_file.read_text().splitlines() if results_file.exists() else []
+        for line in lines[max(before, 1):]:
+            fields = line.split(",")
+            if len(fields) > 3:
+                results.setdefault((fields[1], fields[2]), []).append(fields[3])
+        return results
+
+    def run(jobs: list[Job], fill: Callable[[], Job] | None,
+            lost: Lost | None = None) -> dict[tuple[str, str], list[str]]:
         queue = list(jobs)
         wanted: dict[tuple[str, str], int] = {}
         for us, opponent, _ in jobs:
@@ -532,6 +572,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         progress: dict[int, tuple[float, float]] = {}  # slot: (CPU seconds, when they last went up)
         round_started = time.time()
         ended = [0]  # games finished or stopped this round
+        decided = False  # the candidate can no longer pass: the rest of the round is skipped
         for job in jobs:
             if (job[0], job[1]) in skipped:
                 queue.remove(job)
@@ -574,7 +615,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
             running[slot] = (process, time.time(), job)
 
         try:
-            while queue or running:
+            while (queue or running) and not decided:
                 self_running = any(job[2] == "self" for _, _, job in running.values())
                 self_left = self_running or any(job[2] == "self" for job in queue)
                 # The self-play slot first, then the others, keeping a slot for self-play while it has games left
@@ -646,6 +687,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                             log(f"  stopped {job[0]} vs {job[1]} to free memory")
                     elif used > memory_limit:
                         log(f"  the games use {used / 1e9:.1f} GB, over {memory_limit / 1e9:g} GB, already one at a time")
+                self_before = sum(1 for _, _, job in running.values() if job[2] == "self")
                 for slot, (process, started, job) in list(running.items()):
                     output = test_dir / "parallel" / str(slot) / "selfplay.log"
                     if process.poll() is None:
@@ -666,24 +708,31 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                                    if any(m in line for m in ERROR_MARKERS)), None)
                     if marker:
                         issue(f"error in the output, though the game finished: {marker[:200]}", job, output)
+                self_after = sum(1 for _, _, job in running.values() if job[2] == "self")
+                if lost and self_after < self_before:
+                    remaining = sum(1 for job in queue if job[2] == "self") + self_after
+                    so_far = candidate_view(read_results(before))
+                    if lost(so_far, remaining):
+                        decided = True
+                        log(f"  self-play {so_far.count('WON')}/{len(so_far)} won: it can't pass now even winning the "
+                            f"{remaining} game(s) left, so the round stops here")
         finally:
             PROGRESS.done()
             for process, _, _ in running.values():
                 stop(process)
             shutil.rmtree(socket_root, ignore_errors=True)
 
-        results: dict[tuple[str, str], list[str]] = {}
+        results = read_results(before)
         lines = results_file.read_text().splitlines() if results_file.exists() else []
         for line in lines[max(before, 1):]:
             fields = line.split(",")
             if len(fields) > 3:
-                results.setdefault((fields[1], fields[2]), []).append(fields[3])
                 if fields[3] == "DRAW":
                     issue(f"draw: the game hit the frame or time limit after {fields[4] if len(fields) > 4 else '?'} "
                           "frames", (fields[1], fields[2], ""), None)
         for (us, opponent), games in wanted.items():
             got = len(results.get((us, opponent), []))
-            if got < games:
+            if got < games and not decided:
                 issue(f"missing results: only {got} of {games} game(s) finished", (us, opponent, ""), None)
         return results
 
