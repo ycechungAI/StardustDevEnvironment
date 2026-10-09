@@ -10,8 +10,8 @@ bwapi-data/write and OpenBW connection directory, sharing the maps, data files a
 (--build build-ui) runs one game at a time.
 
 Each worker's test output goes to its run_games.log (<build>/test/run_games.log when running one at a time).
-Progress comes from the bot's log (bwapi-data/write/Stardust_log_*.txt), whose lines start with the frame number,
-and from the replays written when each game ends.
+Progress comes from the harness's "[progress] frame=" lines in that output, whichever bots play, and from the replays
+written when each game ends.
 """
 
 import argparse
@@ -47,24 +47,22 @@ def game_time(frame: int) -> str:
     return fmt(frame / 24)
 
 
-def last_frame(log: Path) -> int:
+def last_progress(log: Path) -> tuple[int, float] | None:
+    """The frame and seconds of the last "[progress]" line the harness wrote to the log, if any."""
     try:
         with log.open("rb") as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - 4096))
             lines = f.read().decode(errors="replace").splitlines()
     except OSError:
-        return 0
+        return None
     for line in reversed(lines):
-        match = re.match(r"(\d+)\(", line)
+        match = re.match(r"\[progress\] frame=(\d+) seconds=([\d.]+)", line)
         if match:
-            return int(match.group(1))
-    return 0
-
-
-def created(path: Path) -> float:
-    stat = path.stat()
-    return getattr(stat, "st_birthtime", stat.st_mtime)
+            return int(match.group(1)), float(match.group(2))
+        if line.startswith("[result]"):
+            return None  # that game is over; the next one has not reported yet
+    return None
 
 
 @dataclass
@@ -73,15 +71,10 @@ class Worker:
     games: int
     process: subprocess.Popen[bytes] | None = None
     log_path: Path = field(default_factory=Path)
-    existing_logs: set[Path] = field(default_factory=set)
 
     def current_game(self) -> tuple[int, float] | None:
-        """(frame, seconds since it started) of the game this worker is playing, from its newest bot log."""
-        logs = set((self.directory / "bwapi-data" / "write").glob("Stardust_log_*.txt")) - self.existing_logs
-        if not logs:
-            return None
-        newest = max(logs, key=created)
-        return last_frame(newest), max(0.0, time.time() - created(newest))
+        """(frame, seconds since it started) of the game this worker is playing."""
+        return last_progress(self.log_path)
 
 
 def prepare_worker_directory(test_dir: Path, index: int) -> Path:
@@ -164,7 +157,6 @@ def main() -> int:
             # OpenBW finds the other player through sockets in this directory (default /tmp/openbw, shared by all
             # games); each worker's two processes need their own, or games connect to each other.
             env["OPENBW_LOCAL_AUTO_DIRECTORY"] = str(socket_root / str(index))
-        worker.existing_logs = set((worker.directory / "bwapi-data" / "write").glob("Stardust_log_*.txt"))
         worker.log_path = worker.directory / "run_games.log"
         with worker.log_path.open("w") as output:
             worker.process = subprocess.Popen(command, cwd=worker.directory, env=env, stdout=output,
@@ -172,7 +164,7 @@ def main() -> int:
 
     next_report = start + args.interval
     reported_replays: set[Path] = set()
-    results = {"won": 0, "lost": 0, "passed": 0, "failed": 0}
+    results = {"won": 0, "lost": 0, "drawn": 0, "passed": 0, "failed": 0}
     while any(worker.process is not None and worker.process.poll() is None for worker in workers):
         time.sleep(1)
 
@@ -182,8 +174,8 @@ def main() -> int:
                 existing_replays.add(replay)
                 continue
             reported_replays.add(replay)
-            if "_WON" in replay.name or "_LOST" in replay.name:
-                result = "won" if "_WON" in replay.name else "lost"
+            if "_WON" in replay.name or "_LOST" in replay.name or "_DRAW" in replay.name:
+                result = "won" if "_WON" in replay.name else ("lost" if "_LOST" in replay.name else "drawn")
             else:
                 result = "passed" if "_PASS" in replay.name else "failed"
             results[result] += 1
@@ -241,7 +233,7 @@ def main() -> int:
     if records:
         print("\n" + elo.leaderboard(records), flush=True)
     if parallel > 1:
-        print(f"  logs: {', '.join(str(worker.log_path.relative_to(ROOT)) for worker in workers)}", flush=True)
+        print(f"  logs: {', '.join(os.path.relpath(worker.log_path, ROOT) for worker in workers)}", flush=True)
     return exit_code
 
 

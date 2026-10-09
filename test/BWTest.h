@@ -47,6 +47,9 @@ public:
     std::string myName = "StardustPy";
     std::string opponentName;
 
+    // Set when our side left the game at the frame or time limit, i.e. nobody won
+    bool limitReached = false;
+
     std::function<BWAPI::AIModule *()> myModule = nullptr;
     BWAPI::Race myRace = BWAPI::Races::Protoss;
 

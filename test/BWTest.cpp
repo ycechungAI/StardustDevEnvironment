@@ -462,6 +462,7 @@ void BWTest::runGame(bool opponent)
             {
                 std::cout << "Frame limit reached; leaving game" << std::endl;
                 leftGame = reachedLimit = true;
+                if (!opponent) limitReached = true;
                 h->leaveGame();
             }
 
@@ -472,11 +473,19 @@ void BWTest::runGame(bool opponent)
                 {
                     std::cout << "Time limit reached; leaving game" << std::endl;
                     leftGame = reachedLimit = true;
+                    if (!opponent) limitReached = true;
                     h->leaveGame();
                 }
             }
 
             gameOwner.getGame().nextFrame();
+
+            // For tools/run_games.py and tools/round_robin.py, which watch every game's speed whatever the bots
+            if (!opponent && !leftGame && h->getFrameCount() % 1000 == 0)
+            {
+                auto seconds = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - startTime).count();
+                std::cout << "[progress] frame=" << h->getFrameCount() << " seconds=" << seconds << std::endl;
+            }
         }
         catch (std::exception &ex)
         {

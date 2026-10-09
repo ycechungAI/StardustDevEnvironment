@@ -39,8 +39,9 @@ TEST(Bots, List)
 }
 
 // Plays STARDUST_OPPONENT=<bot name> for STARDUST_GAMES games (default 1), on STARDUST_TEST_MAP or random SSCAIT
-// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST. STARDUST_BOT=<bot name> plays as that bot instead of the
-// Python port (for example Stardust2025, the original C++ Stardust); its replays are named <us>_vs_<bot>_...
+// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST / _DRAW (a draw: the frame or time limit ended the game).
+// STARDUST_BOT=<bot name> plays as that bot instead of the Python port (for example Stardust2025, the original C++
+// Stardust); its replays are named <us>_vs_<bot>_...
 TEST(Bots, Play)
 {
     const RegisteredBot *us = nullptr;
@@ -72,6 +73,7 @@ TEST(Bots, Play)
 
     int count = 0;
     int lost = 0;
+    int drawn = 0;
     while (count < games)
     {
         BWTest test;
@@ -87,17 +89,22 @@ TEST(Bots, Play)
         }
         test.onEndMine = [&](bool won)
         {
+            // Leaving at the frame or time limit means neither bot won
+            const char *result = won ? "WON" : (test.limitReached ? "DRAW" : "LOST");
             std::ostringstream replayName;
             if (us) replayName << us->name << "_vs_";
-            replayName << bot->name << "_" << test.map->shortname() << "_" << test.randomSeed
-                       << (won ? "_WON" : "_LOST");
+            replayName << bot->name << "_" << test.map->shortname() << "_" << test.randomSeed << "_" << result;
             test.replayName = replayName.str();
-            if (!won) lost++;
+            if (!won && test.limitReached) drawn++;
+            else if (!won) lost++;
 
             count++;
+            // One line per game for tools/round_robin.py
+            std::cout << "[result] us=" << test.myName << " opponent=" << bot->name << " result=" << result
+                      << " map=" << test.map->shortname() << " seed=" << test.randomSeed << std::endl;
             std::cout << "---------------------------------------------" << std::endl;
             std::cout << "VS " << bot->name << " AFTER " << count << " GAME" << (count == 1 ? "" : "S") << ": "
-                      << (count - lost) << " won; " << lost << " lost" << std::endl;
+                      << (count - lost - drawn) << " won; " << lost << " lost; " << drawn << " drawn" << std::endl;
             std::cout << "---------------------------------------------" << std::endl;
         };
         test.expectWin = false;

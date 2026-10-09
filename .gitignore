@@ -32,6 +32,7 @@ __pycache__/
 bots/*
 !bots/README.md
 !bots/StardustBots.cmake
+!bots/tiers.json
 !bots/WorkerRush/
 !bots/recipes/
 !bots/ClaudeOpus55/
