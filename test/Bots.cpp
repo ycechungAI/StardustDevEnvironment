@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <fstream>
 
 const RegisteredBot *FindBot(const std::string &name)
 {
@@ -111,6 +112,13 @@ TEST(Bots, Play)
             else if (!won) lost++;
 
             count++;
+            // The status feed's last line, for tools/watch.py's end-of-game screen
+            if (auto statusFile = std::getenv("OPENBW_STATUS_FILE"); statusFile && *statusFile)
+            {
+                std::ofstream status(statusFile, std::ios::app);
+                status << "{\"end\":{\"result\":\"" << result << "\",\"us\":\"" << test.myName << "\",\"opponent\":\""
+                       << bot->name << "\",\"map\":\"" << test.map->shortname() << "\"}}" << std::endl;
+            }
             // One line per game for tools/round_robin.py
             std::cout << "[result] us=" << test.myName << " opponent=" << bot->name << " result=" << result
                       << " map=" << test.map->shortname() << " seed=" << test.randomSeed << std::endl;

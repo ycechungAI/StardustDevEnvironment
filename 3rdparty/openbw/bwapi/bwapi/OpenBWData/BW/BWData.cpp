@@ -30,6 +30,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <condition_variable>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <unordered_map>
+
+#include "TypeNames.h"
 
 // For some of our extensions we cheat and use the BWAPI types directly to avoid the need for conversions
 #include "../../bwapi/include/BWAPI/ExactPosition.h"
@@ -166,6 +172,11 @@ struct hud_settings {
   bool enabled = true;
   int local_player = -1;
   std::array<bwgame::a_string, 12> player_names;
+  // The window (OPENBW_WINDOW_TITLE, _X, _Y, _SCALE)
+  std::string title = "OpenBW";
+  int x = 0;
+  int y = 0;
+  double scale = 1.0;
 };
 
 struct ui_wrapper {
@@ -200,6 +211,10 @@ struct ui_wrapper {
       ui.hud_height = hud.enabled ? bwgame::hud::panel_height : 0;
       ui.hud_local_player = hud.local_player;
       ui.hud_player_names = hud.player_names;
+      ui.window_title = hud.title.c_str();
+      ui.window_x = hud.x;
+      ui.window_y = hud.y;
+      ui.window_scale = hud.scale > 0.05 ? hud.scale : 1.0;
 
       ui.exit_on_close = false;
       ui.global_volume = 0;
@@ -329,6 +344,10 @@ struct hud_settings {
   bool enabled = true;
   int local_player = -1;
   std::array<bwgame::a_string, 12> player_names;
+  std::string title = "OpenBW";
+  int x = 0;
+  int y = 0;
+  double scale = 1.0;
 };
 
 struct ui_wrapper {
@@ -885,8 +904,161 @@ struct openbwapi_impl {
     }
     hud.enabled = str != "0" && str != "OFF" && str != "NO" && str != "FALSE" && str != "N";
     hud.local_player = vars.is_replay ? -1 : vars.local_player_id;
-    hud.player_names = vars.is_replay ? replay_funcs.replay_st.player_name : sync_funcs.sync_st.player_names;
+    hud.player_names = display_names();
+    hud.title = game_setup_helper.env("OPENBW_WINDOW_TITLE", "OpenBW");
+    hud.x = std::atoi(game_setup_helper.env("OPENBW_WINDOW_X", "0").c_str());
+    hud.y = std::atoi(game_setup_helper.env("OPENBW_WINDOW_Y", "0").c_str());
+    hud.scale = std::atof(game_setup_helper.env("OPENBW_WINDOW_SCALE", "1").c_str());
     return hud;
+  }
+
+  // Players' names: the in-game ones, or those given with Game::setPlayerNames
+  std::string local_display_name;
+  std::string others_display_name;
+  std::array<bwgame::a_string, 12> display_names() {
+    auto names = vars.is_replay ? replay_funcs.replay_st.player_name : sync_funcs.sync_st.player_names;
+    if (local_display_name.empty() || vars.is_replay) return names;
+    for (int i = 0; i != 12; ++i) {
+      if (names[i].empty() && st.players[i].controller != bwgame::player_t::controller_occupied) continue;
+      names[i] = (i == vars.local_player_id ? local_display_name : others_display_name).c_str();
+    }
+    return names;
+  }
+
+  // OPENBW_STATUS_FILE=<path>: once a game second, a JSON line describing every player, for tools/watch.py
+  std::unique_ptr<std::ofstream> status_file;
+  bool status_file_checked = false;
+  std::array<std::unordered_map<uint32_t, int>, 12> status_previous_units;  // unit id -> type, at the last line
+  std::array<std::unordered_map<uint32_t, int>, 12> status_previous_health;  // building id -> hp + shields
+
+  static std::string json_string(const std::string& s) {
+    std::string r = "\"";
+    for (char c : s) {
+      if (c == '"' || c == '\\') r += '\\';
+      if ((unsigned char)c < 0x20) continue;
+      r += c;
+    }
+    return r + "\"";
+  }
+
+  void write_status() {
+    if (!status_file_checked) {
+      status_file_checked = true;
+      auto path = game_setup_helper.env("OPENBW_STATUS_FILE", "");
+      if (!path.empty()) status_file = std::make_unique<std::ofstream>(path, std::ios::app);
+    }
+    if (!status_file || st.current_frame % 24 != 0) return;
+
+    static const char* race_names[] = {"Zerg", "Terran", "Protoss", "Unknown"};
+    auto names = display_names();
+    std::ostringstream out;
+    out << "{\"frame\":" << st.current_frame << ",\"players\":[";
+    bool first_player = true;
+    for (int owner = 0; owner != 8; ++owner) {
+      auto& player = st.players[owner];
+      if (player.controller != bwgame::player_t::controller_occupied &&
+          player.controller != bwgame::player_t::controller_computer &&
+          player.controller != bwgame::player_t::controller_user_left &&
+          player.controller != bwgame::player_t::controller_computer_defeated) continue;
+      int race = std::min((int)player.race, 3);
+
+      std::map<std::string, std::array<int, 2>> counts;  // name -> completed, in progress
+      std::ostringstream production;
+      std::ostringstream attacked;
+      std::unordered_map<uint32_t, int> units;
+      std::unordered_map<uint32_t, int> health;
+      int workers = 0;
+      auto add_production = [&](const char* name, const char* kind, double progress, int queued) {
+        if (production.tellp() > 0) production << ",";
+        progress = std::max(0.0, std::min(1.0, progress));
+        production << "{\"name\":" << json_string(name) << ",\"kind\":\"" << kind << "\",\"progress\":"
+                   << (int)(progress * 100) / 100.0 << ",\"queued\":" << queued << "}";
+      };
+      for (bwgame::unit_t* u : bwgame::ptr(st.player_units[owner])) {
+        if (funcs.u_hallucination(u)) continue;
+        auto* type = u->unit_type;
+        uint32_t id = funcs.get_unit_id_32(u).raw_value;
+        units[id] = (int)type->id;
+        bool completed = funcs.u_completed(u);
+        counts[UnitTypeName((int)type->id)][completed ? 0 : 1]++;
+        if (completed && funcs.ut_worker(u)) ++workers;
+
+        if (funcs.ut_building(u)) {
+          int hp = (int)(u->hp.raw_value >> 8) + (int)(u->shield_points.raw_value >> 8);
+          health[id] = hp;
+          auto previous = status_previous_health[owner].find(id);
+          if (previous != status_previous_health[owner].end() && hp < previous->second) {
+            if (attacked.tellp() > 0) attacked << ",";
+            attacked << "{\"name\":" << json_string(UnitTypeName((int)type->id)) << ",\"x\":" << u->position.x
+                     << ",\"y\":" << u->position.y << "}";
+          }
+        }
+
+        if (!completed) {
+          // Under construction (a building) or in training (reported by the building training it)
+          if (funcs.ut_building(u) && type->build_time > 0) {
+            add_production(UnitTypeName((int)type->id), "build", 1.0 - (double)u->remaining_build_time / type->build_time, 0);
+          }
+          continue;
+        }
+        if (!u->build_queue.empty()) {
+          // Training (or, for eggs, cocoons and morphing buildings, morphing into) the queue's first type
+          auto* target = u->build_queue.front();
+          int remaining = u->current_build_unit ? u->current_build_unit->remaining_build_time : u->remaining_build_time;
+          bool morph = !u->current_build_unit;
+          double progress = target->build_time > 0 ? 1.0 - (double)remaining / target->build_time : 0.0;
+          add_production(UnitTypeName((int)target->id), morph ? "morph" : "train", progress, (int)u->build_queue.size() - 1);
+        }
+        if (funcs.ut_building(u)) {
+          if (u->building.researching_type && u->building.researching_type->research_time > 0) {
+            add_production(TechTypeName((int)u->building.researching_type->id), "research",
+                           1.0 - (double)u->building.upgrade_research_time / u->building.researching_type->research_time, 0);
+          }
+          if (u->building.upgrading_type) {
+            int total = funcs.upgrade_time_cost(owner, u->building.upgrading_type);
+            if (total > 0) {
+              add_production(UpgradeTypeName((int)u->building.upgrading_type->id), "upgrade",
+                             1.0 - (double)u->building.upgrade_research_time / total, 0);
+            }
+          }
+        }
+      }
+
+      // Units that appeared or disappeared since the last line
+      std::ostringstream born, died;
+      for (auto& [id, type] : units) {
+        if (!status_previous_units[owner].count(id)) born << (born.tellp() > 0 ? "," : "") << json_string(UnitTypeName(type));
+      }
+      for (auto& [id, type] : status_previous_units[owner]) {
+        if (!units.count(id)) died << (died.tellp() > 0 ? "," : "") << json_string(UnitTypeName(type));
+      }
+      status_previous_units[owner] = std::move(units);
+      status_previous_health[owner] = std::move(health);
+
+      if (!first_player) out << ",";
+      first_player = false;
+      out << "{\"slot\":" << owner << ",\"name\":" << json_string(names[owner].c_str())
+          << ",\"race\":\"" << race_names[race] << "\",\"color\":" << player.color
+          << ",\"local\":" << (owner == vars.local_player_id ? "true" : "false")
+          << ",\"minerals\":" << st.current_minerals[owner] << ",\"gas\":" << st.current_gas[owner]
+          << ",\"gathered\":[" << st.total_minerals_gathered[owner] << "," << st.total_gas_gathered[owner] << "]";
+      if (race < 3) {
+        out << ",\"supply\":[" << ((int)st.supply_used[owner][race].raw_value + 1) / 2 << ","
+            << std::min<int>(st.supply_available[owner][race].raw_value / 2, 200) << "]";
+      } else {
+        out << ",\"supply\":[0,0]";
+      }
+      out << ",\"workers\":" << workers << ",\"units\":{";
+      bool first_unit = true;
+      for (auto& [name, count] : counts) {
+        out << (first_unit ? "" : ",") << json_string(name) << ":[" << count[0] << "," << count[1] << "]";
+        first_unit = false;
+      }
+      out << "},\"production\":[" << production.str() << "],\"attacked\":[" << attacked.str()
+          << "],\"born\":[" << born.str() << "],\"died\":[" << died.str() << "]}";
+    }
+    out << "]}";
+    *status_file << out.str() << std::endl;
   }
 
   void next_frame() {
@@ -915,6 +1087,7 @@ struct openbwapi_impl {
         game_setup_helper.next_frame();
       }
     }
+    write_status();
 
     if (ui) {
       if (on_draw_changed && on_draw) {
@@ -1593,6 +1766,12 @@ void Game::saveReplay(const std::string& filename)
     bwgame::data_loading::file_writer<> w(filename.c_str());
     replay_saver_funcs.save_replay(impl->st.current_frame, w);
   }
+}
+
+void Game::setPlayerNames(const std::string& local, const std::string& others)
+{
+  impl->local_display_name = local;
+  impl->others_display_name = others;
 }
 
 std::vector<int> Game::takeKeyPresses()

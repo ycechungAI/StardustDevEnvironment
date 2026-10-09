@@ -239,6 +239,8 @@ void BWTest::run()
         // Only our own game gets a window (in builds with OPENBW_ENABLE_UI). The window belongs to the main thread,
         // which doesn't exist in this forked process.
         setenv("OPENBW_ENABLE_UI", "0", 1);
+        // Only our own game writes the status feed for tools/watch.py
+        unsetenv("OPENBW_STATUS_FILE");
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         runGame(true);
@@ -284,6 +286,7 @@ void BWTest::runGame(bool opponent)
     BW::GameOwner gameOwner;
     BWAPI::BroodwarImpl_handle h(gameOwner.getGame());
     h->setCharacterName(opponent ? "Opponent" : "Tests");
+    if (!opponent) gameOwner.getGame().setPlayerNames(myName, opponentName.empty() ? "Opponent" : opponentName);
     h->setGameType(BWAPI::GameTypes::Melee);
     BWAPI::BroodwarImpl.bwgame.setMapFileName(map->filename);
     BWAPI::Race race = opponent ? opponentRace : myRace;

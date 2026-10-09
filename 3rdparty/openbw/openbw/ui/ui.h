@@ -610,6 +610,13 @@ struct ui_functions: ui_util_functions {
 	int hud_local_player = -1;
 	std::array<a_string, 12> hud_player_names;
 
+	// The window's title and screen position, and its size relative to the game (0.5: half size, for a grid of
+	// several games). The game is still drawn at full size and scaled to the window. Set before the first resize.
+	a_string window_title = "OpenBW";
+	int window_x = 0;
+	int window_y = 0;
+	double window_scale = 1.0;
+
 	bool exit_on_close = true;
 	bool window_closed = false;
 
@@ -2093,9 +2100,20 @@ struct ui_functions: ui_util_functions {
 	int fps_counter = 0;
 	size_t scroll_speed_n = 0;
 
+	void get_scaled_cursor_pos(int* x, int* y) {
+		wnd.get_cursor_pos(x, y);
+		if (window_scale != 1.0 && *x != -1) {
+			*x = (int)(*x / window_scale);
+			*y = (int)(*y / window_scale);
+		}
+	}
+
 	// Sets the size of the game view; the window also has the HUD panel below it
 	void resize(int width, int height) {
-		if (!wnd && create_window) wnd.create("OpenBW", 0, 0, width, height + hud_height);
+		if (!wnd && create_window) {
+			wnd.create(window_title.c_str(), window_x, window_y, (int)(width * window_scale + 0.5),
+			           (int)((height + hud_height) * window_scale + 0.5));
+		}
 		screen_width = width;
 		screen_height = height;
 		//view_scale = fp16::integer(1) - (fp16::integer(1) / 4);
@@ -2256,13 +2274,26 @@ struct ui_functions: ui_util_functions {
 		if (wnd) {
 			native_window::event_t e;
 			while (wnd.peek_message(e)) {
+				// The game is drawn at full size and scaled to the window: mouse positions are in the window's pixels
+				if (window_scale != 1.0) {
+					e.mouse_x = (int)(e.mouse_x / window_scale);
+					e.mouse_y = (int)(e.mouse_y / window_scale);
+				}
 				switch (e.type) {
 				case native_window::event_t::type_quit:
 					if (exit_on_close) std::exit(0);
 					else window_closed = true;
 					break;
 				case native_window::event_t::type_resize:
-					resize(e.width, std::max(e.height - hud_height, 1));
+					if (window_scale != 1.0) {
+						// A scaled window keeps the game's size and scales it to the window instead
+						window_scale = std::min(e.width / (double)screen_width, e.height / (double)(screen_height + hud_height));
+						window_surface.reset();
+						indexed_surface.reset();
+						rgba_surface.reset();
+					} else {
+						resize(e.width, std::max(e.height - hud_height, 1));
+					}
 					break;
 				case native_window::event_t::type_mouse_button_down:
 					if (e.mouse_y >= (int)screen_height) break; // on the HUD
@@ -2340,7 +2371,11 @@ struct ui_functions: ui_util_functions {
 		if (!indexed_surface) {
 			if (wnd) {
 				window_surface = native_window_drawing::get_window_surface(&wnd);
-				rgba_surface = native_window_drawing::create_rgba_surface(window_surface->w, window_surface->h);
+				if (window_scale != 1.0) {
+					rgba_surface = native_window_drawing::create_rgba_surface(screen_width, screen_height + hud_height);
+				} else {
+					rgba_surface = native_window_drawing::create_rgba_surface(window_surface->w, window_surface->h);
+				}
 			} else {
 				rgba_surface = native_window_drawing::create_rgba_surface(screen_width, screen_height);
 			}
@@ -2385,13 +2420,13 @@ struct ui_functions: ui_util_functions {
 			if (is_moving_minimap) {
 				int x = -1;
 				int y = -1;
-				wnd.get_cursor_pos(&x, &y);
+				get_scaled_cursor_pos(&x, &y);
 				if (x != -1) move_minimap(x, y);
 			}
 			if (is_moving_replay_slider) {
 				int x = -1;
 				int y = -1;
-				wnd.get_cursor_pos(&x, &y);
+				get_scaled_cursor_pos(&x, &y);
 				if (x != -1) move_replay_slider(x, y);
 			}
 		}
@@ -2439,7 +2474,11 @@ struct ui_functions: ui_util_functions {
 		rgba_surface->unlock();
 
 		if (wnd) {
-			rgba_surface->blit(&*window_surface, 0, 0);
+			if (window_surface->w != rgba_surface->w || window_surface->h != rgba_surface->h) {
+				rgba_surface->blit_scaled(&*window_surface, 0, 0, window_surface->w, window_surface->h);
+			} else {
+				rgba_surface->blit(&*window_surface, 0, 0);
+			}
 			wnd.update_surface();
 		}
 	}
