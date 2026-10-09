@@ -14,6 +14,9 @@
 #include "native_window.h"
 #include "native_window_drawing.h"
 #include "native_sound.h"
+#include "hud.h"
+
+#include <cstring>
 #ifdef EMSCRIPTEN
 #include "Bitmap.h"
 #endif
@@ -601,14 +604,24 @@ struct ui_functions: ui_util_functions {
 	bool create_window = true;
 	bool draw_ui_elements = true;
 
-	bool exit_on_close = true;
-	bool window_closed = false;
+	// The HUD panel below the game view (see hud.h): its height (0 for none), the player whose process shows the
+	// window (-1 for none) and the players' names. Set before the first resize.
+	int hud_height = 0;
+	int hud_local_player = -1;
+	std::array<a_string, 12> hud_player_names;
 
-	// Added for the Stardust test harness: the window's title and position, and whether update() leaves the copy to
-	// the window for present(), so the caller can draw while it holds the game's lock and show it after letting go
+	// The window's title and screen position, and its size relative to the game (0.5: half size, for a grid of
+	// several games). The game is still drawn at full size and scaled to the window. Set before the first resize.
 	a_string window_title = "OpenBW";
 	int window_x = 0;
 	int window_y = 0;
+	double window_scale = 1.0;
+
+	bool exit_on_close = true;
+	bool window_closed = false;
+
+	// Added for the Stardust test harness: whether update() leaves the copy to the window for present(), so the caller
+	// can draw while it holds the game's lock and show it after letting go
 	bool defer_present = false;
 	bool present_pending = false;
 
@@ -1763,6 +1776,102 @@ struct ui_functions: ui_util_functions {
 		return r;
 	}
 
+	// The numbers the HUD shows: resources and supply, and completed army units by type
+	hud::summary hud_summary() {
+		struct army_type {
+			UnitTypes id;
+			const char* name;
+		};
+		static const army_type army_types[] = {
+				{UnitTypes::Terran_Marine, "Marine"}, {UnitTypes::Terran_Firebat, "Firebat"},
+				{UnitTypes::Terran_Medic, "Medic"}, {UnitTypes::Terran_Ghost, "Ghost"},
+				{UnitTypes::Terran_Vulture, "Vulture"}, {UnitTypes::Terran_Siege_Tank_Tank_Mode, "Siege Tank"},
+				{UnitTypes::Terran_Siege_Tank_Siege_Mode, "Siege Tank"}, {UnitTypes::Terran_Goliath, "Goliath"},
+				{UnitTypes::Terran_Wraith, "Wraith"}, {UnitTypes::Terran_Valkyrie, "Valkyrie"},
+				{UnitTypes::Terran_Dropship, "Dropship"}, {UnitTypes::Terran_Science_Vessel, "Sci Vessel"},
+				{UnitTypes::Terran_Battlecruiser, "Battlecruiser"},
+				{UnitTypes::Zerg_Zergling, "Zergling"}, {UnitTypes::Zerg_Hydralisk, "Hydralisk"},
+				{UnitTypes::Zerg_Lurker, "Lurker"}, {UnitTypes::Zerg_Mutalisk, "Mutalisk"},
+				{UnitTypes::Zerg_Scourge, "Scourge"}, {UnitTypes::Zerg_Guardian, "Guardian"},
+				{UnitTypes::Zerg_Devourer, "Devourer"}, {UnitTypes::Zerg_Queen, "Queen"},
+				{UnitTypes::Zerg_Defiler, "Defiler"}, {UnitTypes::Zerg_Ultralisk, "Ultralisk"},
+				{UnitTypes::Zerg_Infested_Terran, "Inf Terran"}, {UnitTypes::Zerg_Broodling, "Broodling"},
+				{UnitTypes::Protoss_Zealot, "Zealot"}, {UnitTypes::Protoss_Dragoon, "Dragoon"},
+				{UnitTypes::Protoss_Dark_Templar, "Dark Templar"}, {UnitTypes::Protoss_High_Templar, "High Templar"},
+				{UnitTypes::Protoss_Archon, "Archon"}, {UnitTypes::Protoss_Dark_Archon, "Dark Archon"},
+				{UnitTypes::Protoss_Reaver, "Reaver"}, {UnitTypes::Protoss_Shuttle, "Shuttle"},
+				{UnitTypes::Protoss_Observer, "Observer"}, {UnitTypes::Protoss_Scout, "Scout"},
+				{UnitTypes::Protoss_Corsair, "Corsair"}, {UnitTypes::Protoss_Carrier, "Carrier"},
+				{UnitTypes::Protoss_Arbiter, "Arbiter"},
+		};
+		static const char* race_names[] = {"Zerg", "Terran", "Protoss", "Unknown"};
+
+		hud::summary s;
+		s.frame = st.current_frame;
+		for (int owner = 0; owner != 8; ++owner) {
+			auto& player = st.players[owner];
+			if (player.controller != player_t::controller_occupied && player.controller != player_t::controller_computer &&
+					player.controller != player_t::controller_user_left &&
+					player.controller != player_t::controller_computer_defeated) continue;
+
+			hud::player_summary p;
+			p.name = hud_player_names[owner].c_str();
+			int race = std::min((int)player.race, 3);
+			p.race = race_names[race];
+			p.color = player.color;
+			p.local = owner == hud_local_player;
+			p.minerals = st.current_minerals[owner];
+			p.gas = st.current_gas[owner];
+			if (race < 3) {
+				// Supply is kept doubled (a zergling is half a supply); Brood War shows it rounded up
+				p.supply_used = ((int)st.supply_used[owner][race].raw_value + 1) / 2;
+				p.supply_max = std::min<int>(st.supply_available[owner][race].raw_value / 2, 200);
+			}
+
+			std::array<int, (size_t)UnitTypes::None> counts{};
+			int army_supply = 0;
+			for (unit_t* u : ptr(st.player_units[owner])) {
+				if (!u_completed(u) || u_hallucination(u)) continue;
+				if (ut_worker(u)) ++p.workers;
+				++counts[(size_t)u->unit_type->id];
+			}
+
+			for (auto& type : army_types) {
+				int count = counts[(size_t)type.id];
+				if (!count) continue;
+				auto* unit_type = get_unit_type(type.id);
+				p.army_units += count;
+				army_supply += count * (int)unit_type->supply_required.raw_value;
+				// Two zerglings or scourge come from one egg and its cost
+				int per_egg = ut_flag(unit_type, unit_type_t::flag_two_units_in_one_egg) ? 2 : 1;
+				p.army_minerals += count * unit_type->mineral_cost / per_egg;
+				p.army_gas += count * unit_type->gas_cost / per_egg;
+				auto existing = std::find_if(p.composition.begin(), p.composition.end(), [&](auto& entry) {
+					return std::strcmp(entry.first, type.name) == 0;
+				});
+				if (existing != p.composition.end()) existing->second += count;
+				else p.composition.emplace_back(type.name, count);
+			}
+			p.army_supply = (army_supply + 1) / 2;
+			s.players.push_back(std::move(p));
+		}
+		return s;
+	}
+
+	bool hud_size_warned = false;
+
+	void draw_hud(uint32_t* data, size_t pitch, int width, int height) {
+		if (hud_height <= 0) return;
+		if (height < (int)screen_height + hud_height && !hud_size_warned) {
+			hud_size_warned = true;
+			ui::log("HUD: the window is %dx%d, too short for the game view (%d) and the panel (%d); the panel may be "
+					"cut off. Make the window taller.\n", width, height, (int)screen_height, hud_height);
+		}
+		if (height <= (int)screen_height) return;
+		hud::canvas c{data + screen_height * pitch, pitch, width, std::min(hud_height, height - (int)screen_height)};
+		hud::draw(c, hud_summary());
+	}
+
 	void draw_ui(uint8_t* data, size_t data_pitch) {
 		auto area = get_replay_slider_area();
 		if (area == rect{}) return;
@@ -1996,8 +2105,20 @@ struct ui_functions: ui_util_functions {
 	int fps_counter = 0;
 	size_t scroll_speed_n = 0;
 
+	void get_scaled_cursor_pos(int* x, int* y) {
+		wnd.get_cursor_pos(x, y);
+		if (window_scale != 1.0 && *x != -1) {
+			*x = (int)(*x / window_scale);
+			*y = (int)(*y / window_scale);
+		}
+	}
+
+	// Sets the size of the game view; the window also has the HUD panel below it
 	void resize(int width, int height) {
-		if (!wnd && create_window) wnd.create(window_title.c_str(), window_x, window_y, width, height);
+		if (!wnd && create_window) {
+			wnd.create(window_title.c_str(), window_x, window_y, (int)(width * window_scale + 0.5),
+			           (int)((height + hud_height) * window_scale + 0.5));
+		}
 		screen_width = width;
 		screen_height = height;
 		//view_scale = fp16::integer(1) - (fp16::integer(1) / 4);
@@ -2162,15 +2283,29 @@ struct ui_functions: ui_util_functions {
 		if (wnd) {
 			native_window::event_t e;
 			while (wnd.peek_message(e)) {
+				// The game is drawn at full size and scaled to the window: mouse positions are in the window's pixels
+				if (window_scale != 1.0) {
+					e.mouse_x = (int)(e.mouse_x / window_scale);
+					e.mouse_y = (int)(e.mouse_y / window_scale);
+				}
 				switch (e.type) {
 				case native_window::event_t::type_quit:
 					if (exit_on_close) std::exit(0);
 					else window_closed = true;
 					break;
 				case native_window::event_t::type_resize:
-					resize(e.width, e.height);
+					if (window_scale != 1.0) {
+						// A scaled window keeps the game's size and scales it to the window instead
+						window_scale = std::min(e.width / (double)screen_width, e.height / (double)(screen_height + hud_height));
+						window_surface.reset();
+						indexed_surface.reset();
+						rgba_surface.reset();
+					} else {
+						resize(e.width, std::max(e.height - hud_height, 1));
+					}
 					break;
 				case native_window::event_t::type_mouse_button_down:
+					if (e.mouse_y >= (int)screen_height) break; // on the HUD
 					if (e.button == 1) {
 						check_move_minimap(e);
 						check_move_replay_slider(e);
@@ -2246,7 +2381,11 @@ struct ui_functions: ui_util_functions {
 		if (!indexed_surface) {
 			if (wnd) {
 				window_surface = native_window_drawing::get_window_surface(&wnd);
-				rgba_surface = native_window_drawing::create_rgba_surface(window_surface->w, window_surface->h);
+				if (window_scale != 1.0) {
+					rgba_surface = native_window_drawing::create_rgba_surface(screen_width, screen_height + hud_height);
+				} else {
+					rgba_surface = native_window_drawing::create_rgba_surface(window_surface->w, window_surface->h);
+				}
 			} else {
 				rgba_surface = native_window_drawing::create_rgba_surface(screen_width, screen_height);
 			}
@@ -2292,13 +2431,13 @@ struct ui_functions: ui_util_functions {
 			if (is_moving_minimap) {
 				int x = -1;
 				int y = -1;
-				wnd.get_cursor_pos(&x, &y);
+				get_scaled_cursor_pos(&x, &y);
 				if (x != -1) move_minimap(x, y);
 			}
 			if (is_moving_replay_slider) {
 				int x = -1;
 				int y = -1;
-				wnd.get_cursor_pos(&x, &y);
+				get_scaled_cursor_pos(&x, &y);
 				if (x != -1) move_replay_slider(x, y);
 			}
 		}
@@ -2342,13 +2481,12 @@ struct ui_functions: ui_util_functions {
 		rgba_surface->unlock();
 		draw_highlights_on_units((uint32_t*)rgba_surface->lock(), rgba_surface->pitch / 4);
 		rgba_surface->unlock();
+		draw_hud((uint32_t*)rgba_surface->lock(), rgba_surface->pitch / 4, rgba_surface->w, rgba_surface->h);
+		rgba_surface->unlock();
 
 		if (wnd) {
 			if (defer_present) present_pending = true;
-			else {
-				rgba_surface->blit(&*window_surface, 0, 0);
-				wnd.update_surface();
-			}
+			else show_surface();
 		}
 	}
 
@@ -2356,10 +2494,17 @@ struct ui_functions: ui_util_functions {
 	void present() {
 		if (!present_pending) return;
 		present_pending = false;
-		if (wnd && rgba_surface && window_surface) {
+		if (wnd && rgba_surface && window_surface) show_surface();
+	}
+
+	// Copies the drawn picture to the window, scaled when the window isn't the game's size
+	void show_surface() {
+		if (window_surface->w != rgba_surface->w || window_surface->h != rgba_surface->h) {
+			rgba_surface->blit_scaled(&*window_surface, 0, 0, window_surface->w, window_surface->h);
+		} else {
 			rgba_surface->blit(&*window_surface, 0, 0);
-			wnd.update_surface();
 		}
+		wnd.update_surface();
 	}
 
 	std::tuple<int, int, uint32_t*> get_rgba_buffer() {

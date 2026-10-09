@@ -72,6 +72,7 @@ Test harness options, as environment variables:
 | `STARDUST_PROFILE_FRAMES` | write a cProfile of all `onFrame` calls to this file (every 1000 frames and at the end) |
 | `STARDUST_LOG_GC` | log Python garbage collections taking at least this many milliseconds to the bot log |
 | `OPENBW_GAME_SPEED` | milliseconds per frame in the game window (42 is StarCraft's "fastest"); by default it runs as fast as the bot allows |
+| `OPENBW_HUD` | `0` hides the panel with resources, timer and armies below the game window |
 
 `kill -USR1 <pid>` on a running `tests` process prints the bot's Python stack.
 
@@ -90,6 +91,42 @@ cmake --build build-ui -j
 Put the MPQ files in `build-ui/test/` as well, then run games from there (or with `tools/run_games.py ... --build build-ui`). Only our bot's game gets a window, not the opponent's. Drawing the window slows the game a little.
 
 A toolbar along the top of the window shows each player's army supply (with the most it has had this game), minerals and gas.
+
+Below the game view, a panel shows both players live:
+
+- **Toolbar:** the game time (as StarCraft shows it on Fastest) and frame number; then for each player, their minerals (M), gas (G), supply used and available (S) and workers (w).
+- **Army table:** for each player, the size of their army (units, supply, and its mineral/gas cost), then its composition by unit type.
+
+The army counts completed combat units and spellcasters, not workers, overlords, buildings, eggs, spider mines or hallucinations. Siege tanks in both modes count together. The player whose bot owns the window is marked `*`. `OPENBW_HUD=0` turns the panel off. The window is 146 pixels taller than the 800×600 game view.
+
+To change the panel's layout without running a game, edit `3rdparty/openbw/openbw/ui/hud.h`, then render it with sample numbers: `cmake --build build --target hud_preview && build/hud_preview hud.ppm`.
+
+### Watching several games at once
+
+`tools/watch.py` plays every pairing of 2 to 4 bots at the same time, each in its own game window, arranged in a grid that fits your screen, with a details window beside them:
+
+```bash
+.venv/bin/python tools/watch.py StardustPy BananaBrain McRaveZ CreativeZerg --speed 2
+```
+
+- **Grid:** 2 bots play 1 game, 3 bots play 3 games in a row of three, and 4 bots play 6 games in two rows of three: `[1] A-B [2] A-C [3] A-D` above `[4] B-C [5] B-D [6] C-D`. `StardustPy` is the Python port.
+- **Window size:** the windows shrink to fit the screen. Below 60% of full size they leave out the HUD panel, which the details window repeats.
+- **Speed:** `--speed 1` is normal (Fastest), `2` twice that, and `0` as fast as the bots allow.
+- **Details window**, one tab per game:
+  - a toolbar for each bot (minerals, gas, supply such as 9/10, workers, army units);
+  - what each bot is building, training, morphing, researching and upgrading, with progress bars;
+  - an event log: buildings started and finished, research and upgrades, buildings under attack, units lost.
+- **End of a game:** its tab turns into a results screen: victory or defeat, game length, resources collected, units and structures produced, killed and lost, peaks, and graphs of workers, army supply and resources over the game.
+
+Closing the details window stops the games. `--screen 1512x982` sets the screen size if the detected one is wrong, and `--no-details` leaves the details window out.
+
+`--view` shows the details window alone, for games already played. Each game's feed is kept in `build-ui/test/parallel/<n>/status.jsonl`:
+
+```bash
+.venv/bin/python tools/watch.py --view build-ui/test/parallel/0/status.jsonl
+```
+
+The details come from a feed OpenBW writes once per game second when `OPENBW_STATUS_FILE` is set. It reads the game's own state, so it works whichever bots play. `OPENBW_WINDOW_X`, `_Y`, `_SCALE` and `_TITLE` place, size and name a game window.
 
 Keys in the game window:
 

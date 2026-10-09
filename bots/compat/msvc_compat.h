@@ -129,6 +129,7 @@ inline int localtime_s(struct tm *result, const time_t *time)
 }
 
 inline int _stricmp(const char *a, const char *b) { return strcasecmp(a, b); }
+
 inline int _strnicmp(const char *a, const char *b, size_t n) { return strncasecmp(a, b, n); }
 
 // MSVC gives a null buffer for a missing variable; this gives an empty string, so bots that print the result (Windows
