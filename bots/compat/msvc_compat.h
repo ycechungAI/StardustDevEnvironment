@@ -129,6 +129,21 @@ inline int localtime_s(struct tm *result, const time_t *time)
 }
 
 inline int _stricmp(const char *a, const char *b) { return strcasecmp(a, b); }
+
+// A copy of an environment variable, in memory the caller frees (nullptr if it isn't set)
+inline int _dupenv_s(char **buffer, size_t *size, const char *name)
+{
+    const char *value = std::getenv(name);
+    if (size) *size = 0;
+    *buffer = nullptr;
+    if (!value) return 0;
+    size_t length = std::strlen(value) + 1;
+    *buffer = static_cast<char *>(std::malloc(length));
+    if (!*buffer) return ENOMEM;
+    std::memcpy(*buffer, value, length);
+    if (size) *size = length;
+    return 0;
+}
 inline int _strnicmp(const char *a, const char *b, size_t n) { return strncasecmp(a, b, n); }
 
 // Plain fopen gets the same path conversion. (The standard headers that use std::fopen are included above, so they
