@@ -3,9 +3,20 @@
 #include "BW/BWData.h"
 #include "GameStats.h"
 #include "PythonAIModule.h"
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <csignal>
+#include <deque>
+#include <fstream>
+#include <mutex>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <spawn.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+extern char **environ;
 #include <execinfo.h>
 #include <filesystem>
 #include <iomanip>
@@ -17,6 +28,92 @@
 namespace
 {
     std::mt19937 rng((std::random_device()) ());
+
+    // Hang watchdog (STARDUST_HANG_SECONDS=<n>): each game process records its frame and the step of the game loop it
+    // is in, in memory shared across the fork. If either stops for n seconds, the main process writes what led up to
+    // it to replays/unfinished/ (the run's conditions, recent game state, stack samples, the replay so far), then ends
+    // the game, or with STARDUST_HANG_FREEZE=1 pauses both processes for a debugger.
+    enum Phase { Starting, Update, OnFrame, Window, NextFrame, Paused, GameEnd, Done };
+    const char *phaseNames[] = {"starting the game", "update (bots' onFrame)", "test onFrame hook", "window/stats",
+                                "nextFrame (waiting on the other process)", "paused by the user", "game end", "done"};
+    struct Heartbeat
+    {
+        std::atomic<int> frame{-1};
+        std::atomic<int> phase{Starting};
+        std::atomic<long long> beatMs{0};
+        std::atomic<int> pid{0};
+        // [p] in the game window pauses both processes at this frame (-1: not paused); only [0]'s is used
+        std::atomic<int> pauseAt{-1};
+    };
+    Heartbeat *heartbeats = nullptr;  // [0] our game, [1] the opponent's
+    std::atomic<int> gameNumber{0};   // a process can play several games; each one's watchdog stops with it
+
+    long long nowMs()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    void beat(bool opponent, Phase phase, int frame = -1)
+    {
+        if (!heartbeats) return;
+        auto &hb = heartbeats[opponent ? 1 : 0];
+        hb.phase = phase;
+        if (frame >= 0) hb.frame = frame;
+        hb.beatMs = nowMs();
+    }
+
+    std::mutex historyMutex;
+    std::deque<std::string> history;  // recent game state, newest last
+    std::function<void(const std::string &)> saveReplaySoFar;
+
+    // The watchdog runs while the stuck thread may hold any runtime lock (iostream, locale, malloc), so it formats text
+    // into fixed buffers by hand and writes it with write(): a first version using iostream blocked at its first number.
+    struct RawText
+    {
+        char buf[16384];
+        size_t len = 0;
+        RawText &operator<<(const char *text)
+        {
+            while (*text && len < sizeof(buf) - 1) buf[len++] = *text++;
+            buf[len] = 0;
+            return *this;
+        }
+        RawText &operator<<(long long n)
+        {
+            char digits[24];
+            int count = 0;
+            bool negative = n < 0;
+            unsigned long long u = negative ? -(unsigned long long)n : (unsigned long long)n;
+            do { digits[count++] = (char)('0' + u % 10); u /= 10; } while (u);
+            if (negative) *this << "-";
+            while (count && len < sizeof(buf) - 1) buf[len++] = digits[--count];
+            buf[len] = 0;
+            return *this;
+        }
+    };
+
+    // Runs a program without the shell or std::system, and waits up to timeoutMs for it
+    void runAndWait(std::vector<const char *> args, long long timeoutMs)
+    {
+        args.push_back(nullptr);
+        pid_t child;
+        if (posix_spawnp(&child, args[0], nullptr, nullptr, const_cast<char *const *>(args.data()), environ) != 0)
+        {
+            return;
+        }
+        auto start = nowMs();
+        while (waitpid(child, nullptr, WNOHANG) == 0)
+        {
+            if (nowMs() - start > timeoutMs)
+            {
+                kill(child, SIGKILL);
+                waitpid(child, nullptr, 0);
+                return;
+            }
+            usleep(100000);
+        }
+    }
 
     template<typename It>
     It randomElement(It start, It end)
@@ -159,19 +256,23 @@ namespace
 
     void signalHandler(int sig, bool opponent)
     {
-        if (opponent)
-        {
-            std::cerr << "Opponent crashed with signal " << sig << std::endl;
-        }
-        else
-        {
-            EXPECT_FALSE(true);
-            std::cerr << "Crashed with signal " << sig << std::endl;
-        }
+        // Only async-signal-safe calls in here: the crash can come while the crashing thread holds the iostream,
+        // stdio or malloc lock, and a handler that needs the same lock deadlocks, which leaves the game frozen
+        // forever instead of ended. A second signal (a crash in here, or gtest aborting because it has already shut
+        // down) exits at once instead of looping.
+        static volatile sig_atomic_t handling = 0;
+        if (handling) _exit(1);
+        handling = 1;
 
-        fprintf(stderr, "Error: signal %d:\n", sig);
+        RawText message;
+        message << (opponent ? "Opponent crashed with signal " : "Crashed with signal ") << (long long)sig << "\n";
+        (void)!write(STDERR_FILENO, message.buf, message.len);
         printBacktrace();
-        exit(1);
+
+        // _exit, not exit: after a crash, running the bot's static destructors can hang forever (BunkerBoxer's map
+        // printer spun at 100% CPU in BMP::WriteToFile, leaving orphaned processes behind). The exit code of 1 fails
+        // the run.
+        _exit(1);
     }
 }
 
@@ -225,6 +326,19 @@ void BWTest::run()
             scheduleInitialUnitCreation(myInitialUnits, myInitialUnitsByFrame),
             scheduleInitialUnitCreation(opponentInitialUnits, opponentInitialUnitsByFrame));
 
+    // Shared with the forked opponent process, for the hang watchdog
+    if (!heartbeats)
+    {
+        heartbeats = static_cast<Heartbeat *>(mmap(nullptr, sizeof(Heartbeat) * 2, PROT_READ | PROT_WRITE,
+                                                   MAP_SHARED | MAP_ANON, -1, 0));
+        new(heartbeats) Heartbeat[2];
+    }
+    heartbeats[0].frame = heartbeats[1].frame = -1;
+    heartbeats[0].pauseAt = -1;
+    int thisGame = ++gameNumber;
+    beat(false, Starting);
+    beat(true, Starting);
+
     auto opponentPid = fork();
     if (opponentPid == 0)
     {
@@ -244,6 +358,7 @@ void BWTest::run()
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         runGame(true);
+        beat(true, Done);
         _exit(EXIT_SUCCESS);
     }
 
@@ -256,7 +371,131 @@ void BWTest::run()
     signal(SIGSEGV, handler);
     signal(SIGABRT, handler);
 
+    heartbeats[0].pid = getpid();
+    heartbeats[1].pid = opponentPid;
+    auto hangSeconds = std::getenv("STARDUST_HANG_SECONDS") ? std::atoi(std::getenv("STARDUST_HANG_SECONDS")) : 0;
+    if (hangSeconds > 0)
+    {
+        auto conditions = (std::ostringstream() << myName << " (" << myRace << ") vs "
+                                                << (opponentName.empty() ? "Opponent" : opponentName) << " ("
+                                                << opponentRace << "); map " << map->filename << "; seed " << randomSeed
+                                                << "; frame limit " << frameLimit << "; time limit " << timeLimit
+                                                << "s").str();
+        auto baseName = (std::ostringstream() << myName << "_vs_"
+                                              << (opponentName.empty() ? "Opponent" : opponentName) << "_"
+                                              << map->shortname() << "_" << randomSeed).str();
+        // Everything the watchdog writes is prepared now, while no thread can be stuck
+        auto tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        auto started = (std::ostringstream() << std::put_time(std::localtime(&tt), "%Y%m%d_%H%M%S")).str();
+        std::filesystem::create_directories("replays/unfinished");
+        std::thread([=]()
+                    {
+                        while (true)
+                        {
+                            std::this_thread::sleep_for(std::chrono::seconds(2));
+                            if (gameNumber != thisGame || heartbeats[0].phase == Done) return;
+                            int stuck = -1;
+                            for (int i = 0; i < 2; i++)
+                            {
+                                if (heartbeats[i].phase != Done
+                                    && nowMs() - heartbeats[i].beatMs > hangSeconds * 1000LL)
+                                {
+                                    stuck = i;
+                                }
+                            }
+                            if (stuck == -1) continue;
+
+                            // Snapshot the heartbeats first: the stack samples take seconds
+                            int frames[2], phases[2], pids[2];
+                            long long ages[2];
+                            for (int i = 0; i < 2; i++)
+                            {
+                                frames[i] = heartbeats[i].frame;
+                                phases[i] = heartbeats[i].phase;
+                                pids[i] = heartbeats[i].pid;
+                                ages[i] = (nowMs() - heartbeats[i].beatMs) / 1000;
+                            }
+
+                            RawText base;
+                            base << "replays/unfinished/" << baseName.c_str() << "_frame" << (long long)frames[0]
+                                 << "_started" << started.c_str() << "_HUNG";
+
+                            // 1. Stacks of both processes, before anything that might block
+                            for (int i = 0; i < 2; i++)
+                            {
+                                RawText samplePath;
+                                samplePath << base.buf << (i == 0 ? "_ours" : "_opponent") << ".sample.txt";
+                                RawText pid;
+                                pid << (long long)pids[i];
+                                runAndWait({"sample", pid.buf, "3", "-file", samplePath.buf}, 20000);
+                            }
+
+                            // 2. The report
+                            RawText report;
+                            report << "HUNG: no progress for " << (long long)hangSeconds << "s\n" << conditions.c_str()
+                                   << "\n\n";
+                            for (int i = 0; i < 2; i++)
+                            {
+                                report << (i == 0 ? "Our game" : "Opponent's game") << " (pid " << (long long)pids[i]
+                                       << "): frame " << (long long)frames[i] << ", in " << phaseNames[phases[i]]
+                                       << ", last progress " << ages[i] << "s ago"
+                                       << (i == stuck ? "  <-- stuck" : "") << "\n";
+                            }
+                            report << "\nGame state before the hang (every 480 frames, newest last):\n";
+                            if (historyMutex.try_lock())
+                            {
+                                for (auto &line : history) report << line.c_str() << "\n";
+                                historyMutex.unlock();
+                            }
+                            else
+                            {
+                                report << "(unavailable: the stuck thread holds it)\n";
+                            }
+                            RawText reportPath;
+                            reportPath << base.buf << ".txt";
+                            int fd = open(reportPath.buf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                            if (fd >= 0)
+                            {
+                                (void)!write(fd, report.buf, report.len);
+                                close(fd);
+                            }
+
+                            RawText line;
+                            line << "HUNG " << conditions.c_str() << "; frames " << (long long)frames[0] << "/"
+                                 << (long long)frames[1] << "; stuck in "
+                                 << (stuck == 0 ? "our game: " : "the opponent's game: ") << phaseNames[phases[stuck]]
+                                 << "; saved " << base.buf << ".*\n";
+                            (void)!write(STDOUT_FILENO, line.buf, line.len);
+
+                            // 3. The replay so far: this can block on the stuck thread, so it gets 15 seconds
+                            if (saveReplaySoFar)
+                            {
+                                RawText replayPath;
+                                replayPath << base.buf << ".rep";
+                                std::string path = replayPath.buf;
+                                std::thread([path]() { saveReplaySoFar(path); }).detach();
+                                std::this_thread::sleep_for(std::chrono::seconds(15));
+                            }
+
+                            auto freeze = std::getenv("STARDUST_HANG_FREEZE");
+                            if (freeze && *freeze && freeze[0] != '0')
+                            {
+                                RawText frozen;
+                                frozen << "Frozen for debugging: lldb -p " << (long long)pids[0] << " / lldb -p "
+                                       << (long long)pids[1] << "\n";
+                                (void)!write(STDOUT_FILENO, frozen.buf, frozen.len);
+                                kill(pids[1], SIGSTOP);
+                                kill(getpid(), SIGSTOP);
+                                continue;
+                            }
+                            kill(pids[1], SIGKILL);
+                            _exit(3);
+                        }
+                    }).detach();
+    }
+
     runGame(false);
+    beat(false, Done);
 
     // Give the opponent 5 seconds to exit
     int tries = 0;
@@ -396,11 +635,20 @@ void BWTest::runGame(bool opponent)
                                           });
     }
 
-    // In the game window: [s] toggles the stats screen, [r] saves the replay so far
+    // The numbers tools/live_stats.py shows while the game runs
+    LiveStats live(gameNumber.load(), map->shortname(), randomSeed, frameLimit);
+
+    // What the game window's observer camera saw (events.jsonl, for commentary and tools)
+    GameEvents events(!opponent, gameOwner.getGame(), gameNumber.load(), map->shortname(), randomSeed, myName,
+                      opponentName.empty() ? std::string("Opponent") : opponentName);
+
+    // In the game window: [s] toggles the stats screen, [r] saves the replay so far, [p] pauses the game (both
+    // processes stop before the same frame; the hang watchdog sees them as paused, not stuck). The observer camera
+    // has its own keys: space switches between it and the user's camera, [a] brings it back.
     bool showStats = true;
     auto ratings = ReadRatings();
     auto opponentDisplayName = opponentName.empty() ? std::string("Opponent") : opponentName;
-    auto handleWindow = [&]()
+    auto handleKeys = [&]()
     {
         auto game = gameOwner.getGame();
         for (int key : game.takeKeyPresses())
@@ -408,6 +656,18 @@ void BWTest::runGame(bool opponent)
             if (key == 's')
             {
                 showStats = !showStats;
+            }
+            else if (key == 'p' && heartbeats && !leftGame)
+            {
+                if (heartbeats[0].pauseAt >= 0)
+                {
+                    heartbeats[0].pauseAt = -1;
+                }
+                else
+                {
+                    // Far enough ahead that neither process has passed it (they are within the latency of each other)
+                    heartbeats[0].pauseAt = std::max(h->getFrameCount(), heartbeats[1].frame.load()) + 24;
+                }
             }
             else if (key == 'r')
             {
@@ -422,11 +682,18 @@ void BWTest::runGame(bool opponent)
                 h->printf("Saved replay %s", replayFilename.str().c_str());
             }
         }
+        for (auto &e : game.takeCameraEvents()) events.write(e);
+    };
+    auto handleWindow = [&]()
+    {
+        auto game = gameOwner.getGame();
+        handleKeys();
 
         if (!leftGame)
         {
             lastMyStats = PlayerStats::read(game, "Tests", myName, losses);
             lastOpponentStats = PlayerStats::read(game, "Opponent", opponentDisplayName, losses);
+            if (lastMyStats && lastOpponentStats) live.update(game, h->getFrameCount(), *lastMyStats, *lastOpponentStats);
 
             // STARDUST_OBSERVE=<frames> prints both players' unit counts at that interval, like watching the replay
             static int observeInterval = std::getenv("STARDUST_OBSERVE") ? std::atoi(std::getenv("STARDUST_OBSERVE")) : 0;
@@ -435,18 +702,95 @@ void BWTest::runGame(bool opponent)
                 std::cout << "OBSERVE " << h->getFrameCount() << ObserveUnitCounts(game, "Tests", myName)
                           << " ||" << ObserveUnitCounts(game, "Opponent", opponentDisplayName) << std::endl;
             }
+
+            if (heartbeats && h->getFrameCount() % 480 == 0 && lastMyStats && lastOpponentStats)
+            {
+                auto line = (std::ostringstream() << "frame " << h->getFrameCount() << ": "
+                                                  << StatsSummary(*lastMyStats, *lastOpponentStats) << " |"
+                                                  << ObserveUnitCounts(game, "Tests", myName) << " ||"
+                                                  << ObserveUnitCounts(game, "Opponent", opponentDisplayName)).str();
+                std::lock_guard<std::mutex> lock(historyMutex);
+                history.push_back(line);
+                if (history.size() > 30) history.pop_front();
+            }
+        }
+        if (lastMyStats && lastOpponentStats && std::get<0>(game.GameScreenBuffer()) > 0)
+        {
+            DrawToolbar(BWAPI::BroodwarPtr, *lastMyStats, *lastOpponentStats);
         }
         if (showStats && lastMyStats && lastOpponentStats && std::get<0>(game.GameScreenBuffer()) > 0)
         {
             DrawStatsScreen(BWAPI::BroodwarPtr, *lastMyStats, *lastOpponentStats, ratings);
         }
+        // Drawn from before the pause starts: the window shows the last frame's drawing while the game is paused
+        if (heartbeats && heartbeats[0].pauseAt >= 0 && std::get<0>(game.GameScreenBuffer()) > 0)
+        {
+            int x = game.screenWidth() / 2 - 60;
+            int y = game.screenHeight() / 2 - 40;
+            BWAPI::Broodwar->drawBoxScreen(x - 6, y - 4, x + 126, y + 14, BWAPI::Colors::Black, true);
+            BWAPI::Broodwar->drawTextScreen(x, y, "%cPAUSED  %c[p] resume", BWAPI::Text::Yellow, BWAPI::Text::White);
+        }
     };
+
+    // Waits while the user has paused the game: both processes stop here, before the same frame, so neither waits
+    // in nextFrame for the other (OpenBW drops a player after a minute without hearing from it)
+    auto waitWhilePaused = [&]()
+    {
+        if (!heartbeats || leftGame) return;
+        int pauseAt = heartbeats[0].pauseAt;
+        if (pauseAt < 0 || h->getFrameCount() < pauseAt) return;
+
+        auto pausedAt = std::chrono::high_resolution_clock::now();
+        if (!opponent)
+        {
+            std::cout << "Paused at frame " << h->getFrameCount() << std::endl;
+            events.write("pause", h->getFrameCount());
+        }
+        while (heartbeats[0].pauseAt >= 0)
+        {
+            beat(opponent, Paused, h->getFrameCount());
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            if (opponent)
+            {
+                // The main process has gone on (or its game is over)
+                int phase = heartbeats[0].phase;
+                if (phase == GameEnd || phase == Done || heartbeats[0].frame > h->getFrameCount()) break;
+            }
+            else
+            {
+                handleKeys();
+                live.keepAlive(true);
+                if (gameOwner.getGame().gameClosed()) heartbeats[0].pauseAt = -1;
+            }
+        }
+        // The pause doesn't count towards the time limit
+        startTime += std::chrono::high_resolution_clock::now() - pausedAt;
+        if (!opponent)
+        {
+            live.keepAlive(false);
+            std::cout << "Resumed" << std::endl;
+            events.write("resume", h->getFrameCount());
+        }
+    };
+    if (!opponent)
+    {
+        std::lock_guard<std::mutex> lock(historyMutex);
+        saveReplaySoFar = [&gameOwner](const std::string &filename) { gameOwner.getGame().saveReplay(filename); };
+    }
     while (!gameOwner.getGame().gameOver())
     {
         try
         {
+            beat(opponent, Update, h->getFrameCount());
             h->update();
 
+            beat(opponent, OnFrame);
+            // STARDUST_TEST_HANG_AT=<frame> stalls the opponent's process there, to test the hang watchdog
+            static int hangAt = std::getenv("STARDUST_TEST_HANG_AT") ? std::atoi(std::getenv("STARDUST_TEST_HANG_AT")) : -1;
+            if (opponent && h->getFrameCount() == hangAt)
+            {
+                while (true) std::this_thread::sleep_for(std::chrono::seconds(60));
+            }
             if (!leftGame)
             {
                 if (opponent)
@@ -459,6 +803,7 @@ void BWTest::runGame(bool opponent)
                 }
             }
 
+            beat(opponent, Window);
             if (!opponent) handleWindow();
 
             if (!leftGame && h->getFrameCount() == frameLimit)
@@ -481,6 +826,9 @@ void BWTest::runGame(bool opponent)
                 }
             }
 
+            waitWhilePaused();
+
+            beat(opponent, NextFrame);
             gameOwner.getGame().nextFrame();
 
             // For tools/run_games.py and tools/round_robin.py, which watch every game's speed whatever the bots
@@ -502,7 +850,17 @@ void BWTest::runGame(bool opponent)
         }
     }
 
-    std::cout << "Game over " << (opponent ? "(opponent) " : "") << "after " << h->getFrameCount() << " frames" << std::endl;
+    beat(opponent, GameEnd);
+    if (!opponent)
+    {
+        if (heartbeats) heartbeats[0].pauseAt = -1;
+        for (auto &e : gameOwner.getGame().takeCameraEvents()) events.write(e);
+        std::lock_guard<std::mutex> lock(historyMutex);
+        saveReplaySoFar = nullptr;
+    }
+    // Read now: once the game has ended, the frame count goes back to 0
+    int framesPlayed = h->getFrameCount();
+    std::cout << "Game over " << (opponent ? "(opponent) " : "") << "after " << framesPlayed << " frames" << std::endl;
     if (!opponent) gameOwner.getGame().setOnKillUnit(nullptr);
 
     h->update();
@@ -567,10 +925,11 @@ void BWTest::runGame(bool opponent)
             if (!opponentName.empty() && !(noResults && *noResults && std::string(noResults) != "0"))
             {
                 std::string result = gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST");
-                AppendResult(*me, *them, result, h->getFrameCount(), map->shortname(), randomSeed,
+                AppendResult(*me, *them, result, framesPlayed, map->shortname(), randomSeed,
                              gameId.str() + ".rep");
             }
         }
+        live.finish(framesPlayed, gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST"));
 
         // If enabled, write the replay file
         // Otherwise remove the cvis directory
@@ -580,6 +939,7 @@ void BWTest::runGame(bool opponent)
             replayFilename << "replays/" << gameId.str() << ".rep";
             std::filesystem::create_directories("replays");
             BWAPI::BroodwarImpl.bwgame.saveReplay(replayFilename.str());
+            std::cout << "REPLAY " << gameId.str() << ".rep" << std::endl;  // tools/run_games.py reads this
 
             // Move the cvis directory
             if (std::filesystem::exists("bwapi-data/write/cvis"))

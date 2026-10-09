@@ -27,6 +27,7 @@ add_subdirectory(src)
 
 IF(NOT MSVC)
     add_subdirectory(test)
+    add_subdirectory(tools/replay)
 ENDIF(NOT MSVC)
 
 # Renders the live game window's HUD panel to an image, to check its layout without running a game

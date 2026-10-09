@@ -1,0 +1,7 @@
+{
+  "git": "https://github.com/davechurchill/ualbertabot",
+  "commit": "558899d8793456f4a6ec4196efbb5235552e24db",
+  "race": "Protoss",
+  "license": "MIT (License.md)",
+  "notes": "UAlbertaBot by David Churchill, the reference bot many others (Steamhammer, Locutus) grew from: rushes from its config (zealot, marine, zergling), then plans its build with the BOSS build-order search and decides its fights with the SparCraft combat simulator; registered as UAlbertaBotProtoss, UAlbertaBotTerran and UAlbertaBotZerg"
+}

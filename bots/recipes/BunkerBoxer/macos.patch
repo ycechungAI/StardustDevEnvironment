@@ -1,0 +1,67 @@
+diff -ruN a/BunkerBoxerModule/Intelligence.cpp b/BunkerBoxerModule/Intelligence.cpp
+--- a/BunkerBoxerModule/Intelligence.cpp	2026-10-07 21:53:45
++++ b/BunkerBoxerModule/Intelligence.cpp	2026-10-07 21:53:45
+@@ -34,9 +34,10 @@
+ 		bool startingLocationsOK = theMap.FindBasesForStartingLocations();
+ 		assert(startingLocationsOK);
+ 
+-		BWEM::utils::MapPrinter::Initialize(&theMap);
+-		BWEM::utils::printMap(theMap);      // will print the map into the file <StarCraftFolder>bwapi-data/map.bmp
+-		BWEM::utils::pathExample(theMap);   // add to the printed map a path between two starting locations
++		// Left out here: pathExample loops forever on rand() under OpenBW, and the map printing is only for debugging.
++		// BWEM::utils::MapPrinter::Initialize(&theMap);
++		// BWEM::utils::printMap(theMap);      // will print the map into the file <StarCraftFolder>bwapi-data/map.bmp
++		// BWEM::utils::pathExample(theMap);   // add to the printed map a path between two starting locations
+ 
+ 		Broodwar << "gg" << std::endl;
+ 
+diff -ruN a/BunkerBoxerModule/Intelligence.h b/BunkerBoxerModule/Intelligence.h
+--- a/BunkerBoxerModule/Intelligence.h	2026-10-07 21:53:45
++++ b/BunkerBoxerModule/Intelligence.h	2026-10-07 21:53:45
+@@ -59,7 +59,7 @@
+ 	Intelligence();
+ 	~Intelligence();
+ 
+-	void Intelligence::initialize();
++	void initialize();
+ 
+ 	bool isEnemyScouted();
+ 	bool isEnemyNaturalScouted();
+diff -ruN a/BunkerBoxerModule/ProductionManager.h b/BunkerBoxerModule/ProductionManager.h
+--- a/BunkerBoxerModule/ProductionManager.h	2026-10-07 21:53:45
++++ b/BunkerBoxerModule/ProductionManager.h	2026-10-07 21:53:45
+@@ -35,23 +35,23 @@
+ 
+ 	void update(); 
+ 
+-	void ProductionManager::addBuilding(BWAPI::Unit building);
+-	void ProductionManager::removeBuilding(BWAPI::Unit building);
++	void addBuilding(BWAPI::Unit building);
++	void removeBuilding(BWAPI::Unit building);
+ 
+-	void ProductionManager::addWorker(BWAPI::Unit worker);
+-	void ProductionManager::removeWorker(BWAPI::Unit worker);
++	void addWorker(BWAPI::Unit worker);
++	void removeWorker(BWAPI::Unit worker);
+ 
+-	void ProductionManager::deactivateBuildOrder();
++	void deactivateBuildOrder();
+ 
+-	void ProductionManager::beginSaving(); 
+-	void ProductionManager::beginSpending();
++	void beginSaving(); 
++	void beginSpending();
+ 
+-	void ProductionManager::changePassiveProduction(BWAPI::UnitType u);
++	void changePassiveProduction(BWAPI::UnitType u);
+ 
+-	BWAPI::Unit ProductionManager::getBuilder();
++	BWAPI::Unit getBuilder();
+ 
+ 	// Extra Helper Functions 
+-	void ProductionManager::produceUnitFromBuilding(BWAPI::UnitType unit, BWAPI::Unit building);
+-	BWAPI::Unit ProductionManager::conscript();
++	void produceUnitFromBuilding(BWAPI::UnitType unit, BWAPI::Unit building);
++	BWAPI::Unit conscript();
+ };
+ 

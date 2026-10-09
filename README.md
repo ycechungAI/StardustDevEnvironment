@@ -66,6 +66,8 @@ Test harness options, as environment variables:
 |---|---|
 | `STARDUST_TEST_MAP` | map to play on (a name such as `Benzene`) instead of a random one |
 | `STARDUST_TEST_FRAME_LIMIT` | end the game after this many frames, e.g. to look only at startup |
+| `STARDUST_TEST_SEED` | random seed for games against other bots (`--opponent`), to replay the same game |
+| `STARDUST_OBSERVE` | print both players' unit counts every this many frames, like watching the replay |
 | `STARDUST_PROFILE_STARTUP` | write a cProfile of the bot's `onStart` to this file |
 | `STARDUST_PROFILE_FRAMES` | write a cProfile of all `onFrame` calls to this file (every 1000 frames and at the end) |
 | `STARDUST_LOG_GC` | log Python garbage collections taking at least this many milliseconds to the bot log |
@@ -87,6 +89,8 @@ cmake --build build-ui -j
 ```
 
 Put the MPQ files in `build-ui/test/` as well, then run games from there (or with `tools/run_games.py ... --build build-ui`). Only our bot's game gets a window, not the opponent's. Drawing the window slows the game a little.
+
+A toolbar along the top of the window shows each player's army supply (with the most it has had this game), minerals and gas.
 
 Below the game view, a panel shows both players live:
 

@@ -214,6 +214,19 @@ window::operator bool() const {
 	return (bool)*impl;
 }
 
+// Added for the Stardust test harness, to lay several game windows out on the screen
+bool get_usable_bounds(int* x, int* y, int* width, int* height) {
+	sdl_init();
+	if (!sdl_initialized) return false;
+	SDL_Rect rect;
+	if (SDL_GetDisplayUsableBounds(0, &rect) != 0) return false;
+	*x = rect.x;
+	*y = rect.y;
+	*width = rect.w;
+	*height = rect.h;
+	return true;
+}
+
 }
 
 namespace native_window_drawing {

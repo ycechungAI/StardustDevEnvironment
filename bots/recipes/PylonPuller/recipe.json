@@ -1,0 +1,8 @@
+{
+  "zip": "https://davechurchill.ca/starcraft/aiide/results/2022/bots/PylonPuller.zip",
+  "sha256": "e8396505cb66d05f47db6b40bb8fa964afcc0768ba9630b67da5a7dcc637e7a1",
+  "strip": "Pylon Puller",
+  "race": "Protoss",
+  "license": "MIT (LICENSE)",
+  "notes": "Pylon Puller (Protoss) by Hao Pan, as entered in AIIDE 2022: cannon rushes, proxy gates, 2-gate and dark templar openings"
+}

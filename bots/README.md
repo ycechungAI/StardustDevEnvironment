@@ -38,7 +38,7 @@ These are included only as recipes (`bots/recipes/<Name>/`), either because thei
 
 | Bot | Race | Notes |
 |-----|------|-------|
-| `SAIDA` | Terran | AIIDE 2018 champion. States no licence. Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that. |
+| `SAIDA` | Terran | AIIDE 2018 champion. States no licence. Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that. **Incomplete:** some of its games hang and never finish (2 of 6 against UAlbertaBotProtoss, and the whole UAlbertaBotTerran pairing once), so it is left out of the ladder's Tier 1. It still builds and can be played directly. |
 | `Dragon` | Terran | AIIDE 2021, built on Facebook's CherryPi (MIT). 37 MB download. It thinks on its own thread and waits up to 30 ms a frame for it, so its games don't repeat exactly from a seed. Set `DRAGON_LOG=1` for its (very long) logs. |
 | `WillyT` | Terran | AIIDE 2021. States no licence. Learns openings per opponent in `bwapi-data/write/WillyT_<opponent>.txt`. |
 
@@ -60,6 +60,34 @@ Wins, losses and draws (frame limit) for each Terran and Zerg bot against the th
 
 None of them is a match for the Protoss bots, and no stronger ones exist to add: Microwave, McRaveZ and Steamhammer have been the best Zerg bots in every AIIDE and CoG tournament from 2023 to 2026, and the only newer Terran entrants (insanitybot, VOID) score below Dragon. The one bot that beats the Protoss ones, CoG 2026 winner Pluto (Random, a neural network), is a closed Windows binary.
 
+## Tiers and the ladder
+
+A new bot learns little from losing every game to Stardust, so the opponents form a ladder from weakest to strongest:
+
+1. **Computer**: `ComputerZerg`, `ComputerProtoss` and `ComputerTerran` (`bots/ComputerAI/`, in the repository). OpenBW has no built-in computer players, so these stand in for them. They follow a fixed build for their race, keep making workers and supply, expand at set times, and attack in growing waves with no micro.
+2. **Tier 2**: bots that weren't tournament winners in their time, or are now well behind the best, but are known for an unusual or single-minded strategy. Each one tests one thing: holding a rush, finding cannons, or surviving workers in the base. They are recipes only. The two Protoss bots, PylonPuller and UAlbertaBotProtoss, are the hardest of them, closer to Tier 1 than Tier 2: PylonPuller's dark templar and UAlbertaBotProtoss's zealot rush held off every opening ClaudeOpus55 tried.
+3. **Tier 1**: the tournament bots above, plus the built-in Steamhammer, Locutus and Iron, except SAIDA (incomplete; see above).
+
+```bash
+.venv/bin/python tools/fetch_bot.py BunkerBoxer PylonPuller UAlbertaBot Stone ZZZKBot
+```
+
+| Bot | Race | What it plays |
+|-----|------|---------------|
+| `BunkerBoxer` | Terran | AIIDE 2019. A bunker rush, then hard-coded timing attacks. States no licence. |
+| `PylonPuller` | Protoss | AIIDE 2022, by Hao Pan (MIT). Picks from cannon rushes, proxy gateways, two-gateway zealots and dark templar. |
+| `UAlbertaBotProtoss`, `UAlbertaBotTerran`, `UAlbertaBotZerg` | any | David Churchill's UAlbertaBot (MIT; won AIIDE 2013), which Steamhammer and Locutus grew from. Its config rushes with zealots, marines or zerglings. After that it plans builds with its BOSS build-order search and picks its fights with the SparCraft combat simulator. One library, registered once per race. |
+| `Stone` | Terran | AIIDE 2015, by Igor Dimitrijevic (MIT), Iron's predecessor. Attacks with SCVs only, which harass, chase, flee and repair. |
+| `ZZZKBot` | Zerg | 2020 version, by Chris Coxe (LGPL 3); won AIIDE and CIG 2017. Four-pool and other early zergling rushes. |
+
+`tools/ladder.py` plays a bot up the ladder: a few games against each opponent in turn. It stops at the first one the bot doesn't beat in more than half its games, and draws count as not winning:
+
+```bash
+.venv/bin/python tools/ladder.py --bot ClaudeOpus55 --games 3
+```
+
+`--from` and `--to` pick part of the ladder (for example `--to ZZZKBot` stops before Tier 1). `--keep-going` plays every opponent for a full report. Without `--bot`, the Python port plays.
+
 ## Playing as another bot
 
 `--bot` plays any of these bots in Stardust's place, with the game window too (`--build build-ui`):
@@ -73,6 +101,36 @@ Without `--bot`, the Python port plays. Replays are then named `<bot>_vs_<oppone
 Games run under OpenBW like the other tests. Replays go to `build/test/replays/`, named `<bot>_<map>_<seed>_WON` or `_LOST`. `STARDUST_TEST_MAP` picks the map (otherwise it's a random SSCAIT map) and the live game window works too (see "Watching a game" in the top-level README).
 
 Bots built with `stardust_bot` export only their factory (hidden symbol visibility). Several bots carry their own, different BWEM and BWEB; with default visibility macOS merges their inline functions across bots and they crash.
+
+## Looking back at games
+
+`tools/replays.py` works from the replays in `build/test/replays/`. It lists them, sums up what happened in a game so it needn't be watched, plays one in a window, and keeps what the people watching said about it:
+
+```bash
+.venv/bin/python tools/replays.py list --bot ClaudeOpus55 --result lost --last 10
+.venv/bin/python tools/replays.py summary 1
+.venv/bin/python tools/replays.py watch 1 --at decisive
+```
+
+A game is the number `list` gives it (1 is the newest), part of its file name, or a path. Without a command it lists the latest games and asks which one to look at.
+
+A summary has:
+- a short story of the game;
+- the key moments: scouting, first units, proxies and cannon rushes, expansions, upgrades;
+- every sizeable fight, with where it was, the army supply on each side beforehand and what each side lost, marking the decisive one;
+- the problems each side had: no production, losing workers early, enemy units camped in its base, supply blocks, banked minerals and gas;
+- both build orders for the first six minutes, and a minute-by-minute table.
+
+`summary --bot ClaudeOpus55 --last 20` prints a line for each of several games. Summaries come from `replay_dump`, which replays a game without graphics in about three seconds (`cmake --build build --target replay_dump`). They're saved in `build/test/replays/summaries/` and rebuilt when anything they depend on changes.
+
+`watch` prints the summary and plays the replay in OpenBW's window, from the start, a time (`--at 4:30`), the decisive fight or another fight (`--at "fight 2"`). It needs `replay_viewer` from the UI build (`cmake --build build-ui --target replay_viewer`). In the window:
+- space pauses;
+- `a` and `z` change the speed;
+- the arrow keys go back or forward 10 seconds, and `[` `]` a minute.
+
+When the window closes, it asks what the observer noticed. `comment 1` adds a note without watching, or `--text` gives it directly. Comments are saved in `build/test/replays/comments/`, under the observer's login name or `--by`. `comments` shows them, and a game's summary includes its comments.
+
+`build/` isn't in git, so copy anything worth keeping out of it. Comments on a GenAI bot's games count as human advice, so they go into the list in [genai/README.md](genai/README.md) too.
 
 ## What kind of bot works
 
@@ -143,4 +201,4 @@ Tier 3 isn't played for now (`"play": false`). Bots in the tiers that aren't bui
 
 ## Git
 
-Other bots dropped into `bots/` are ignored: they come with their own licences. Tracked are this framework, the `WorkerRush` example, the recipes and the bots listed above (without their DLLs, and without Stardust's `mining-training` folder, which is its author's whole training environment).
+Other bots dropped into `bots/` are ignored: they come with their own licences. Tracked are this framework, the `WorkerRush` example, the `ComputerAI` stand-ins, the recipes and the bots listed above (without their DLLs, and without Stardust's `mining-training` folder, which is its author's whole training environment).

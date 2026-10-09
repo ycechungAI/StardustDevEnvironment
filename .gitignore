@@ -13,6 +13,7 @@ out
 CMakeSettings.json
 build/
 build-ui/
+build-win/
 .venv/
 __pycache__/
 .pytest_cache/
@@ -36,8 +37,13 @@ bots/*
 !bots/WorkerRush/
 !bots/recipes/
 !bots/ClaudeOpus55/
+!bots/ClaudeOpus55RL/
+bots/ClaudeOpus55RL/training*/pending.json
+bots/ClaudeOpus55RL/training*/issues/
+bots/ClaudeOpus55RL/training*/memory.json
 !bots/genai/
 !bots/compat/
+!bots/ComputerAI/
 !bots/BananaBrain/
 !bots/McRaveZ/
 !bots/Microwave/

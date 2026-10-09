@@ -620,6 +620,11 @@ struct ui_functions: ui_util_functions {
 	bool exit_on_close = true;
 	bool window_closed = false;
 
+	// Added for the Stardust test harness: whether update() leaves the copy to the window for present(), so the caller
+	// can draw while it holds the game's lock and show it after letting go
+	bool defer_present = false;
+	bool present_pending = false;
+
 	xy screen_pos;
     uint32_t vision = 0;
 
@@ -2156,6 +2161,9 @@ struct ui_functions: ui_util_functions {
 	// Called with each key pressed in the window, after the built-in keys are handled (added for the Stardust test
 	// harness: replay saving and the stats screen)
 	std::function<void(int)> on_key_down;
+	// Set when the user moves the camera (arrow keys, minimap, right-drag); the automatic observer camera reads and
+	// clears it to hand control to the user
+	bool camera_moved_by_user = false;
 	bool is_drag_selecting = false;
 	bool is_dragging_screen = false;
 	int drag_select_from_x = 0;
@@ -2187,6 +2195,7 @@ struct ui_functions: ui_util_functions {
 			x = x * game_st.map_tile_width / (minimap_area.to.x - minimap_area.from.x);
 			y = y * game_st.map_tile_height / (minimap_area.to.y - minimap_area.from.y);
 			screen_pos = xy(32 * x - view_width / 2, 32 * y - view_height / 2);
+			camera_moved_by_user = true;
 		};
 
 		auto check_move_minimap = [&](auto& e) {
@@ -2323,6 +2332,7 @@ struct ui_functions: ui_util_functions {
 					} else if (e.button_state & 4) {
 						if (is_dragging_screen) {
 							screen_pos = drag_screen_pos - xy((fp16::integer(e.mouse_x) / view_scale).integer_part(), (fp16::integer(e.mouse_y) / view_scale).integer_part());
+							camera_moved_by_user = true;
 							//screen_pos -= xy((fp16::integer(e.mouse_x - drag_screen_x) / view_scale).integer_part(), (fp16::integer(e.mouse_y - drag_screen_y) / view_scale).integer_part());
 						}
 					}
@@ -2410,6 +2420,7 @@ struct ui_functions: ui_util_functions {
 					if (wnd.get_key_state(79)) screen_pos.x += scroll_speed;
 					else if (wnd.get_key_state(80)) screen_pos.x -= scroll_speed;
 					if (screen_pos != prev_screen_pos) {
+						camera_moved_by_user = true;
 						if (scroll_speed_n != scroll_speeds.size() - 1) ++scroll_speed_n;
 					} else scroll_speed_n = 0;
 				}
@@ -2474,13 +2485,26 @@ struct ui_functions: ui_util_functions {
 		rgba_surface->unlock();
 
 		if (wnd) {
-			if (window_surface->w != rgba_surface->w || window_surface->h != rgba_surface->h) {
-				rgba_surface->blit_scaled(&*window_surface, 0, 0, window_surface->w, window_surface->h);
-			} else {
-				rgba_surface->blit(&*window_surface, 0, 0);
-			}
-			wnd.update_surface();
+			if (defer_present) present_pending = true;
+			else show_surface();
 		}
+	}
+
+	// Shows the picture the last update() drew, when defer_present is set. It reads no game state.
+	void present() {
+		if (!present_pending) return;
+		present_pending = false;
+		if (wnd && rgba_surface && window_surface) show_surface();
+	}
+
+	// Copies the drawn picture to the window, scaled when the window isn't the game's size
+	void show_surface() {
+		if (window_surface->w != rgba_surface->w || window_surface->h != rgba_surface->h) {
+			rgba_surface->blit_scaled(&*window_surface, 0, 0, window_surface->w, window_surface->h);
+		} else {
+			rgba_surface->blit(&*window_surface, 0, 0);
+		}
+		wnd.update_surface();
 	}
 
 	std::tuple<int, int, uint32_t*> get_rgba_buffer() {

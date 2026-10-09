@@ -1,0 +1,114 @@
+diff -ruN a/BWEB/PathFind.h b/BWEB/PathFind.h
+--- a/BWEB/PathFind.h	2026-10-07 21:37:57
++++ b/BWEB/PathFind.h	2026-10-07 21:37:57
+@@ -8,7 +8,7 @@
+         double dist;
+         bool reachable;
+     public:
+-        Path::Path()
++        Path()
+         {
+             tiles ={};
+             dist = 0.0;
+diff -ruN a/BWEB/Station.h b/BWEB/Station.h
+--- a/BWEB/Station.h	2026-10-07 21:37:57
++++ b/BWEB/Station.h	2026-10-07 21:37:57
+@@ -13,7 +13,7 @@
+         int defenseCount = 0;
+ 
+     public:
+-        Station::Station(const BWAPI::Position newResourceCenter, const std::set<BWAPI::TilePosition>& newDefenses, const BWEM::Base* newBase)
++        Station(const BWAPI::Position newResourceCenter, const std::set<BWAPI::TilePosition>& newDefenses, const BWEM::Base* newBase)
+         {
+             resourceCentroid = newResourceCenter;
+             defenses = newDefenses;
+diff -ruN a/BWEM/area.cpp b/BWEM/area.cpp
+--- a/BWEM/area.cpp	2026-10-07 21:37:57
++++ b/BWEM/area.cpp	2026-10-07 21:37:57
+@@ -18,7 +18,7 @@
+ #include "winutils.h"
+ #include "bwapiExt.h"
+ 
+-#include "BaseFinder\BaseFinder.h"
++#include "BaseFinder/BaseFinder.h"
+ 
+ using namespace BWAPI;
+ using namespace BWAPI::UnitTypes::Enum;
+diff -ruN a/BWEM/mapImpl.cpp b/BWEM/mapImpl.cpp
+--- a/BWEM/mapImpl.cpp	2026-10-07 21:37:57
++++ b/BWEM/mapImpl.cpp	2026-10-07 21:37:57
+@@ -13,7 +13,7 @@
+ #include "bwapiExt.h"
+ #include "winutils.h"
+ 
+-#include "BaseFinder\BaseFinder.h"
++#include "BaseFinder/BaseFinder.h"
+ 
+ 
+ using namespace BWAPI;
+diff -ruN a/Pylon Puller.h b/Pylon Puller.h
+--- a/Pylon Puller.h	2026-10-07 21:37:57
++++ b/Pylon Puller.h	2026-10-07 21:37:57
+@@ -367,7 +367,7 @@
+ 	if (X->getStartLocations().size() == 2)
+ 		hisMain = closestMain;
+ 
+-	my3rd = distsAndBases.begin()._Ptr->_Myval.second;
++	my3rd = distsAndBases.begin().operator*().second;
+ 
+ 	// Map-specific adjustment
+ 	if (thisMapIndex == 0) { // Benzene: avoid pathfinding problems caused by the power generators
+@@ -1122,7 +1122,7 @@
+ 		myCP = Position(BWEB::Map::getMainChoke()->Center());
+ 		myNatCP = Position(BWEB::Map::getNaturalChoke()->Center());
+ 
+-		for (TilePosition u : X->getStartLocations()) u != myMain ? hisPossibleDs.push_back(u) : "a"; 
++		for (TilePosition u : X->getStartLocations()) u != myMain ? (void)(hisPossibleDs.push_back(u)) : void(); 
+ 		
+ 		p(my3rd); p(myNat); p(myMain); // add mineral patches around locations
+ 
+@@ -1722,7 +1722,7 @@
+ 					}
+ 
+ 					if (shouldChase) {
+-						s(u), u->getOrderTarget() != Z ? u->attack(Z) : "a"; // worker defense
++						s(u), u->getOrderTarget() != Z ? (void)(u->attack(Z)) : void(); // worker defense
+ 						continue;
+ 					}
+ 				}
+@@ -2275,7 +2275,7 @@
+ 						}
+ 						else {
+ 							if (lastCmd.getType() != UnitCommandTypes::Unload)
+-								u->unload(u->getLoadedUnits().begin()._Ptr->_Myval);
++								u->unload(u->getLoadedUnits().begin().operator*());
+ 							continue;
+ 						}
+ 					}
+@@ -2299,7 +2299,7 @@
+ 						(u->isUnderAttack() && u->getHitPoints() + u->getShields() < 41 
+ 							|| u->getHitPoints() + u->getShields() < 21)) {
+ 						if (lastCmd.getType() != UnitCommandTypes::Unload) 
+-							u->unload(u->getLoadedUnits().begin()._Ptr->_Myval);
++							u->unload(u->getLoadedUnits().begin().operator*());
+ 							
+ 						continue;
+ 					}
+@@ -2355,7 +2355,7 @@
+ 
+ 								if (shouldUnload && currentFrame - u->getLastCommandFrame() >= 2)
+ 									if (lastCmd.getType() != UnitCommandTypes::Unload) {
+-										u->unload(u->getLoadedUnits().begin()._Ptr->_Myval);
++										u->unload(u->getLoadedUnits().begin().operator*());
+ 										continue;
+ 									}
+ 							}
+@@ -2417,7 +2417,7 @@
+ 
+ 	void onUnitComplete(Unit u) {
+ 		if (u->getPlayer() == X->self()) {
+-			Q == Protoss_Assimilator ? o(u), o(u) : "a";
++			Q == Protoss_Assimilator ? (void)(o(u), o(u)) : void();
+ 
+ 			myUnitsCreated[Q]++;
+ 		}
