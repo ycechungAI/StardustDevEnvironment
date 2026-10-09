@@ -58,12 +58,12 @@ Everything is saved as it happens, in `training/`:
 - `selfplay.log`: the run's log.
 - `issues.log` and `issues/`: the bug-finding log (above).
 
-**Memory.** Every 2 seconds the trainer adds up the memory its games use (each game is the harness plus the opponent it starts). Over the limit, 6 GB by default (or three quarters of the RAM if that is less), so the computer stays usable, it stops the newest games, plays them again later and steps down from 6 games at once to 4, then 2, then 1 for the rest of the run. A single game over 1 GB (`--game-memory-gb`) is stopped and reported in `issues.log`. If a bot needs more than that in a normal game, its pairing gets skipped after 3 such games: `--issues` shows it, and a higher `--game-memory-gb` lets it play. Closing the terminal or Ctrl+C stops every game.
+**Memory.** Every 2 seconds the trainer adds up the memory its games use (each game is the harness plus the opponent it starts). Over the limit, 6 GB by default (or three quarters of the RAM if that is less), so the computer stays usable, it stops the newest games, plays them again later and steps down from 6 games at once to 4, then 2, then 1 for the rest of the run. Each game's memory is measured too, per opponent, and kept in `training/memory.json`. A game over its limit is stopped and reported in `issues.log`. The limit is 1 GB until 3 games against that opponent have been measured, raised to 1.5 GB and then 2 GB if a game needs more. After that it is 3 times what those games usually use. It is never more than 2 GB. `--status` shows what games against each opponent usually use. `--game-memory-gb` sets one fixed limit instead. Closing the terminal or Ctrl+C stops every game.
 
 **Bug finding.** Training finds games that go wrong, stops them, logs them and carries on:
 - **Crash:** the game exits with an error.
 - **Stuck:** its processes use no CPU for 2 minutes (a deadlock, or waiting forever), or it is still running after 30 minutes.
-- **Memory:** one game over 1 GB (`--game-memory-gb`).
+- **Memory:** one game over its limit (above).
 - **Error in the output:** an assertion, exception, segmentation fault or Python traceback printed by a game that still finished.
 - **Draw:** the game hit the frame or time limit, usually a bot that stops attacking or can't finish off the enemy.
 - **Missing result:** a game that ended normally but recorded nothing.

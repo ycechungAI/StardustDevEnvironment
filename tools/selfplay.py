@@ -409,7 +409,81 @@ SKIP_AFTER = 3  # a pairing that fails this many times in a row is skipped for t
 ERROR_MARKERS = ("Segmentation fault", "Assertion failed", "assertion failed", "terminate called", "Abort trap",
                  "Traceback (most recent call last)", "Unhandled exception", "AddressSanitizer", "std::bad_alloc")
 DEFAULT_MEMORY_LIMIT = 6e9  # leaves the rest of the computer usable, even on an 8 GB machine
-GAME_MEMORY_LIMIT = 1e9  # a single game using more than this is stopped and reported (--game-memory-gb)
+GAME_MEMORY_STEPS = (1e9, 1.5e9, 2e9)  # per game until measured, raised a step each time one is stopped for memory
+GAME_MEMORY_LIMIT = GAME_MEMORY_STEPS[0]
+GAME_MEMORY_CEILING = GAME_MEMORY_STEPS[-1]  # never more than this per game, measured or not
+
+
+class MemoryProfile:
+    """How much memory games against each opponent really use, measured on this computer and kept in
+    training/memory.json. Until an opponent has 3 measured games, a game against it may use 1 GB, raised to 1.5 GB
+    then 2 GB each time one is stopped for memory. Once measured, 3 times their median. Never more than 2 GB."""
+
+    SAMPLES = 20
+    MEASURED = 3
+    HEADROOM = 3.0
+    FLOOR = 256e6
+
+    def __init__(self, path: Path | None, fixed: float | None = None) -> None:
+        self.path = path
+        self.fixed = fixed
+        self.peaks: dict[str, list[float]] = {}
+        self.allowance: dict[str, float] = {}  # raised limits for opponents not measured yet
+        if path is not None and path.exists():
+            try:
+                saved = json.loads(path.read_text())
+                self.peaks = {key: [float(v) for v in values] for key, values in saved["peaks"].items()}
+                self.allowance = {key: float(value) for key, value in saved["allowance"].items()}
+            except (json.JSONDecodeError, KeyError, AttributeError, TypeError, ValueError):
+                self.peaks, self.allowance = {}, {}
+
+    @staticmethod
+    def key(job: Job) -> str:
+        return "self-play" if job[2] == "self" else job[1]
+
+    def median(self, key: str) -> float | None:
+        values = sorted(self.peaks.get(key, []))
+        return values[len(values) // 2] if len(values) >= self.MEASURED else None
+
+    def limit(self, job: Job) -> float:
+        if self.fixed is not None:
+            return self.fixed
+        key = self.key(job)
+        typical = self.median(key)
+        if typical is None:
+            return self.allowance.get(key, GAME_MEMORY_LIMIT)
+        return min(GAME_MEMORY_CEILING, max(self.FLOOR, self.HEADROOM * typical))
+
+    def stopped(self, job: Job) -> None:
+        """A game was stopped for memory: if its opponent isn't measured yet, allow its next game the next step."""
+        key = self.key(job)
+        if self.fixed is None and self.median(key) is None:
+            current = self.allowance.get(key, GAME_MEMORY_LIMIT)
+            self.allowance[key] = next((step for step in GAME_MEMORY_STEPS if step > current), current)
+            self.save()
+
+    def save(self) -> None:
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps({"peaks": self.peaks, "allowance": self.allowance}, indent=1) + "\n")
+
+    def record(self, job: Job, peak: float) -> None:
+        values = self.peaks.setdefault(self.key(job), [])
+        values.append(peak)
+        del values[:-self.SAMPLES]
+        self.save()
+
+    def summary(self) -> str:
+        if not self.peaks:
+            return "Memory per game: nothing measured yet"
+        rows = []
+        for key, values in sorted(self.peaks.items()):
+            typical = self.median(key)
+            limit = (f", limit {min(GAME_MEMORY_CEILING, max(self.FLOOR, self.HEADROOM * typical)) / 1e6:.0f} MB"
+                     if typical else "")
+            rows.append(f"  {key}: typical {sorted(values)[len(values) // 2] / 1e6:.0f} MB, most "
+                        f"{max(values) / 1e6:.0f} MB over {len(values)} game(s){limit}")
+        return "Memory per game (game harness and opponent together):\n" + "\n".join(rows)
 
 
 class Progress:
@@ -537,7 +611,7 @@ def step_down(cap: int) -> int:
 
 def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
-                memory_limit: float = DEFAULT_MEMORY_LIMIT, game_memory_limit: float = GAME_MEMORY_LIMIT,
+                memory_limit: float = DEFAULT_MEMORY_LIMIT, profile: MemoryProfile | None = None,
                 usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
@@ -545,6 +619,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
 
     test_dir = ROOT / build / "test"
     results_file = test_dir / "replays" / "results.csv"
+    profile = profile or MemoryProfile(None)
     cap = [parallel]  # games at once; lowered for the rest of the run when the games use more than memory_limit
     failures: dict[tuple[str, str], int] = {}  # failures in a row, per pairing
     skipped: set[tuple[str, str]] = set()  # pairings that kept failing, not played again this run
@@ -571,6 +646,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         last_memory_check = time.time()
         extras: set[int] = set()  # slots playing a fill() game, which isn't replayed if it has to be stopped
         progress: dict[int, tuple[float, float]] = {}  # slot: (CPU seconds, when they last went up)
+        peak: dict[int, float] = {}  # slot: the most memory its game has used
         round_started = time.time()
         ended = [0]  # games finished or stopped this round
         decided = False  # the candidate can no longer pass: the rest of the round is skipped
@@ -588,6 +664,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
             free.append(slot)
             extras.discard(slot)
             progress.pop(slot, None)
+            peak.pop(slot, None)
             ended[0] += 1
             issue(kind, job, test_dir / "parallel" / str(slot) / "selfplay.log")
             pair = (job[0], job[1])
@@ -659,8 +736,14 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                         if process.pid not in measured or process.poll() is not None:
                             continue
                         memory_used, cpu = measured[process.pid]
-                        if memory_used > game_memory_limit:
-                            failed(slot, f"memory: the game used {memory_used / 1e9:.1f} GB and was stopped")
+                        peak[slot] = max(peak.get(slot, 0.0), memory_used)
+                        if memory_used > profile.limit(job):
+                            typical = profile.median(profile.key(job))
+                            failed(slot, f"memory: the game used {memory_used / 1e6:.0f} MB, over its limit of "
+                                         f"{profile.limit(job) / 1e6:.0f} MB"
+                                         + (f" (games against {job[1]} usually use {typical / 1e6:.0f} MB)"
+                                            if typical else "") + ", and was stopped")
+                            profile.stopped(job)
                             continue
                         last_cpu, since = progress.get(slot, (-1.0, now))
                         if cpu > last_cpu + 0.5:
@@ -703,6 +786,8 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                     extras.discard(slot)
                     progress.pop(slot, None)
                     failures[(job[0], job[1])] = 0
+                    if slot in peak:
+                        profile.record(job, peak.pop(slot))
                     ended[0] += 1
                     text = output.read_text(errors="replace") if output.exists() else ""
                     marker = next((line.strip() for line in text.splitlines()
@@ -804,9 +889,10 @@ def main() -> int:
     parser.add_argument("--test-games", type=int, default=4,
                         help=f"games against the held-out bot, {TEST}, all of which must be won (default 4)")
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
-    parser.add_argument("--game-memory-gb", type=float, default=GAME_MEMORY_LIMIT / 1e9,
+    parser.add_argument("--game-memory-gb", type=float, default=None,
                         help="the most memory one game (harness and opponent) may use before it is stopped and "
-                             "reported (default 1)")
+                             "reported (default: 3 times what games against that opponent usually use, measured "
+                             "as training runs; 1 GB until measured, then 1.5 or 2 GB if needed; at most 2 GB)")
     parser.add_argument("--memory-limit-gb", type=float, default=None,
                         help="the most memory the games may use together before stepping down to 4, 2, then 1 "
                              "game at once (default: 6 GB, or three quarters of the RAM if that is less)")
@@ -840,6 +926,7 @@ def main() -> int:
             print(f"Best against the 5 training bots: {gauntlet_score(state.best_gauntlet):.0%}: " + ", ".join(
                 f"{o} {r.count('WON')}/{len(r)}" for o, r in state.best_gauntlet.items()))
         print("Best parameters: " + json.dumps(state.best))
+        print(MemoryProfile(TRAINING_DIR / "memory.json").summary())
         return 0
     if state.goal_reached:
         print(f"The goal was reached already: the best beat the 5 training bots in every game twice, then {TEST}. "
@@ -875,9 +962,14 @@ def main() -> int:
         signal.signal(hangup, lambda number, frame: sys.exit(1))
     memory_limit = (args.memory_limit_gb * 1e9 if args.memory_limit_gb
                     else min(DEFAULT_MEMORY_LIMIT, 0.75 * physical_memory()))
-    log(f"Memory: the games may use {memory_limit / 1e9:.1f} GB together, {args.game_memory_gb:g} GB each")
+    profile = MemoryProfile(TRAINING_DIR / "memory.json", args.game_memory_gb * 1e9 if args.game_memory_gb else None)
+    log(f"Memory: the games may use {memory_limit / 1e9:.1f} GB together; each game "
+        + (f"{args.game_memory_gb:g} GB" if args.game_memory_gb else
+           "1 GB until its opponent's games are measured (1.5 then 2 GB if needed), then 3 times what they "
+           "usually use, at most 2 GB"))
+    log(profile.summary())
     runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit,
-                         args.game_memory_gb * 1e9)
+                         profile)
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()

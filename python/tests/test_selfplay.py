@@ -201,7 +201,7 @@ def test_too_much_memory_steps_down_and_replays_the_stopped_games(tmp_path: Path
     log: list[str] = []
     issues: list[str] = []
     runner = selfplay.make_runner("build", 6, log.append, lambda kind, job, output: issues.append(kind),
-                                  memory_limit=12e9, game_memory_limit=4e9, usage=busy(3e9))
+                                  memory_limit=12e9, profile=selfplay.MemoryProfile(None, fixed=4e9), usage=busy(3e9))
     jobs = [(selfplay.CANDIDATE, bot, "gauntlet") for bot in selfplay.TRAINING] + [(selfplay.CANDIDATE, "Stone", "gauntlet")]
     results = runner(jobs, None)
     assert any("down to 4 at once" in line for line in log)  # 6 games of 3 GB is over 12 GB; 4 isn't
@@ -306,3 +306,39 @@ def test_a_candidate_is_never_tried_twice_against_the_same_best(tmp_path: Path) 
              for line in (tmp_path / "history.jsonl").read_text().splitlines()]
     assert len(tried) == len(set(tried))
     assert trainer(tmp_path, games).tried == set(tried)  # remembered after a restart
+
+
+def test_the_memory_limit_comes_from_measured_games(tmp_path: Path) -> None:
+    profile = selfplay.MemoryProfile(tmp_path / "memory.json")
+    stone = (selfplay.CANDIDATE, "Stone", "gauntlet")
+    assert profile.limit(stone) == selfplay.GAME_MEMORY_LIMIT  # not measured yet
+    for peak in (300e6, 320e6, 310e6):
+        profile.record(stone, peak)
+    assert profile.limit(stone) == 3 * 310e6  # three times the typical game
+    assert profile.limit((selfplay.CANDIDATE, selfplay.BEST, "self")) == selfplay.GAME_MEMORY_LIMIT
+    assert selfplay.MemoryProfile(tmp_path / "memory.json").limit(stone) == 3 * 310e6  # kept across runs
+    assert "Stone: typical 310 MB" in profile.summary()
+    assert selfplay.MemoryProfile(None, fixed=2e9).limit(stone) == 2e9  # --game-memory-gb
+    for peak in (900e6, 900e6, 900e6, 900e6):
+        profile.record(stone, peak)
+    assert profile.limit(stone) == 2e9  # never more than 2 GB
+
+
+def test_an_unmeasured_opponent_is_allowed_1_then_1_5_then_2_gb(tmp_path: Path) -> None:
+    profile = selfplay.MemoryProfile(tmp_path / "memory.json")
+    uab = (selfplay.CANDIDATE, "UAlbertaBotZerg", "gauntlet")
+    limits = [profile.limit(uab)]
+    for _ in range(3):
+        profile.stopped(uab)
+        limits.append(profile.limit(uab))
+    assert limits == [1e9, 1.5e9, 2e9, 2e9]
+    assert selfplay.MemoryProfile(tmp_path / "memory.json").limit(uab) == 2e9  # kept across runs
+
+
+def test_finished_games_are_measured(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path)
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    profile = selfplay.MemoryProfile(None)
+    runner = selfplay.make_runner("build", 2, lambda message: None, profile=profile, usage=busy(2e8))
+    runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
+    assert profile.peaks == {"Stone": [2e8]}
