@@ -3,6 +3,7 @@
 #include "BW/UnitStatusFlags.h"
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -99,6 +100,7 @@ std::optional<PlayerStats> PlayerStats::read(BW::Game game, const std::string &c
         stats.workers = player.unitCountsAll(BWAPI::UnitTypes::Terran_SCV.getID())
                         + player.unitCountsAll(BWAPI::UnitTypes::Protoss_Probe.getID())
                         + player.unitCountsAll(BWAPI::UnitTypes::Zerg_Drone.getID());
+        stats.armySupply = std::max(0, stats.supplyUsed - stats.workers);
         stats.mineralsGathered = player.cumulativeMinerals();
         stats.gasGathered = player.cumulativeGas();
         stats.unitsLost = losses.units[owner];
@@ -156,7 +158,7 @@ std::map<std::string, double> ReadRatings()
 void DrawStatsScreen(BWAPI::Game *game, const PlayerStats &me, const PlayerStats &opponent,
                      const std::map<std::string, double> &ratings)
 {
-    const int left = 8, top = 8, columnMe = 110, columnOpponent = 220, lineHeight = 11;
+    const int left = 8, top = 26, columnMe = 110, columnOpponent = 220, lineHeight = 11;
     std::vector<std::tuple<std::string, std::string, std::string>> rows = {
             {"Elo", rating(ratings, me.name), rating(ratings, opponent.name)},
             {"Race", me.race.getName(), opponent.race.getName()},
@@ -188,6 +190,28 @@ void DrawStatsScreen(BWAPI::Game *game, const PlayerStats &me, const PlayerStats
         game->drawTextScreen(left + columnMe, y, "%c%s", BWAPI::Text::White, mine.c_str());
         game->drawTextScreen(left + columnOpponent, y, "%c%s", BWAPI::Text::White, theirs.c_str());
     }
+}
+
+void DrawToolbar(BWAPI::Game *game, const PlayerStats &me, const PlayerStats &opponent)
+{
+    // The largest army each side has had this game
+    static std::map<std::string, int> maxArmy;
+    int &myMax = maxArmy[me.name];
+    int &theirMax = maxArmy[opponent.name];
+    myMax = std::max(myMax, me.armySupply);
+    theirMax = std::max(theirMax, opponent.armySupply);
+
+    game->drawBoxScreen(0, 0, 640, 15, BWAPI::Colors::Black, true);
+    game->drawBoxScreen(0, 0, 640, 15, BWAPI::Colors::Grey, false);
+    auto side = [&](int x, char colour, const PlayerStats &stats, int most)
+    {
+        game->drawTextScreen(x, 2, "%c%s  %cArmy %c%d %c(max %d)  %cMin %c%d  %cGas %c%d", colour, stats.name.c_str(),
+                             BWAPI::Text::Grey, BWAPI::Text::White, stats.armySupply, BWAPI::Text::Grey, most,
+                             BWAPI::Text::Grey, BWAPI::Text::White, stats.minerals, BWAPI::Text::Grey,
+                             BWAPI::Text::White, stats.gas);
+    };
+    side(6, BWAPI::Text::Green, me, myMax);
+    side(326, BWAPI::Text::Red, opponent, theirMax);
 }
 
 std::string StatsSummary(const PlayerStats &me, const PlayerStats &opponent)
