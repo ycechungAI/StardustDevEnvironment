@@ -10,6 +10,11 @@
 // attacks (drops, raids on workers or buildings, cloaked units) get a cut at once. The camera pans to nearby scenes,
 // jumps to far ones, and follows a scene only when it drifts out of the middle of the view.
 //
+// Like the observer of a broadcast, it also checks in on the players: every so often, while no big fight is on, it
+// tours each player's mining bases (the busiest first) and production buildings, a couple of seconds each, and it
+// picks up stray units: a scout (a worker, overlord, observer or a lone small unit) in enemy ground, and a loaded
+// transport heading into it (a drop coming, shown before it unloads).
+//
 // The user takes over by moving the camera (arrow keys, the minimap, dragging with the right button); space switches
 // between the automatic camera and the user's, and 'a' brings the automatic camera back (or, when it is on, makes it
 // choose again).
@@ -78,6 +83,15 @@ struct auto_observer {
     double army_move_value = 600;   // an army this big moving this far is an event
     double army_move_distance = 640;
     double jump_views = 1.25;       // the camera jumps to scenes further away than this many view widths
+    double tour_s = 30;             // with no big fight on, check in on each player's bases this often
+    double tour_stop_s = 2.5;       // how long each base or production area is shown in a check
+    double tour_max_fight = 40;     // a check doesn't start, and stops, while a fight scores more than this
+    double tour_bases = 2;          // mining bases shown per player in a check (those with the most workers)
+    double scout_score = 75;        // a scout in enemy ground
+    double scout_frames = 240;      // a scout is shown for at most this long...
+    double scout_repeat = 2400;     // ... and not again for this long
+    double scout_force = 300;       // a unit with more than this of its army near it is attacking, not scouting
+    double transport_score = 170;   // a loaded transport heading into enemy ground
   } tune;
 
   ui_T& ui;
@@ -147,6 +161,7 @@ private:
     int attacker = -1;
     int damage_frame = -1000000;
     int scan = 0;
+    int scout_frame = -1000000;  // when it was last picked up as a scout or a transport
   };
 
   struct damage_t {
@@ -179,14 +194,14 @@ private:
 
   struct poi_t {
     int id = 0;
-    std::string kind;  // drop, nuke, storm, spell, expansion
+    std::string kind;  // drop, nuke, storm, spell, expansion, scout, drop_incoming
     std::string name;
     int player = -1;
     double x = 0, y = 0;
     double score = 0;
     bool priority = false;
     int until_frame = 0;
-    int key = -1;  // the ghost painting a nuke
+    int key = -1;  // the ghost painting a nuke, the scout, the transport
     bool shown = false;
   };
 
@@ -209,7 +224,7 @@ private:
 
   struct grid_t {
     std::vector<float> army, army_x, army_y, defense;
-    std::vector<int> buildings;
+    std::vector<int> buildings, workers;
   };
 
   static constexpr int cell = 128;
@@ -234,6 +249,7 @@ private:
   int gw = 0, gh = 0;
   std::array<grid_t, max_players> grids;
   std::array<std::vector<std::array<int, 2>>, max_players> depots;
+  std::array<std::vector<std::array<int, 2>>, max_players> production;  // buildings that make army units
   struct cloaked_t { int owner, x, y; const bwgame::unit_t* u; };
   std::vector<cloaked_t> cloaked;
   struct unload_t { int frame, x, y; };
@@ -246,6 +262,10 @@ private:
   std::array<army_t, max_players> armies;
   int next_id = 1;
   scene_t current;
+  // A check on the players' bases: the stops still to show
+  std::deque<scene_t> tour;
+  bool touring = false;
+  clock::time_point last_tour{};
 
   static double seconds(clock::duration d) {
     return std::chrono::duration<double>(d).count();
@@ -270,7 +290,10 @@ private:
       {"spell_score", &tune.spell_score}, {"expansion_score", &tune.expansion_score},
       {"army_weight", &tune.army_weight}, {"moving_weight", &tune.moving_weight}, {"army_cap", &tune.army_cap},
       {"army_move_value", &tune.army_move_value}, {"army_move_distance", &tune.army_move_distance},
-      {"jump_views", &tune.jump_views},
+      {"jump_views", &tune.jump_views}, {"tour_s", &tune.tour_s}, {"tour_stop_s", &tune.tour_stop_s},
+      {"tour_max_fight", &tune.tour_max_fight}, {"tour_bases", &tune.tour_bases}, {"scout_score", &tune.scout_score},
+      {"scout_frames", &tune.scout_frames}, {"scout_repeat", &tune.scout_repeat}, {"scout_force", &tune.scout_force},
+      {"transport_score", &tune.transport_score},
     };
     std::string all = s;
     size_t start = 0;
@@ -329,6 +352,38 @@ private:
   bool is_army(const bwgame::unit_t* u) const {
     auto ut = u->unit_type;
     return !ui.ut_building(ut) && !ui.ut_worker(ut) && ut->supply_required.raw_value > 0;
+  }
+
+  static bool is_production(int t) {
+    switch ((bwgame::UnitTypes)t) {
+    case bwgame::UnitTypes::Protoss_Gateway:
+    case bwgame::UnitTypes::Protoss_Robotics_Facility:
+    case bwgame::UnitTypes::Protoss_Stargate:
+    case bwgame::UnitTypes::Terran_Barracks:
+    case bwgame::UnitTypes::Terran_Factory:
+    case bwgame::UnitTypes::Terran_Starport:
+    case bwgame::UnitTypes::Zerg_Spawning_Pool:
+    case bwgame::UnitTypes::Zerg_Hydralisk_Den:
+    case bwgame::UnitTypes::Zerg_Spire:
+    case bwgame::UnitTypes::Zerg_Greater_Spire:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  // A unit that may be scouting when it is alone in enemy ground
+  bool may_scout(const bwgame::unit_t* u, int value) const {
+    auto ut = u->unit_type;
+    if (ui.ut_building(ut)) return false;
+    if (ui.ut_worker(ut)) return true;
+    switch (ut->id) {
+    case bwgame::UnitTypes::Zerg_Overlord:
+    case bwgame::UnitTypes::Protoss_Observer:
+      return true;
+    default:
+      return is_army(u) && value <= 150;
+    }
   }
 
   int defense_value(const bwgame::unit_t* u, int value, int loaded) const {
@@ -408,6 +463,7 @@ private:
     for (int p = 0; p < max_players; ++p) {
       active[p] = false;
       depots[p].clear();
+      production[p].clear();
     }
     cloaked.clear();
     std::vector<damage_t> damages;
@@ -415,6 +471,7 @@ private:
     std::vector<std::array<int, 3>> new_unloads;  // {player, x, y}
     std::vector<std::array<int, 3>> new_depots;   // {player, x, y}
     std::vector<std::array<int, 4>> nukes;        // {player, x, y, ghost}
+    std::vector<std::array<int, 3>> strays;       // {player, unit, loaded}: possible scouts and loaded transports
 
     auto lose = [&](tracked_unit& tu) {
       if (initialized && tu.type != (int)bwgame::UnitTypes::Zerg_Larva) {
@@ -436,6 +493,7 @@ private:
           g.army_y.assign(n, 0);
           g.defense.assign(n, 0);
           g.buildings.assign(n, 0);
+          g.workers.assign(n, 0);
         }
         if (ignored(u)) continue;
         auto ut = u->unit_type;
@@ -499,7 +557,11 @@ private:
             g.defense[c] += d;
           }
           if (ui.ut_building(ut)) ++g.buildings[c];
+          if (ui.ut_worker(ut)) ++g.workers[c];
           if (ui.ut_resource_depot(ut)) depots[p].push_back({tu.x, tu.y});
+          if (is_production(t) && ui.u_completed(u)) production[p].push_back({tu.x, tu.y});
+          if (loaded > 0 && !ui.ut_building(ut)) strays.push_back({p, (int)i, loaded});
+          else if (may_scout(u, tu.value)) strays.push_back({p, (int)i, 0});
         }
         if (ui.u_cloaked(u) || ui.u_requires_detector(u)) cloaked.push_back({p, tu.x, tu.y, u});
         if (t == (int)bwgame::UnitTypes::Terran_Ghost) {
@@ -520,6 +582,7 @@ private:
       for (auto& d : damages) on_damage(frame, d);
       for (auto& d : deaths) on_death(frame, d);
       for (auto& n : nukes) on_nuke(frame, n[0], n[1], n[2], n[3]);
+      for (auto& u : strays) on_stray(frame, u[0], u[1], u[2] > 0);
     }
     scan_bullets(frame);
     update_fights(frame);
@@ -646,6 +709,32 @@ private:
     auto& poi = add_poi("drop", race_name(p) + " drop", p, x, y, tune.drop_score, true, frame + 168);
     auto& e = emit(frame, "drop", x, y, p, -1, tune.drop_score, poi.id);
     e.units = units_near(x, y, 192, p);
+  }
+
+  // A unit away from home in enemy ground: a scout, or a loaded transport about to drop. Shown while it stays there,
+  // for scout_frames at most, and not again for scout_repeat (a transport: until it unloads or leaves)
+  void on_stray(int frame, int p, int i, bool transport) {
+    auto& tu = units[i];
+    if (building_near(p, tu.x, tu.y, 320)) return;
+    if (!enemy_building_near(p, tu.x, tu.y, transport ? 960 : 640)) return;
+    if (!transport && force_near(p, tu.x, tu.y, 384) > tune.scout_force) return;
+    const char* kind = transport ? "drop_incoming" : "scout";
+    for (auto& poi : pois) {
+      if (poi.kind != kind || poi.key != i || poi.player != p || frame > poi.until_frame + 24) continue;
+      poi.x = tu.x;
+      poi.y = tu.y;
+      int limit = tu.scout_frame + (int)(transport ? tune.scout_frames * 2 : tune.scout_frames);
+      poi.until_frame = std::min(frame + 24, limit);
+      return;
+    }
+    if (frame - tu.scout_frame < tune.scout_repeat) return;
+    tu.scout_frame = frame;
+    double score = transport ? tune.transport_score : tune.scout_score;
+    auto& poi = add_poi(kind, race_name(p) + (transport ? " drop incoming" : " scout"), p, tu.x, tu.y, score, transport,
+                        frame + 24);
+    poi.key = i;
+    auto& e = emit(frame, kind, tu.x, tu.y, p, -1, score, poi.id);
+    e.units = transport ? units_near(tu.x, tu.y, 64, p) : std::vector<std::array<int, 3>>{{p, tu.type, 1}};
   }
 
   void on_new_depot(int frame, int p, int x, int y) {
@@ -1027,6 +1116,55 @@ private:
     return {};
   }
 
+  int workers_near(int p, double x, double y, double r) const {
+    int n = 0;
+    for_cells_near(x, y, r, [&](int i) { n += grids[p].workers[i]; });
+    return n;
+  }
+
+  // A check on every player: their busiest mining bases, then where most of their production buildings stand
+  std::deque<scene_t> make_tour() const {
+    std::deque<scene_t> stops;
+    for (int p = 0; p < max_players; ++p) {
+      if (!active[p] || depots[p].empty()) continue;
+      std::vector<std::pair<int, std::array<int, 2>>> bases;
+      for (auto& d : depots[p]) bases.push_back({workers_near(p, d[0], d[1], 320), d});
+      std::stable_sort(bases.begin(), bases.end(), [](auto& a, auto& b) { return a.first > b.first; });
+      std::vector<std::array<double, 2>> shown;
+      for (auto& [workers, d] : bases) {
+        if ((double)shown.size() >= tune.tour_bases) break;
+        if (workers == 0 && !shown.empty()) break;
+        shown.push_back({(double)d[0], (double)d[1]});
+        stops.push_back({scene_base, p, (double)d[0], (double)d[1], 1, false,
+                         race_name(p) + " mining (" + std::to_string(workers) + " workers)"});
+      }
+      // The production building with the most others near it, and the middle of them
+      int most = 0;
+      double px = 0, py = 0;
+      for (auto& b : production[p]) {
+        int n = 0;
+        double sx = 0, sy = 0;
+        for (auto& o : production[p]) {
+          if (dist(b[0], b[1], o[0], o[1]) > 384) continue;
+          ++n;
+          sx += o[0];
+          sy += o[1];
+        }
+        if (n > most) {
+          most = n;
+          px = sx / n;
+          py = sy / n;
+        }
+      }
+      bool in_view = std::any_of(shown.begin(), shown.end(), [&](auto& b) { return dist(b[0], b[1], px, py) < 200; });
+      if (most > 0 && !in_view) {
+        stops.push_back({scene_base, p, px, py, 1, false,
+                         race_name(p) + " production (" + std::to_string(most) + (most == 1 ? " building)" : " buildings)")});
+      }
+    }
+    return stops;
+  }
+
   // Brings the current scene up to date; false once it is over
   bool refresh(scene_t& s, int frame) const {
     switch (s.kind) {
@@ -1045,6 +1183,8 @@ private:
       for (auto& poi : pois) {
         if (poi.id != s.id) continue;
         if (frame > poi.until_frame) return false;
+        s.x = poi.x;
+        s.y = poi.y;
         s.score = poi.score;
         return true;
       }
@@ -1091,6 +1231,8 @@ private:
     auto& e = emit(frame, "camera", s.x, s.y, -1, -1, s.score, s.id);
     e.texts.push_back({"scene", s.label});
     e.texts.push_back({"reason", reason});
+    if (touring) last_tour = now;  // a check cut short starts over tour_s later
+    touring = false;
     current = s;
     scene_start = now;
     scene_ended = false;
@@ -1148,6 +1290,34 @@ private:
                (!current.priority || dwell >= tune.cut_dwell_s) &&
                ((double)cuts.size() < tune.busy_cuts || dwell >= tune.dwell_s)) {
       switch_to(*best_priority, now, best_priority->kind == scene_fight ? "first hit" : "event", true);
+    } else if (touring) {
+      if (best && best->kind == scene_fight && best->score > tune.tour_max_fight) {
+        switch_to(*best, now, "action", false);
+      } else if (dwell >= tune.tour_stop_s) {
+        if (!tour.empty()) {
+          auto s = tour.front();
+          tour.pop_front();
+          switch_to(s, now, "base check", false);
+          touring = true;
+        } else {
+          touring = false;
+          last_tour = now;
+          auto s = best ? *best : fallback();
+          if (s.kind != scene_none) switch_to(s, now, "base check over", false);
+        }
+      }
+    } else if (seconds(now - last_tour) >= tune.tour_s && (!have || dwell >= tune.dwell_s) && !current.priority &&
+               std::none_of(list.begin(), list.end(), [&](auto& c) {
+                 return (c.kind == scene_fight && c.score > tune.tour_max_fight) || (c.kind == scene_poi && c.priority);
+               })) {
+      tour = make_tour();
+      last_tour = now;
+      if (!tour.empty()) {
+        auto s = tour.front();
+        tour.pop_front();
+        switch_to(s, now, "base check", false);
+        touring = true;
+      }
     } else if (!have) {
       if (seconds(now - ended_at) >= tune.linger_s && dwell >= tune.cut_dwell_s) {
         auto s = best ? *best : fallback();
