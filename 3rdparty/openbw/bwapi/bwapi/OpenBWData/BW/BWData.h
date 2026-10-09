@@ -3,11 +3,14 @@
 #include "BW/Position.h"
 #include "Util/Types.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <functional>
 #include <iterator>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 // For some of our extensions we cheat and use the BWAPI types directly to avoid the need for conversions
@@ -170,6 +173,22 @@ struct Snapshot {
   std::unique_ptr<snapshot_impl> impl;
 };
 
+// Something the automatic observer camera of the game window saw (or did), for commentary and tools
+struct CameraEvent {
+  int frame = 0;
+  // first_hit, sneak_attack, battle, battle_end, drop, nuke, storm, spell, expansion, army_move, camera, camera_mode
+  std::string kind;
+  int x = 0, y = 0;
+  int player = -1;  // who acts (attacks, drops, casts, expands, moves; the winner of a finished fight)
+  int target = -1;  // who it is done to
+  double score = 0;
+  int id = -1;  // the fight or point of interest it belongs to
+  std::vector<std::array<int, 3>> units;  // {player, unit type, count} near it
+  std::vector<std::array<int, 3>> lost;   // {player, unit type, count} lost in it
+  std::vector<std::pair<std::string, double>> values;
+  std::vector<std::pair<std::string, std::string>> texts;
+};
+
 struct Game {
   openbwapi_impl* impl = nullptr;
 
@@ -206,6 +225,13 @@ struct Game {
   std::vector<int> takeKeyPresses();
   std::tuple<int, int, void*> GameScreenBuffer();
   void setOnDraw(std::function<void(uint8_t*, size_t)> onDraw);
+  // What the automatic observer camera shows, for the top right of the window (empty without it)
+  std::string autoCameraLabel();
+  // What the automatic observer camera saw since the last call (empty without it)
+  std::vector<CameraEvent> takeCameraEvents();
+  // Names to show for the local player and the others in the window's HUD and the status feed (OPENBW_STATUS_FILE),
+  // instead of the players' in-game names. Call before the game's first frame.
+  void setPlayerNames(const std::string& local, const std::string& others);
   // Calls onKillUnit (with the unit still as it was) whenever the engine kills a unit, whatever the visibility
   void setOnKillUnit(std::function<void(Unit)> onKillUnit);
   std::tuple<int, int, uint32_t*> drawGameScreen(int x, int y, int width, int height);

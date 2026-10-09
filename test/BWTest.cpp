@@ -33,15 +33,17 @@ namespace
     // is in, in memory shared across the fork. If either stops for n seconds, the main process writes what led up to
     // it to replays/unfinished/ (the run's conditions, recent game state, stack samples, the replay so far), then ends
     // the game, or with STARDUST_HANG_FREEZE=1 pauses both processes for a debugger.
-    enum Phase { Starting, Update, OnFrame, Window, NextFrame, GameEnd, Done };
+    enum Phase { Starting, Update, OnFrame, Window, NextFrame, Paused, GameEnd, Done };
     const char *phaseNames[] = {"starting the game", "update (bots' onFrame)", "test onFrame hook", "window/stats",
-                                "nextFrame (waiting on the other process)", "game end", "done"};
+                                "nextFrame (waiting on the other process)", "paused by the user", "game end", "done"};
     struct Heartbeat
     {
         std::atomic<int> frame{-1};
         std::atomic<int> phase{Starting};
         std::atomic<long long> beatMs{0};
         std::atomic<int> pid{0};
+        // [p] in the game window pauses both processes at this frame (-1: not paused); only [0]'s is used
+        std::atomic<int> pauseAt{-1};
     };
     Heartbeat *heartbeats = nullptr;  // [0] our game, [1] the opponent's
     std::atomic<int> gameNumber{0};   // a process can play several games; each one's watchdog stops with it
@@ -342,6 +344,7 @@ void BWTest::run()
         new(heartbeats) Heartbeat[2];
     }
     heartbeats[0].frame = heartbeats[1].frame = -1;
+    heartbeats[0].pauseAt = -1;
     int thisGame = ++gameNumber;
     beat(false, Starting);
     beat(true, Starting);
@@ -360,6 +363,8 @@ void BWTest::run()
         // Only our own game gets a window (in builds with OPENBW_ENABLE_UI). The window belongs to the main thread,
         // which doesn't exist in this forked process.
         setenv("OPENBW_ENABLE_UI", "0", 1);
+        // Only our own game writes the status feed for tools/watch.py
+        unsetenv("OPENBW_STATUS_FILE");
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         runGame(true);
@@ -530,6 +535,7 @@ void BWTest::runGame(bool opponent)
     BW::GameOwner gameOwner;
     BWAPI::BroodwarImpl_handle h(gameOwner.getGame());
     h->setCharacterName(opponent ? "Opponent" : "Tests");
+    if (!opponent) gameOwner.getGame().setPlayerNames(myName, opponentName.empty() ? "Opponent" : opponentName);
     h->setGameType(BWAPI::GameTypes::Melee);
     BWAPI::BroodwarImpl.bwgame.setMapFileName(map->filename);
     BWAPI::Race race = opponent ? opponentRace : myRace;
@@ -642,11 +648,17 @@ void BWTest::runGame(bool opponent)
     // The numbers tools/live_stats.py shows while the game runs
     LiveStats live(gameNumber.load(), map->shortname(), randomSeed, frameLimit);
 
-    // In the game window: [s] toggles the stats screen, [r] saves the replay so far
+    // What the game window's observer camera saw (events.jsonl, for commentary and tools)
+    GameEvents events(!opponent, gameOwner.getGame(), gameNumber.load(), map->shortname(), randomSeed, myName,
+                      opponentName.empty() ? std::string("Opponent") : opponentName);
+
+    // In the game window: [s] toggles the stats screen, [r] saves the replay so far, [p] pauses the game (both
+    // processes stop before the same frame; the hang watchdog sees them as paused, not stuck). The observer camera
+    // has its own keys: space switches between it and the user's camera, [a] brings it back.
     bool showStats = true;
     auto ratings = ReadRatings();
     auto opponentDisplayName = opponentName.empty() ? std::string("Opponent") : opponentName;
-    auto handleWindow = [&]()
+    auto handleKeys = [&]()
     {
         auto game = gameOwner.getGame();
         for (int key : game.takeKeyPresses())
@@ -654,6 +666,18 @@ void BWTest::runGame(bool opponent)
             if (key == 's')
             {
                 showStats = !showStats;
+            }
+            else if (key == 'p' && heartbeats && !leftGame)
+            {
+                if (heartbeats[0].pauseAt >= 0)
+                {
+                    heartbeats[0].pauseAt = -1;
+                }
+                else
+                {
+                    // Far enough ahead that neither process has passed it (they are within the latency of each other)
+                    heartbeats[0].pauseAt = std::max(h->getFrameCount(), heartbeats[1].frame.load()) + 24;
+                }
             }
             else if (key == 'r')
             {
@@ -668,6 +692,12 @@ void BWTest::runGame(bool opponent)
                 h->printf("Saved replay %s", replayFilename.str().c_str());
             }
         }
+        for (auto &e : game.takeCameraEvents()) events.write(e);
+    };
+    auto handleWindow = [&]()
+    {
+        auto game = gameOwner.getGame();
+        handleKeys();
 
         if (!leftGame)
         {
@@ -701,6 +731,55 @@ void BWTest::runGame(bool opponent)
         if (showStats && lastMyStats && lastOpponentStats && std::get<0>(game.GameScreenBuffer()) > 0)
         {
             DrawStatsScreen(BWAPI::BroodwarPtr, *lastMyStats, *lastOpponentStats, ratings);
+        }
+        // Drawn from before the pause starts: the window shows the last frame's drawing while the game is paused
+        if (heartbeats && heartbeats[0].pauseAt >= 0 && std::get<0>(game.GameScreenBuffer()) > 0)
+        {
+            int x = game.screenWidth() / 2 - 60;
+            int y = game.screenHeight() / 2 - 40;
+            BWAPI::Broodwar->drawBoxScreen(x - 6, y - 4, x + 126, y + 14, BWAPI::Colors::Black, true);
+            BWAPI::Broodwar->drawTextScreen(x, y, "%cPAUSED  %c[p] resume", BWAPI::Text::Yellow, BWAPI::Text::White);
+        }
+    };
+
+    // Waits while the user has paused the game: both processes stop here, before the same frame, so neither waits
+    // in nextFrame for the other (OpenBW drops a player after a minute without hearing from it)
+    auto waitWhilePaused = [&]()
+    {
+        if (!heartbeats || leftGame) return;
+        int pauseAt = heartbeats[0].pauseAt;
+        if (pauseAt < 0 || h->getFrameCount() < pauseAt) return;
+
+        auto pausedAt = std::chrono::high_resolution_clock::now();
+        if (!opponent)
+        {
+            std::cout << "Paused at frame " << h->getFrameCount() << std::endl;
+            events.write("pause", h->getFrameCount());
+        }
+        while (heartbeats[0].pauseAt >= 0)
+        {
+            beat(opponent, Paused, h->getFrameCount());
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            if (opponent)
+            {
+                // The main process has gone on (or its game is over)
+                int phase = heartbeats[0].phase;
+                if (phase == GameEnd || phase == Done || heartbeats[0].frame > h->getFrameCount()) break;
+            }
+            else
+            {
+                handleKeys();
+                live.keepAlive(true);
+                if (gameOwner.getGame().gameClosed()) heartbeats[0].pauseAt = -1;
+            }
+        }
+        // The pause doesn't count towards the time limit
+        startTime += std::chrono::high_resolution_clock::now() - pausedAt;
+        if (!opponent)
+        {
+            live.keepAlive(false);
+            std::cout << "Resumed" << std::endl;
+            events.write("resume", h->getFrameCount());
         }
     };
     if (!opponent)
@@ -741,6 +820,7 @@ void BWTest::runGame(bool opponent)
             {
                 std::cout << "Frame limit reached; leaving game" << std::endl;
                 leftGame = reachedLimit = true;
+                if (!opponent) limitReached = true;
                 h->leaveGame();
             }
 
@@ -751,12 +831,22 @@ void BWTest::runGame(bool opponent)
                 {
                     std::cout << "Time limit reached; leaving game" << std::endl;
                     leftGame = reachedLimit = true;
+                    if (!opponent) limitReached = true;
                     h->leaveGame();
                 }
             }
 
+            waitWhilePaused();
+
             beat(opponent, NextFrame);
             gameOwner.getGame().nextFrame();
+
+            // For tools/run_games.py and tools/round_robin.py, which watch every game's speed whatever the bots
+            if (!opponent && !leftGame && h->getFrameCount() % 1000 == 0)
+            {
+                auto seconds = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - startTime).count();
+                std::cout << "[progress] frame=" << h->getFrameCount() << " seconds=" << seconds << std::endl;
+            }
         }
         catch (std::exception &ex)
         {
@@ -773,6 +863,8 @@ void BWTest::runGame(bool opponent)
     beat(opponent, GameEnd);
     if (!opponent)
     {
+        if (heartbeats) heartbeats[0].pauseAt = -1;
+        for (auto &e : gameOwner.getGame().takeCameraEvents()) events.write(e);
         std::lock_guard<std::mutex> lock(historyMutex);
         saveReplaySoFar = nullptr;
     }

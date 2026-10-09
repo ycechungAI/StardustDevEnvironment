@@ -33,9 +33,14 @@ __pycache__/
 bots/*
 !bots/README.md
 !bots/StardustBots.cmake
+!bots/tiers.json
 !bots/WorkerRush/
 !bots/recipes/
 !bots/ClaudeOpus55/
+!bots/ClaudeOpus55RL/
+bots/ClaudeOpus55RL/training*/pending.json
+bots/ClaudeOpus55RL/training*/issues/
+bots/ClaudeOpus55RL/training*/memory.json
 !bots/genai/
 !bots/compat/
 !bots/ComputerAI/
@@ -44,6 +49,8 @@ bots/*
 !bots/Microwave/
 !bots/Steamhammer2025/
 !bots/Stardust2025/
+!bots/CreativeZerg/
+!bots/CreativeTerran/
 bots/*/**/*.dll
 # Stardust's mining-training folder is a copy of its author's whole dev environment, only needed to retrain
 bots/Stardust2025/mining-training/

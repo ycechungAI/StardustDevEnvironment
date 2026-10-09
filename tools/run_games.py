@@ -45,6 +45,15 @@ FRAME_LIMIT = 30_000  # BWTest's default frame limit
 TIME_LIMIT = 600  # BWTest's default wall-time limit per game, in seconds
 HANG_LIMIT = TIME_LIMIT + 300  # a game still running after this long is stopped (the harness should have ended it)
 
+# Watching at a set speed (OPENBW_GAME_SPEED, milliseconds per frame; 42 is normal speed), Bots.Play allows 90 minutes
+# of game time instead: 90 minutes at normal speed, 45 at x2
+_speed = os.environ.get("OPENBW_GAME_SPEED", "")
+MS_PER_FRAME = int(_speed) if _speed.isdigit() and int(_speed) > 0 else 0
+if MS_PER_FRAME:
+    FRAME_LIMIT = 90 * 60 * 1000 // 42
+    TIME_LIMIT = 90 * 60 * MS_PER_FRAME // 42
+    TYPICAL_SECONDS_PER_GAME = max(TYPICAL_SECONDS_PER_GAME, TYPICAL_FRAMES * MS_PER_FRAME // 1000)
+
 MAX_AT_ONCE = 6
 DEFAULT_AT_ONCE = 4  # games at once unless --ui or --parallel says otherwise: 6 is too many for a 10-core Mac
 AT_ONCE_STEPS = (6, 4, 2, 1)  # games at once, stepping down when memory runs short
@@ -371,6 +380,7 @@ def main() -> int:
     for slot in range(at_once):
         directory = prepare_worker_directory(test_dir, slot)
         (directory / "live.json").unlink(missing_ok=True)  # an earlier run's last game
+        (directory / "events.jsonl").unlink(missing_ok=True)
     viewer = None
     if not args.no_live:
         try:
@@ -407,6 +417,7 @@ def main() -> int:
         free.remove(slot)
         directory = prepare_worker_directory(test_dir, slot)
         (directory / "live.json").unlink(missing_ok=True)
+        (directory / "events.jsonl").unlink(missing_ok=True)
         env = dict(os.environ)
         # A game making no progress for this long is a hang: the harness saves what led up to it to replays/unfinished/
         env.setdefault("STARDUST_HANG_SECONDS", "120")
@@ -595,7 +606,7 @@ def main() -> int:
     records, _ = elo.update(replays_dir)
     if records:
         print("\n" + elo.leaderboard(records), flush=True)
-    print(f"  logs: {', '.join(str((test_dir / 'parallel' / str(slot) / 'run_games.log').relative_to(ROOT)) for slot in sorted(used_slots))}",
+    print(f"  logs: {', '.join(os.path.relpath(test_dir / 'parallel' / str(slot) / 'run_games.log', ROOT) for slot in sorted(used_slots))}",
           flush=True)
     return exit_code
 

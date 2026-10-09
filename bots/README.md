@@ -18,7 +18,7 @@ cd build/test && ./tests --gtest_filter=Bots.List
 
 ## Bots included
 
-These come with the repository, already patched to build here (each folder's licence files say what you may do with it; most forbid entering them in public tournaments without their author's permission):
+These come with the repository, already patched to build here (the two Creative bots are this repository's own settings for Steamhammer) (each folder's licence files say what you may do with it; most forbid entering them in public tournaments without their author's permission):
 
 | Bot | Race | Notes |
 |-----|------|-------|
@@ -27,6 +27,8 @@ These come with the repository, already patched to build here (each folder's lic
 | `Steamhammer2025` | Zerg | Steamhammer 5.3.6 (AIIDE 2025) |
 | `Microwave` | Zerg | AIIDE 2025 |
 | `McRaveZ` | Zerg | McRave as entered in AIIDE 2024/2025 |
+| `CreativeZerg` | Zerg | Steamhammer2025 opening only with gambits: proxy hatchery, hydralisk and lurker rushes, queens, defilers, guardians (see its README) |
+| `CreativeTerran` | Terran | Steamhammer2025 opening only with gambits: proxy barracks and factory, bunker rush, drops, wraiths (see its README) |
 
 These are included only as recipes (`bots/recipes/<Name>/`), either because their source states no licence or because it's large. Fetch them, then re-run CMake:
 
@@ -94,7 +96,7 @@ A new bot learns little from losing every game to Stardust, so the opponents for
 .venv/bin/python tools/run_games.py --bot Stardust2025 --opponent BananaBrain --games 10
 ```
 
-Without `--bot`, the Python port plays. Replays are then named `<bot>_vs_<opponent>_<map>_<seed>_WON` or `_LOST`.
+Without `--bot`, the Python port plays. Replays are then named `<bot>_vs_<opponent>_<map>_<seed>_WON`, `_LOST` or `_DRAW`. A draw is a game that reached the frame or time limit.
 
 Games run under OpenBW like the other tests. Replays go to `build/test/replays/`, named `<bot>_<map>_<seed>_WON` or `_LOST`. `STARDUST_TEST_MAP` picks the map (otherwise it's a random SSCAIT map) and the live game window works too (see "Watching a game" in the top-level README).
 
@@ -167,6 +169,31 @@ Bots written in **C++ against BWAPI 4.x**, built from source. They're compiled i
 A folder without `bot.cmake` is skipped with a message, so a half-copied bot doesn't break the build.
 
 Bots that read or write files use `build/test/bwapi-data/read`, `write` and `AI`, shared with Stardust. Copy any data files a bot needs (opening books, learned data) there.
+
+## Rating bots by tier
+
+`tools/round_robin.py` rates the bots in tiers: each tier in `bots/tiers.json` plays a round robin, every pairing 10 games, headless and as fast as the bots allow. A tier's last-placed bot is rated at the tier's floor: 2000 for tier 1, 1500 for tier 2 (the level of StarCraft's built-in computer AI), and 1000 for tier 3. The others are rated above it by their results, on the Elo scale, capped just below the next tier's floor. So every bot of a higher tier is rated above every bot of a lower one.
+
+```bash
+.venv/bin/python tools/round_robin.py
+```
+
+It prints an estimate up front, a line for each game, and progress every 30 seconds. Then it prints each tier's table with a rating, a ± deviation (one standard deviation, smaller with more games), the bot's record, and notes:
+
+- **promote?** means the bot scored 85% or more, or reached the cap.
+- **relegate?** means the bot scored 15% or less.
+
+Move a bot to another tier by moving its line in `bots/tiers.json`. Each bot's line there says why it is in that tier.
+
+Results are kept in `build/test/round_robin/results.jsonl`, so stopping and re-running resumes. `--table` prints the ratings without playing.
+
+**Slowdowns.** It stops every game, warns and quits with exit code 3 in two cases:
+- a game plays slower than 24 frames per second (StarCraft's own speed on Fastest);
+- a game doesn't start within 60 seconds.
+
+Close whatever else is using the CPU, or lower `--parallel` (by default one game per two cores), then re-run to carry on. `--min-fps` and `--stall` change the limits.
+
+Tier 3 isn't played for now (`"play": false`). Bots in the tiers that aren't built here are listed at their tier's floor, as not played. That includes the computer AIs, which OpenBW cannot run. SAIDA plays once it is fetched with `tools/fetch_bot.py SAIDA`.
 
 ## Recipes
 

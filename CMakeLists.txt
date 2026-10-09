@@ -29,3 +29,7 @@ IF(NOT MSVC)
     add_subdirectory(test)
     add_subdirectory(tools/replay)
 ENDIF(NOT MSVC)
+
+# Renders the live game window's HUD panel to an image, to check its layout without running a game
+add_executable(hud_preview tools/hud_preview.cpp)
+target_include_directories(hud_preview PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/openbw/openbw)

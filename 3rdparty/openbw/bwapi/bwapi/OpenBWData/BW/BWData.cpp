@@ -17,6 +17,7 @@
 
 #ifdef OPENBW_ENABLE_UI
 #include "ui/ui.h"
+#include "AutoObserver.h"
 #endif
 
 #include <mutex>
@@ -30,6 +31,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <condition_variable>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <unordered_map>
+
+#include "TypeNames.h"
 
 // For some of our extensions we cheat and use the BWAPI types directly to avoid the need for conversions
 #include "../../bwapi/include/BWAPI/ExactPosition.h"
@@ -161,6 +168,18 @@ struct ui_functions: bwgame::ui_functions {
   }
 };
 
+// The HUD panel below the game view: whether to show it, and the players it names
+struct hud_settings {
+  bool enabled = true;
+  int local_player = -1;
+  std::array<bwgame::a_string, 12> player_names;
+  // The window (OPENBW_WINDOW_TITLE, _X, _Y, _SCALE)
+  std::string title = "OpenBW";
+  int x = 0;
+  int y = 0;
+  double scale = 1.0;
+};
+
 struct ui_wrapper {
   std::chrono::high_resolution_clock clock;
   std::chrono::high_resolution_clock::time_point last_update;
@@ -182,20 +201,36 @@ struct ui_wrapper {
   std::vector<int> keys;
   // How often the window is drawn; the game waits while it is (OPENBW_UI_DRAW_MS, 40 by default)
   std::chrono::milliseconds draw_interval{40};
+  // What the automatic observer camera saw and shows, collected on the UI thread and taken by the game thread
+  std::mutex camera_mut;
+  std::vector<BW::CameraEvent> camera_events;
+  std::string camera_label;
   bwgame::game_player get_player(bwgame::state& st) {
     bwgame::game_player player;
     player.set_st(st);
     return player;
   }
-  ui_wrapper(bwgame::state& st, std::string mpq_path) {
+  ui_wrapper(bwgame::state& st, std::string mpq_path, hud_settings hud) {
 
-    ui_thread = ui_thread_t([this, player = get_player(st), mpq_path]() mutable {
+    ui_thread = ui_thread_t([this, player = get_player(st), mpq_path, hud = std::move(hud)]() mutable {
       std::unique_lock<std::mutex> l(mut);
       ui_functions ui(std::move(player));
+      // The automatic observer camera (OPENBW_AUTO_CAMERA=0 turns it off)
+      std::unique_ptr<auto_observer<ui_functions>> observer;
+      // The HUD and the window's title, position and scale (OPENBW_WINDOW_X, _Y, _SCALE); place_window() below then
+      // applies OPENBW_WINDOW_SIZE and OPENBW_WINDOW_GRID, which take precedence for the position
+      ui.hud_height = hud.enabled ? bwgame::hud::panel_height : 0;
+      ui.hud_local_player = hud.local_player;
+      ui.hud_player_names = hud.player_names;
+      ui.window_title = hud.title.c_str();
+      ui.window_x = hud.x;
+      ui.window_y = hud.y;
+      ui.window_scale = hud.scale > 0.05 ? hud.scale : 1.0;
 
       ui.exit_on_close = false;
       ui.global_volume = 0;
-      ui.on_key_down = [this](int key) {
+      ui.on_key_down = [this, &observer](int key) {
+        if (observer) observer->on_key(key);
         std::lock_guard<std::mutex> keys_lock(keys_mut);
         keys.push_back(key);
       };
@@ -210,7 +245,16 @@ struct ui_wrapper {
       place_window(ui, screen_width, screen_height);
 
       ui.resize(screen_width, screen_height);
+      if (ui.hud_height > 0) {
+        bwgame::ui::log("HUD on: game window %dx%d, with a %d-pixel panel below it (OPENBW_HUD=0 hides it)\n",
+                        (int)screen_width, (int)screen_height + ui.hud_height, ui.hud_height);
+      } else {
+        bwgame::ui::log("HUD off (OPENBW_HUD=0)\n");
+      }
       ui.screen_pos = {(int)ui.game_st.map_width / 2 - (int)screen_width / 2, (int)ui.game_st.map_height / 2 - (int)screen_height / 2};
+      if (!(std::getenv("OPENBW_AUTO_CAMERA") && std::string(std::getenv("OPENBW_AUTO_CAMERA")) == "0")) {
+        observer = std::make_unique<auto_observer<ui_functions>>(ui);
+      }
 
       ui.on_draw = [this, &ui](uint8_t* data, size_t data_pitch) {
         this->m_screen_buffer = data;
@@ -230,6 +274,7 @@ struct ui_wrapper {
       int draws = 0;
       double locked_ms = 0;
       double present_ms = 0;
+      double observer_ms = 0;
       auto timing_start = clock.now();
 
       while (!exit_thread) {
@@ -239,6 +284,16 @@ struct ui_wrapper {
         run_update = false;
 
         last_update = clock.now();
+        if (observer) {
+          observer->tick();
+          std::lock_guard<std::mutex> camera_lock(camera_mut);
+          if (camera_events.size() < 10000) {
+            for (auto& e : observer->events) camera_events.push_back(std::move(e));
+          }
+          observer->events.clear();
+          camera_label = observer->label;
+        }
+        auto observed = clock.now();
         ui.update();
         window_closed = ui.window_closed;
 
@@ -252,11 +307,12 @@ struct ui_wrapper {
           ++draws;
           locked_ms += std::chrono::duration<double, std::milli>(drawn - last_update).count();
           present_ms += std::chrono::duration<double, std::milli>(presented - drawn).count();
+          observer_ms += std::chrono::duration<double, std::milli>(observed - last_update).count();
           if (presented - timing_start >= std::chrono::seconds(10) || exit_thread) {
-            std::fprintf(stderr, "OpenBW window: %d draws, %.2f ms with the game waiting, %.2f ms showing it\n",
-                         draws, locked_ms / draws, present_ms / draws);
+            std::fprintf(stderr, "OpenBW window: %d draws, %.2f ms with the game waiting (observer camera %.3f ms), %.2f ms showing it\n",
+                         draws, locked_ms / draws, observer_ms / draws, present_ms / draws);
             draws = 0;
-            locked_ms = present_ms = 0;
+            locked_ms = present_ms = observer_ms = 0;
             timing_start = presented;
           }
         }
@@ -342,6 +398,16 @@ struct ui_wrapper {
     result.swap(keys);
     return result;
   }
+  std::vector<BW::CameraEvent> take_camera_events() {
+    std::lock_guard<std::mutex> camera_lock(camera_mut);
+    std::vector<BW::CameraEvent> result;
+    result.swap(camera_events);
+    return result;
+  }
+  std::string auto_camera_label() {
+    std::lock_guard<std::mutex> camera_lock(camera_mut);
+    return camera_label;
+  }
 };
 
 struct draw_ui_wrapper {
@@ -377,8 +443,18 @@ struct draw_ui_wrapper {
 };
 
 #else
+struct hud_settings {
+  bool enabled = true;
+  int local_player = -1;
+  std::array<bwgame::a_string, 12> player_names;
+  std::string title = "OpenBW";
+  int x = 0;
+  int y = 0;
+  double scale = 1.0;
+};
+
 struct ui_wrapper {
-  ui_wrapper(bwgame::state& st, std::string mpq_path) {}
+  ui_wrapper(bwgame::state& st, std::string mpq_path, hud_settings hud) {}
   void update() {}
   bool closed() {
     return false;
@@ -404,6 +480,12 @@ struct ui_wrapper {
     return nullptr;
   }
   std::vector<int> take_keys() {
+    return {};
+  }
+  std::vector<BW::CameraEvent> take_camera_events() {
+    return {};
+  }
+  std::string auto_camera_label() {
     return {};
   }
 };
@@ -922,9 +1004,175 @@ struct openbwapi_impl {
     ui_enabled = false;
   }
 
+  // OPENBW_HUD=0 turns the HUD panel off
+  hud_settings make_hud_settings() {
+    hud_settings hud;
+    auto str = game_setup_helper.env("OPENBW_HUD", "1");
+    for (auto& v : str) {
+      if (v >= 'a' && v <= 'z') v &= ~0x20;
+    }
+    hud.enabled = str != "0" && str != "OFF" && str != "NO" && str != "FALSE" && str != "N";
+    hud.local_player = vars.is_replay ? -1 : vars.local_player_id;
+    hud.player_names = display_names();
+    hud.title = game_setup_helper.env("OPENBW_WINDOW_TITLE", "OpenBW");
+    hud.x = std::atoi(game_setup_helper.env("OPENBW_WINDOW_X", "0").c_str());
+    hud.y = std::atoi(game_setup_helper.env("OPENBW_WINDOW_Y", "0").c_str());
+    hud.scale = std::atof(game_setup_helper.env("OPENBW_WINDOW_SCALE", "1").c_str());
+    return hud;
+  }
+
+  // Players' names: the in-game ones, or those given with Game::setPlayerNames
+  std::string local_display_name;
+  std::string others_display_name;
+  std::array<bwgame::a_string, 12> display_names() {
+    auto names = vars.is_replay ? replay_funcs.replay_st.player_name : sync_funcs.sync_st.player_names;
+    if (local_display_name.empty() || vars.is_replay) return names;
+    for (int i = 0; i != 12; ++i) {
+      if (names[i].empty() && st.players[i].controller != bwgame::player_t::controller_occupied) continue;
+      names[i] = (i == vars.local_player_id ? local_display_name : others_display_name).c_str();
+    }
+    return names;
+  }
+
+  // OPENBW_STATUS_FILE=<path>: once a game second, a JSON line describing every player, for tools/watch.py
+  std::unique_ptr<std::ofstream> status_file;
+  bool status_file_checked = false;
+  std::array<std::unordered_map<uint32_t, int>, 12> status_previous_units;  // unit id -> type, at the last line
+  std::array<std::unordered_map<uint32_t, int>, 12> status_previous_health;  // building id -> hp + shields
+
+  static std::string json_string(const std::string& s) {
+    std::string r = "\"";
+    for (char c : s) {
+      if (c == '"' || c == '\\') r += '\\';
+      if ((unsigned char)c < 0x20) continue;
+      r += c;
+    }
+    return r + "\"";
+  }
+
+  void write_status() {
+    if (!status_file_checked) {
+      status_file_checked = true;
+      auto path = game_setup_helper.env("OPENBW_STATUS_FILE", "");
+      if (!path.empty()) status_file = std::make_unique<std::ofstream>(path, std::ios::app);
+    }
+    if (!status_file || st.current_frame % 24 != 0) return;
+
+    static const char* race_names[] = {"Zerg", "Terran", "Protoss", "Unknown"};
+    auto names = display_names();
+    std::ostringstream out;
+    out << "{\"frame\":" << st.current_frame << ",\"players\":[";
+    bool first_player = true;
+    for (int owner = 0; owner != 8; ++owner) {
+      auto& player = st.players[owner];
+      if (player.controller != bwgame::player_t::controller_occupied &&
+          player.controller != bwgame::player_t::controller_computer &&
+          player.controller != bwgame::player_t::controller_user_left &&
+          player.controller != bwgame::player_t::controller_computer_defeated) continue;
+      int race = std::min((int)player.race, 3);
+
+      std::map<std::string, std::array<int, 2>> counts;  // name -> completed, in progress
+      std::ostringstream production;
+      std::ostringstream attacked;
+      std::unordered_map<uint32_t, int> units;
+      std::unordered_map<uint32_t, int> health;
+      int workers = 0;
+      auto add_production = [&](const char* name, const char* kind, double progress, int queued) {
+        if (production.tellp() > 0) production << ",";
+        progress = std::max(0.0, std::min(1.0, progress));
+        production << "{\"name\":" << json_string(name) << ",\"kind\":\"" << kind << "\",\"progress\":"
+                   << (int)(progress * 100) / 100.0 << ",\"queued\":" << queued << "}";
+      };
+      for (bwgame::unit_t* u : bwgame::ptr(st.player_units[owner])) {
+        if (funcs.u_hallucination(u)) continue;
+        auto* type = u->unit_type;
+        uint32_t id = funcs.get_unit_id_32(u).raw_value;
+        units[id] = (int)type->id;
+        bool completed = funcs.u_completed(u);
+        counts[UnitTypeName((int)type->id)][completed ? 0 : 1]++;
+        if (completed && funcs.ut_worker(u)) ++workers;
+
+        if (funcs.ut_building(u)) {
+          int hp = (int)(u->hp.raw_value >> 8) + (int)(u->shield_points.raw_value >> 8);
+          health[id] = hp;
+          auto previous = status_previous_health[owner].find(id);
+          if (previous != status_previous_health[owner].end() && hp < previous->second) {
+            if (attacked.tellp() > 0) attacked << ",";
+            attacked << "{\"name\":" << json_string(UnitTypeName((int)type->id)) << ",\"x\":" << u->position.x
+                     << ",\"y\":" << u->position.y << "}";
+          }
+        }
+
+        if (!completed) {
+          // Under construction (a building) or in training (reported by the building training it)
+          if (funcs.ut_building(u) && type->build_time > 0) {
+            add_production(UnitTypeName((int)type->id), "build", 1.0 - (double)u->remaining_build_time / type->build_time, 0);
+          }
+          continue;
+        }
+        if (!u->build_queue.empty()) {
+          // Training (or, for eggs, cocoons and morphing buildings, morphing into) the queue's first type
+          auto* target = u->build_queue.front();
+          int remaining = u->current_build_unit ? u->current_build_unit->remaining_build_time : u->remaining_build_time;
+          bool morph = !u->current_build_unit;
+          double progress = target->build_time > 0 ? 1.0 - (double)remaining / target->build_time : 0.0;
+          add_production(UnitTypeName((int)target->id), morph ? "morph" : "train", progress, (int)u->build_queue.size() - 1);
+        }
+        if (funcs.ut_building(u)) {
+          if (u->building.researching_type && u->building.researching_type->research_time > 0) {
+            add_production(TechTypeName((int)u->building.researching_type->id), "research",
+                           1.0 - (double)u->building.upgrade_research_time / u->building.researching_type->research_time, 0);
+          }
+          if (u->building.upgrading_type) {
+            int total = funcs.upgrade_time_cost(owner, u->building.upgrading_type);
+            if (total > 0) {
+              add_production(UpgradeTypeName((int)u->building.upgrading_type->id), "upgrade",
+                             1.0 - (double)u->building.upgrade_research_time / total, 0);
+            }
+          }
+        }
+      }
+
+      // Units that appeared or disappeared since the last line
+      std::ostringstream born, died;
+      for (auto& [id, type] : units) {
+        if (!status_previous_units[owner].count(id)) born << (born.tellp() > 0 ? "," : "") << json_string(UnitTypeName(type));
+      }
+      for (auto& [id, type] : status_previous_units[owner]) {
+        if (!units.count(id)) died << (died.tellp() > 0 ? "," : "") << json_string(UnitTypeName(type));
+      }
+      status_previous_units[owner] = std::move(units);
+      status_previous_health[owner] = std::move(health);
+
+      if (!first_player) out << ",";
+      first_player = false;
+      out << "{\"slot\":" << owner << ",\"name\":" << json_string(names[owner].c_str())
+          << ",\"race\":\"" << race_names[race] << "\",\"color\":" << player.color
+          << ",\"local\":" << (owner == vars.local_player_id ? "true" : "false")
+          << ",\"minerals\":" << st.current_minerals[owner] << ",\"gas\":" << st.current_gas[owner]
+          << ",\"gathered\":[" << st.total_minerals_gathered[owner] << "," << st.total_gas_gathered[owner] << "]";
+      if (race < 3) {
+        out << ",\"supply\":[" << ((int)st.supply_used[owner][race].raw_value + 1) / 2 << ","
+            << std::min<int>(st.supply_available[owner][race].raw_value / 2, 200) << "]";
+      } else {
+        out << ",\"supply\":[0,0]";
+      }
+      out << ",\"workers\":" << workers << ",\"units\":{";
+      bool first_unit = true;
+      for (auto& [name, count] : counts) {
+        out << (first_unit ? "" : ",") << json_string(name) << ":[" << count[0] << "," << count[1] << "]";
+        first_unit = false;
+      }
+      out << "},\"production\":[" << production.str() << "],\"attacked\":[" << attacked.str()
+          << "],\"born\":[" << born.str() << "],\"died\":[" << died.str() << "]}";
+    }
+    out << "]}";
+    *status_file << out.str() << std::endl;
+  }
+
   void next_frame() {
     if (!ui && ui_enabled) {
-      ui = std::make_unique<ui_wrapper>(st, game_setup_helper.env("OPENBW_MPQ_PATH", "."));
+      ui = std::make_unique<ui_wrapper>(st, game_setup_helper.env("OPENBW_MPQ_PATH", "."), make_hud_settings());
     }
     if (ui) {
       auto l = ui->get_lock();
@@ -948,6 +1196,7 @@ struct openbwapi_impl {
         game_setup_helper.next_frame();
       }
     }
+    write_status();
 
     if (ui) {
       if (on_draw_changed && on_draw) {
@@ -1628,9 +1877,27 @@ void Game::saveReplay(const std::string& filename)
   }
 }
 
+void Game::setPlayerNames(const std::string& local, const std::string& others)
+{
+  impl->local_display_name = local;
+  impl->others_display_name = others;
+}
+
 std::vector<int> Game::takeKeyPresses()
 {
   if (impl->ui) return impl->ui->take_keys();
+  return {};
+}
+
+std::string Game::autoCameraLabel()
+{
+  if (impl->ui) return impl->ui->auto_camera_label();
+  return {};
+}
+
+std::vector<CameraEvent> Game::takeCameraEvents()
+{
+  if (impl->ui) return impl->ui->take_camera_events();
   return {};
 }
 

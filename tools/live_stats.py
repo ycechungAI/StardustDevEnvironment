@@ -32,6 +32,7 @@ SCAN_SECONDS = 0.5
 STALE_SECONDS = 15  # a game whose file hasn't changed for this long has stopped (killed, or hung)
 KEEP_FINISHED = 60  # finished games kept for their tabs
 HISTORY_POINTS = 400  # chart points kept per game; older ones are thinned out
+ACTIVE = ("playing", "paused")  # states of a game still going (a paused game keeps rewriting its file)
 WINDOW_TITLE = "Stardust live stats"
 WINDOW_FILE = Path(tempfile.gettempdir()) / "stardust_live_window.json"  # the open window: its pid and page
 
@@ -130,7 +131,7 @@ class LiveGames:
                     # A newer game in the same folder means the one before it there has ended
                     for other in self.games.values():
                         if other is not game and other["folder"] == game["folder"] and other.get("path") == str(path) \
-                                and other["data"].get("state") == "playing":
+                                and other["data"].get("state") in ACTIVE:
                             other["data"]["state"] = "stopped"
                 game["path"] = str(path)
                 previous = game.get("data")
@@ -153,9 +154,9 @@ class LiveGames:
         with self.lock:
             for game in self.games.values():
                 data = game["data"]
-                if data.get("state") == "playing" and now - game["modified"] > STALE_SECONDS:
+                if data.get("state") in ACTIVE and now - game["modified"] > STALE_SECONDS:
                     data["state"] = "stopped"
-            finished = [k for k, g in self.games.items() if g["data"].get("state") != "playing"]
+            finished = [k for k, g in self.games.items() if g["data"].get("state") not in ACTIVE]
             for key in sorted(finished, key=lambda k: self.games[k]["seen"])[:-KEEP_FINISHED or None]:
                 del self.games[key]
 

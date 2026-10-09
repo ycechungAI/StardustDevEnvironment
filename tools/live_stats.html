@@ -40,7 +40,7 @@ h1 { font-size: 17px; margin: 0 0 8px; display: flex; align-items: center; gap: 
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .dot.playing { background: var(--good); animation: pulse 1.2s ease-in-out infinite; }
 .dot.WON { background: var(--good); } .dot.LOST { background: var(--bad); } .dot.DRAW { background: var(--draw); }
-.dot.stopped { background: var(--bad); }
+.dot.stopped { background: var(--bad); } .dot.paused { background: var(--draw); }
 main { padding: 14px 16px 24px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
@@ -51,7 +51,7 @@ main { padding: 14px 16px 24px; }
 .badge { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 9px; border: 1px solid currentColor;
   white-space: nowrap; }
 .badge.WON { color: var(--good); } .badge.LOST { color: var(--bad); } .badge.DRAW { color: var(--draw); }
-.badge.playing { color: var(--good); } .badge.stopped { color: var(--bad); }
+.badge.playing { color: var(--good); } .badge.stopped { color: var(--bad); } .badge.paused { color: var(--draw); }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { padding: 2px 4px; text-align: right; }
 th:first-child, td:first-child { text-align: left; color: var(--muted); font-weight: normal; }
@@ -94,6 +94,7 @@ const clock = seconds => { seconds = Math.max(0, Math.floor(seconds)); return `$
 const value = (p, stat) => typeof stat[1] === "function" ? stat[1](p) : (p[stat[1]] ?? 0);
 const state = g => g.data.state === "over" ? (g.data.result || "over") : g.data.state;
 const race = r => (r || "?")[0];
+const active = g => g.data.state === "playing" || g.data.state === "paused";
 
 function select(id) {
   selected = id;
@@ -181,10 +182,10 @@ function renderRun() {
 
 function render() {
   if (!data) return;
-  const games = data.games, playing = games.filter(g => g.data.state === "playing");
+  const games = data.games, playing = games.filter(active);
   if (selected !== "all" && !games.some(g => g.id === selected)) selected = "all";
   document.getElementById("tabs").innerHTML = [`<button class="tab ${selected === "all" ? "on" : ""}" onclick="select('all')">All games (${playing.length} playing)</button>`]
-    .concat([...playing, ...games.filter(g => g.data.state !== "playing").reverse()].map(g => {
+    .concat([...playing, ...games.filter(g => !active(g)).reverse()].map(g => {
       const [me, them] = g.data.players;
       return `<button class="tab ${selected === g.id ? "on" : ""}" onclick="select('${esc(g.id)}')"><span class="dot ${state(g)}"></span>${g.number} · ${esc(me.name)} vs ${esc(them.name)}</button>`;
     })).join("");
@@ -205,7 +206,7 @@ async function poll() {
     const response = await fetch("/data", { cache: "no-store" });
     data = await response.json();
     failures = 0;
-    const playing = data.games.filter(g => g.data.state === "playing").length;
+    const playing = data.games.filter(active).length;
     document.getElementById("status").textContent = `${playing} playing · updated ${new Date().toLocaleTimeString()}`;
     document.getElementById("pulse").className = "pulse live";
     render();

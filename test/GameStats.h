@@ -5,6 +5,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <map>
 #include <optional>
 #include <string>
@@ -72,6 +73,10 @@ public:
     // Writes the last numbers again with the result: WON, LOST or DRAW
     void finish(int frame, const std::string &result);
 
+    // While the user has paused the game: rewrites the numbers now and then, marked as paused, so the file doesn't
+    // look stale. Called with false when the game goes on.
+    void keepAlive(bool paused);
+
 private:
     void write();
 
@@ -85,6 +90,39 @@ private:
     std::chrono::steady_clock::time_point lastWrite;
     int current = 0;
     std::string result;
+    bool paused = false;
+};
+
+// Writes what the game window's observer camera saw (fights and their first hits, sneak attacks, drops, spells,
+// expansions, army moves, camera cuts) to a JSON-lines file, one event per line after a game_start line, for
+// commentary and tools. STARDUST_EVENTS_FILE names the file: events.jsonl in the working folder by default, 0 to turn
+// it off. Headless games have no observer camera, so they write no file.
+class GameEvents
+{
+public:
+    GameEvents(bool enabled, BW::Game game, int gameNumber, const std::string &mapName, int seed,
+               const std::string &myName, const std::string &opponentName);
+    ~GameEvents();
+    GameEvents(const GameEvents &) = delete;
+    GameEvents &operator=(const GameEvents &) = delete;
+
+    void write(const BW::CameraEvent &event);
+
+    // An event of the harness's own (pause, resume)
+    void write(const std::string &kind, int frame);
+
+private:
+    std::string playerName(int player);
+    void writeLine(const std::string &line);
+
+    std::string path;
+    std::FILE *file = nullptr;
+    BW::Game game;
+    int gameNumber;
+    std::string mapName;
+    int seed;
+    std::string myName;
+    std::string opponentName;
 };
 
 // One-line summary of a finished game, for the test output
