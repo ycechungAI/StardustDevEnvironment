@@ -1,0 +1,58 @@
+{
+  "generation": 3,
+  "elo": 994.5317026025944,
+  "scale": 0.3,
+  "best": {
+    "probes_per_base": 24,
+    "max_probes": 60,
+    "one_base_probes": 20.0,
+    "first_attack_army": 12,
+    "later_attack_army": 16,
+    "retreat_below": 6,
+    "retreat_ratio": 1.05,
+    "regroup_distance": 465.0,
+    "army_first_ratio": 2.0,
+    "terran_opening": 1.0,
+    "protoss_opening": 0,
+    "home_threat_radius": 900,
+    "natural_threat_radius": 600,
+    "rush_window": 9000,
+    "rush_min_units": 4,
+    "scout_supply": 9,
+    "scout_until": 6000,
+    "army_for_natural_vs_protoss": 6.0,
+    "army_for_natural": 7.0,
+    "expand_strength_ratio": 0.8,
+    "probes_per_base_before_next": 18,
+    "max_gateways": 12,
+    "gateways_per_base": 3,
+    "zealots_before_core_vs_terran": 1.0,
+    "zealots_before_core": 4,
+    "uphill_penalty": 2.0
+  },
+  "best_gauntlet": {
+    "PylonPuller": [
+      "LOST",
+      "DRAW"
+    ],
+    "UAlbertaBotTerran": [
+      "WON",
+      "WON"
+    ],
+    "UAlbertaBotZerg": [
+      "WON",
+      "WON"
+    ],
+    "UAlbertaBotProtoss": [
+      "LOST",
+      "LOST"
+    ],
+    "Stone": [
+      "WON",
+      "DRAW"
+    ]
+  },
+  "candidates_tried": 62220,
+  "goal_reached": false,
+  "tested_generation": -1
+}
