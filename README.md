@@ -57,7 +57,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
 ```bash
-cmake --build build -j
+cmake --build build -j 5
 ```
 
 `uv sync` creates `.venv`. CMake builds against that interpreter, and the bot can import any package installed in it (numpy etc.).
@@ -156,7 +156,7 @@ cmake -S . -B build-ui -DCMAKE_BUILD_TYPE=Release -DOPENBW_ENABLE_UI=ON
 ```
 
 ```bash
-cmake --build build-ui -j
+cmake --build build-ui -j 5
 ```
 
 Put the MPQ files in `build-ui/test/` as well. `tools/run_games.py` plays from `build-ui` when it exists, with up to 6 windows tiled on the screen (see "Several games at once"); you can also run `./tests` from `build-ui/test` yourself. Only our bot's game gets a window, not the opponent's.

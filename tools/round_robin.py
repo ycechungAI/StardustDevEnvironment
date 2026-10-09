@@ -275,7 +275,7 @@ def main() -> int:
     tiers: list[dict[str, Any]] = data["tiers"]
     games_per_pairing = args.games or int(data.get("games_per_pairing", 10))
     if not tests.exists():
-        print(f"No test harness at {tests}: build it first (cmake --build {args.build} -j)", file=sys.stderr)
+        print(f"No test harness at {tests}: build it first (cmake --build {args.build} -j 5)", file=sys.stderr)
         return 1
     available = registered_bots(tests)
 

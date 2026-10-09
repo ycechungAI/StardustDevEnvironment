@@ -121,7 +121,7 @@ def main() -> int:
         return 1
     for name in names:
         fetch(name)
-    print("Now re-run CMake: cmake -S . -B build && cmake --build build -j")
+    print("Now re-run CMake: cmake -S . -B build && cmake --build build -j 5")
     return 0
 
 
