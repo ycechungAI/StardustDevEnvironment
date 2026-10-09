@@ -1846,8 +1846,16 @@ struct ui_functions: ui_util_functions {
 		return s;
 	}
 
+	bool hud_size_warned = false;
+
 	void draw_hud(uint32_t* data, size_t pitch, int width, int height) {
-		if (hud_height <= 0 || height <= (int)screen_height) return;
+		if (hud_height <= 0) return;
+		if (height < (int)screen_height + hud_height && !hud_size_warned) {
+			hud_size_warned = true;
+			ui::log("HUD: the window is %dx%d, too short for the game view (%d) and the panel (%d); the panel may be "
+					"cut off. Make the window taller.\n", width, height, (int)screen_height, hud_height);
+		}
+		if (height <= (int)screen_height) return;
 		hud::canvas c{data + screen_height * pitch, pitch, width, std::min(hud_height, height - (int)screen_height)};
 		hud::draw(c, hud_summary());
 	}

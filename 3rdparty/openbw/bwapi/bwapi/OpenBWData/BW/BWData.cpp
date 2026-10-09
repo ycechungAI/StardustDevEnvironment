@@ -217,6 +217,12 @@ struct ui_wrapper {
       size_t screen_height = 600;
 
       ui.resize(screen_width, screen_height);
+      if (ui.hud_height > 0) {
+        bwgame::ui::log("HUD on: game window %dx%d, with a %d-pixel panel below it (OPENBW_HUD=0 hides it)\n",
+                        (int)screen_width, (int)screen_height + ui.hud_height, ui.hud_height);
+      } else {
+        bwgame::ui::log("HUD off (OPENBW_HUD=0)\n");
+      }
       ui.screen_pos = {(int)ui.game_st.map_width / 2 - (int)screen_width / 2, (int)ui.game_st.map_height / 2 - (int)screen_height / 2};
 
       ui.on_draw = [this, &ui](uint8_t* data, size_t data_pitch) {
