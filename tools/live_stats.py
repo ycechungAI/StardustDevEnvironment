@@ -33,6 +33,12 @@ STALE_SECONDS = 15  # a game whose file hasn't changed for this long has stopped
 KEEP_FINISHED = 60  # finished games kept for their tabs
 HISTORY_POINTS = 400  # chart points kept per game; older ones are thinned out
 ACTIVE = ("playing", "paused")  # states of a game still going (a paused game keeps rewriting its file)
+# Each history point, per player: these numbers (then the opponent's), for the charts and the page's time slider
+HISTORY_FIELDS = ("workers", "armySupply", "minerals", "gas", "mineralsGathered", "gasGathered", "units",
+                  "supplyUsed", "supplyMax", "buildings", "production", "unitsKilled", "lost")
+# The buildings that make units, counted as "production"
+PRODUCTION = {"Protoss_Gateway", "Protoss_Robotics_Facility", "Protoss_Stargate", "Terran_Barracks", "Terran_Factory",
+              "Terran_Starport", "Zerg_Hatchery", "Zerg_Lair", "Zerg_Hive"}
 WINDOW_TITLE = "Stardust live stats"
 WINDOW_FILE = Path(tempfile.gettempdir()) / "stardust_live_window.json"  # the open window: its pid and page
 
@@ -93,6 +99,15 @@ def show_window(url: str) -> None:
     os._exit(0)
 
 
+def history_value(player: dict[str, Any], field: str) -> int:
+    """One player's number for a history point; production and lost are worked out from the others."""
+    if field == "production":
+        return sum(n for name, n in (player.get("unitTypes") or {}).items() if name in PRODUCTION)
+    if field == "lost":
+        return int(player.get("unitsLost", 0)) + int(player.get("buildingsLost", 0))
+    return int(player.get(field, 0))
+
+
 class LiveGames:
     """Reads the live.json files and keeps every game seen, with a history of its numbers for the charts."""
 
@@ -150,9 +165,7 @@ class LiveGames:
                 history = game["history"]
                 if not history or frame > history[-1][0]:
                     me, them = (data.get("players") or [{}, {}])[:2]
-                    history.append([frame] + [p.get(k, 0) for p in (me, them)
-                                              for k in ("workers", "armySupply", "minerals", "gas",
-                                                        "mineralsGathered", "gasGathered", "units")])
+                    history.append([frame] + [history_value(p, k) for p in (me, them) for k in HISTORY_FIELDS])
                     if len(history) > HISTORY_POINTS:
                         del history[1:len(history) - HISTORY_POINTS // 2:2]  # thin out the older half
         with self.lock:
@@ -166,7 +179,7 @@ class LiveGames:
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
-            return {"now": time.time(), "run": dict(self.run),
+            return {"now": time.time(), "run": dict(self.run), "fields": HISTORY_FIELDS,
                     "games": sorted(self.games.values(), key=lambda g: g["number"])}
 
 
