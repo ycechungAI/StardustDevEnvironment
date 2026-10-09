@@ -59,9 +59,19 @@ Everything is saved as it happens, in `training/`:
 
 **Memory.** Every 2 seconds the trainer adds up the memory its games use (each game is the harness plus the opponent it starts). Over the limit, three quarters of the computer's RAM by default (12 GB on a 16 GB Mac), it stops the newest games, plays them again later and steps down from 6 games at once to 4, then 2, then 1 for the rest of the run. A single game over 4 GB is a bot leaking memory: it is stopped and reported in `issues.log`. Closing the terminal or Ctrl+C stops every game.
 
-**Bug finding.** Every game that goes wrong is written to `training/issues.log`, one JSON line each: a crash (the game exits with an error), a hang (still running after 30 minutes; it is killed), a draw (the game hit the frame or time limit, usually a bot that stops attacking or can't finish off the enemy), or results that never arrived. Each line has the bot, the opponent, the weights it played with and, for crashes and hangs, a copy of the game's output in `training/issues/`. Parameters can't fix a bug in the code: give `issues.log` to a Claude session to find and fix the cause in `ClaudeOpus55RL.cpp`, then rebuild and carry on training.
+**Bug finding.** Training finds games that go wrong, stops them, logs them and carries on:
+- **Crash:** the game exits with an error.
+- **Stuck:** its processes use no CPU for 2 minutes (a deadlock, or waiting forever), or it is still running after 30 minutes.
+- **Memory leak:** one game over 4 GB.
+- **Error in the output:** an assertion, exception, segmentation fault or Python traceback printed by a game that still finished.
+- **Draw:** the game hit the frame or time limit, usually a bot that stops attacking or can't finish off the enemy.
+- **Missing result:** a game that ended normally but recorded nothing.
 
-Stopping (Ctrl+C) and running again resumes. `--status` shows where training stands.
+A pairing that fails 3 times in a row is skipped until training restarts, so one broken bot can't stall a run. Games left running by an earlier run that didn't get to stop them are cleared at start.
+
+Each issue is a JSON line in `training/issues.log` with the bot, the opponent, the weights it played with and the last 30 lines of the game's output; the whole output is kept in `training/issues/`. `--issues` sums the log up, most frequent first. Parameters can't fix a bug in the code: give `issues.log` to a Claude session to find and fix the cause in `ClaudeOpus55RL.cpp` (or work around an opponent's), then rebuild and carry on training.
+
+Stopping (Ctrl+C) and running again resumes. `--status` shows where training stands, `--issues` what went wrong.
 
 Useful options:
 - `--games`: self-play games per candidate (default 20).

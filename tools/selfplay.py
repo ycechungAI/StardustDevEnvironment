@@ -361,8 +361,9 @@ def make_issue_log(training: Path, build: str, log: Callable[[str], None]) -> Ca
             shutil.copyfile(output, kept)
         weights_file = weights_dir / f"{job[0]}.json"
         weights = json.loads(weights_file.read_text()) if weights_file.exists() else None
+        tail = kept.read_text(errors="replace").splitlines()[-30:] if kept else None
         entry = {"time": stamp, "issue": kind, "bot": job[0], "opponent": job[1], "lane": job[2],
-                 "output": str(kept) if kept else None, "weights": weights}
+                 "output": str(kept) if kept else None, "tail": tail, "weights": weights}
         training.mkdir(parents=True, exist_ok=True)
         with (training / "issues.log").open("a") as f:
             f.write(json.dumps(entry) + "\n")
@@ -373,6 +374,10 @@ def make_issue_log(training: Path, build: str, log: Callable[[str], None]) -> Ca
 
 PARALLEL_STEPS = (6, 4, 2, 1)  # games at once, stepping down when the games use too much memory
 MEMORY_CHECK_SECONDS = 2
+STALL_SECONDS = 120  # a game whose processes use no CPU for this long is stuck (a deadlock, or waiting forever)
+SKIP_AFTER = 3  # a pairing that fails this many times in a row is skipped for the rest of the run
+ERROR_MARKERS = ("Segmentation fault", "Assertion failed", "assertion failed", "terminate called", "Abort trap",
+                 "Traceback (most recent call last)", "Unhandled exception", "AddressSanitizer", "std::bad_alloc")
 GAME_MEMORY_LIMIT = 4e9  # a single game using more than this is a bot leaking memory: it is stopped and reported
 
 
@@ -389,34 +394,60 @@ def physical_memory() -> float:
         return 16e9
 
 
-def tree_memory(pids: list[int]) -> dict[int, int]:
-    """Bytes of memory (resident) used by each of these processes with all its descendants: each game is the
-    harness plus the opponent it forks. Uses ps, so it works on macOS and Linux without extra packages."""
+def cpu_seconds(text: str) -> float:
+    """ps's cumulative CPU time: [[dd-]hh:]mm:ss[.ss] (Linux and macOS write it differently)."""
+    days, _, clock = text.rpartition("-")
+    seconds = 0.0
+    for part in clock.split(":"):
+        seconds = seconds * 60 + float(part)
+    return seconds + (int(days) * 86400 if days else 0)
+
+
+def tree_usage(pids: list[int]) -> dict[int, tuple[int, float]]:
+    """Memory (resident bytes) and CPU time (seconds) used by each of these processes with all its descendants:
+    each game is the harness plus the opponent it forks. Uses ps, so it works on macOS and Linux without extra
+    packages."""
     try:
-        listing = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,rss="], capture_output=True, text=True,
+        listing = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,rss=,time="], capture_output=True, text=True,
                                  check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return {}
     children: dict[int, list[int]] = {}
-    rss: dict[int, int] = {}
+    own: dict[int, tuple[int, float]] = {}
     for line in listing.splitlines():
         fields = line.split()
-        if len(fields) == 3 and all(f.isdigit() for f in fields):
-            pid, ppid, kilobytes = map(int, fields)
-            children.setdefault(ppid, []).append(pid)
-            rss[pid] = kilobytes
+        if len(fields) != 4 or not all(f.isdigit() for f in fields[:3]):
+            continue
+        try:
+            cpu = cpu_seconds(fields[3])
+        except ValueError:
+            continue
+        pid, ppid, kilobytes = map(int, fields[:3])
+        children.setdefault(ppid, []).append(pid)
+        own[pid] = (kilobytes * 1024, cpu)
     totals = {}
     for root in pids:
-        total, todo, seen = 0, [root], set()
+        memory, cpu, todo, seen = 0, 0.0, [root], set()
         while todo:
             pid = todo.pop()
             if pid in seen:
                 continue
             seen.add(pid)
-            total += rss.get(pid, 0) * 1024
+            memory += own.get(pid, (0, 0.0))[0]
+            cpu += own.get(pid, (0, 0.0))[1]
             todo += children.get(pid, [])
-        totals[root] = total
+        totals[root] = (memory, cpu)
     return totals
+
+
+def clear_leftover_games(build: str, log: Callable[[str], None]) -> None:
+    """Kills games still running from an earlier run that didn't get to stop them (a closed laptop, kill -9):
+    they would hold memory and CPU the new run needs. The forked opponents share the harness's command line."""
+    pattern = f"{ROOT / build / 'test' / 'tests'} --gtest_filter=Bots.Play"
+    found = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True).stdout.split()
+    if found:
+        subprocess.run(["pkill", "-9", "-f", pattern])
+        log(f"Cleared {len(found)} game process(es) left over from an earlier run")
 
 
 def stop(process: subprocess.Popen[bytes]) -> None:
@@ -433,7 +464,8 @@ def step_down(cap: int) -> int:
 
 def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
-                memory_limit: float = 12e9, memory: Callable[[list[int]], dict[int, int]] = tree_memory) -> Runner:
+                memory_limit: float = 12e9,
+                usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
     from run_games import prepare_worker_directory  # noqa: E402
@@ -441,6 +473,8 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
     test_dir = ROOT / build / "test"
     results_file = test_dir / "replays" / "results.csv"
     cap = [parallel]  # games at once; lowered for the rest of the run when the games use more than memory_limit
+    failures: dict[tuple[str, str], int] = {}  # failures in a row, per pairing
+    skipped: set[tuple[str, str]] = set()  # pairings that kept failing, not played again this run
 
     def run(jobs: list[Job], fill: Callable[[], Job] | None) -> dict[tuple[str, str], list[str]]:
         queue = list(jobs)
@@ -453,6 +487,33 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         free = list(range(parallel))
         last_memory_check = time.time()
         extras: set[int] = set()  # slots playing a fill() game, which isn't replayed if it has to be stopped
+        progress: dict[int, tuple[float, float]] = {}  # slot: (CPU seconds, when they last went up)
+        for job in jobs:
+            if (job[0], job[1]) in skipped:
+                queue.remove(job)
+                wanted[(job[0], job[1])] -= 1
+
+        def failed(slot: int, kind: str) -> None:
+            """A game went wrong: stop it if it is still going, log it, and move on."""
+            process, _, job = running.pop(slot)
+            if process.poll() is None:
+                stop(process)
+                process.wait()
+            free.append(slot)
+            extras.discard(slot)
+            progress.pop(slot, None)
+            issue(kind, job, test_dir / "parallel" / str(slot) / "selfplay.log")
+            pair = (job[0], job[1])
+            wanted[pair] -= 1  # reported already: not a missing result as well
+            failures[pair] = failures.get(pair, 0) + 1
+            if failures[pair] >= SKIP_AFTER and pair not in skipped:
+                skipped.add(pair)
+                issue(f"skipped: {SKIP_AFTER} failures in a row, so {pair[0]} vs {pair[1]} is not played again "
+                      "until training restarts", job, None)
+            if pair in skipped:
+                for queued in [j for j in queue if (j[0], j[1]) == pair]:
+                    queue.remove(queued)
+                    wanted[pair] -= 1
 
         def start(job: Job) -> None:
             slot = free.pop(0)
@@ -485,7 +546,10 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                         queue.remove(queued)
                         start(queued)
                     elif fill and self_left:
-                        extra = fill()
+                        extra = next((job for job in (fill() for _ in range(10)) if (job[0], job[1]) not in skipped),
+                                     None)
+                        if extra is None:
+                            break
                         wanted[(extra[0], extra[1])] = wanted.get((extra[0], extra[1]), 0) + 1
                         extras.add(free[0])
                         start(extra)
@@ -494,16 +558,21 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 time.sleep(0.5)
                 if running and time.time() - last_memory_check >= MEMORY_CHECK_SECONDS:
                     last_memory_check = time.time()
-                    per_game = memory([process.pid for process, _, _ in running.values()])
+                    now = time.time()
+                    measured = usage([process.pid for process, _, _ in running.values()])
+                    per_game = {pid: memory for pid, (memory, _) in measured.items()}
                     for slot, (process, _, job) in list(running.items()):
-                        if per_game.get(process.pid, 0) > GAME_MEMORY_LIMIT:
-                            stop(process)
-                            process.wait()
-                            del running[slot]
-                            free.append(slot)
-                            extras.discard(slot)
-                            issue(f"memory: the game used {per_game[process.pid] / 1e9:.1f} GB and was stopped",
-                                  job, test_dir / "parallel" / str(slot) / "selfplay.log")
+                        if process.pid not in measured or process.poll() is not None:
+                            continue
+                        memory_used, cpu = measured[process.pid]
+                        if memory_used > GAME_MEMORY_LIMIT:
+                            failed(slot, f"memory: the game used {memory_used / 1e9:.1f} GB and was stopped")
+                            continue
+                        last_cpu, since = progress.get(slot, (-1.0, now))
+                        if cpu > last_cpu + 0.5:
+                            progress[slot] = (cpu, now)
+                        elif now - since > STALL_SECONDS:
+                            failed(slot, f"stuck: no CPU used for {STALL_SECONDS} s, so the game was stopped")
                     used = sum(per_game.get(process.pid, 0) for process, _, _ in running.values())
                     if used > memory_limit and cap[0] > 1:
                         cap[0] = step_down(cap[0])
@@ -517,6 +586,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                             process.wait()
                             del running[slot]
                             free.append(slot)
+                            progress.pop(slot, None)
                             if slot in extras:
                                 wanted[(job[0], job[1])] -= 1
                             else:
@@ -528,18 +598,21 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                     output = test_dir / "parallel" / str(slot) / "selfplay.log"
                     if process.poll() is None:
                         if time.time() - started > HANG_SECONDS:
-                            stop(process)
-                            process.wait()
-                            issue(f"hang: killed after {HANG_SECONDS} s", job, output)
-                            del running[slot]
-                            free.append(slot)
-                            extras.discard(slot)
+                            failed(slot, f"hang: still running after {HANG_SECONDS} s, so the game was stopped")
+                        continue
+                    if process.returncode not in (0, 1):
+                        failed(slot, f"crash: exit code {process.returncode} after {time.time() - started:.0f} s")
                         continue
                     del running[slot]
                     free.append(slot)
                     extras.discard(slot)
-                    if process.returncode not in (0, 1):
-                        issue(f"crash: exit code {process.returncode} after {time.time() - started:.0f} s", job, output)
+                    progress.pop(slot, None)
+                    failures[(job[0], job[1])] = 0
+                    text = output.read_text(errors="replace") if output.exists() else ""
+                    marker = next((line.strip() for line in text.splitlines()
+                                   if any(m in line for m in ERROR_MARKERS)), None)
+                    if marker:
+                        issue(f"error in the output, though the game finished: {marker[:200]}", job, output)
         finally:
             for process, _, _ in running.values():
                 stop(process)
@@ -561,6 +634,26 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         return results
 
     return run
+
+
+def summarize_issues(path: Path) -> str:
+    """The issue log grouped by kind and pairing, most frequent first: where to start fixing."""
+    if not path.exists():
+        return "No issues logged."
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for line in path.read_text().splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        kind = str(entry.get("issue", "?")).split(":")[0]
+        groups.setdefault((kind, entry.get("bot", "?"), entry.get("opponent", "?")), []).append(entry)
+    lines = [f"{sum(len(g) for g in groups.values())} issue(s) in {path}:"]
+    for (kind, bot, opponent), entries in sorted(groups.items(), key=lambda item: -len(item[1])):
+        last = entries[-1]
+        lines.append(f"  {len(entries):4d}  {kind:8s} {bot} vs {opponent}  (last {last.get('time')}"
+                     + (f", output {last['output']}" if last.get("output") else "") + ")")
+    return "\n".join(lines)
 
 
 def make_install(build: str) -> Callable[[dict[str, float], dict[str, float]], None]:
@@ -615,6 +708,7 @@ def main() -> int:
     parser.add_argument("--auto-approve", action="store_true", help="promote every candidate that passes the gate")
     parser.add_argument("--seed", type=int, help="random seed for the mutations")
     parser.add_argument("--status", action="store_true", help="show where training stands and exit")
+    parser.add_argument("--issues", action="store_true", help="sum up training/issues.log and exit")
     args = parser.parse_args()
 
     TRAINING_DIR.mkdir(parents=True, exist_ok=True)
@@ -627,6 +721,9 @@ def main() -> int:
             f.write(line + "\n")
 
     state = State.load(TRAINING_DIR / "state.json")
+    if args.issues:
+        print(summarize_issues(TRAINING_DIR / "issues.log"))
+        return 0
     if args.status:
         print(f"Generation {state.generation}, Elo {state.elo:+.0f} over ClaudeOpus55, {state.candidates_tried} "
               f"candidate(s) tried, step scale {state.scale:.2f}, goal {'reached' if state.goal_reached else 'not yet'}")
@@ -663,6 +760,7 @@ def main() -> int:
         + f". Goal: win every game against the {len(TRAINING)} training bots, then every test game against {TEST}.")
 
     approve = make_approve(args.approver, args.auto_approve, TRAINING_DIR, log)
+    clear_leftover_games(args.build, log)
     # Games run in their own process groups, so closing the terminal doesn't reach them: stop them on the way out
     for hangup in (signal.SIGHUP, signal.SIGTERM):
         signal.signal(hangup, lambda number, frame: sys.exit(1))

@@ -1,6 +1,7 @@
 """tools/selfplay.py: mutations, the gate, Elo, the stop goal and resuming, with a fake game runner."""
 
 import json
+import time
 import random
 import sys
 from pathlib import Path
@@ -168,15 +169,24 @@ def test_issues_are_logged_with_the_weights(tmp_path: Path) -> None:
     assert Path(entry["output"]).read_text() == "Segmentation fault"
 
 
-def fake_harness(tmp_path: Path) -> None:
-    """A test harness stand-in: each game takes 3 seconds, then records a win, as the real one does."""
+RECORD_A_WIN = 'echo "t,$STARDUST_BOT,$STARDUST_OPPONENT,WON,100,map" >> replays/results.csv'
+
+
+def fake_harness(tmp_path: Path, script: str = f"sleep 3\n{RECORD_A_WIN}") -> None:
+    """A test harness stand-in: by default each game takes 3 seconds, then records a win, as the real one does."""
     test = tmp_path / "build" / "test"
     for folder in ("maps", "replays", "bwapi-data/AI"):
         (test / folder).mkdir(parents=True, exist_ok=True)
     (test / "replays" / "results.csv").write_text("time,player,opponent,result,frames,map\n")
     harness = test / "tests"
-    harness.write_text('#!/bin/sh\nsleep 3\necho "t,$STARDUST_BOT,$STARDUST_OPPONENT,WON,100,map" >> replays/results.csv\n')
+    harness.write_text(f"#!/bin/sh\n{script}\n")
     harness.chmod(0o755)
+
+
+def busy(memory: float) -> Any:
+    """A usage reading: this much memory per game, and CPU time going up, as in a game being played."""
+    start = time.time()
+    return lambda pids: {pid: (int(memory), time.time() - start) for pid in pids}
 
 
 def test_too_much_memory_steps_down_and_replays_the_stopped_games(tmp_path: Path, monkeypatch: Any) -> None:
@@ -185,7 +195,7 @@ def test_too_much_memory_steps_down_and_replays_the_stopped_games(tmp_path: Path
     log: list[str] = []
     issues: list[str] = []
     runner = selfplay.make_runner("build", 6, log.append, lambda kind, job, output: issues.append(kind),
-                                  memory_limit=12e9, memory=lambda pids: {pid: int(3e9) for pid in pids})
+                                  memory_limit=12e9, usage=busy(3e9))
     jobs = [(selfplay.CANDIDATE, bot, "gauntlet") for bot in selfplay.TRAINING] + [(selfplay.CANDIDATE, "Stone", "gauntlet")]
     results = runner(jobs, None)
     assert any("down to 4 at once" in line for line in log)  # 6 games of 3 GB is over 12 GB; 4 isn't
@@ -198,6 +208,57 @@ def test_a_game_leaking_memory_is_stopped_and_reported(tmp_path: Path, monkeypat
     monkeypatch.setattr(selfplay, "ROOT", tmp_path)
     issues: list[str] = []
     runner = selfplay.make_runner("build", 2, lambda message: None, lambda kind, job, output: issues.append(kind),
-                                  memory=lambda pids: {pid: int(5e9) for pid in pids})
+                                  usage=busy(5e9))
     runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
     assert any(kind.startswith("memory:") for kind in issues)
+
+
+def test_a_stuck_game_is_stopped_and_reported(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path, f"sleep 30\n{RECORD_A_WIN}")
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    monkeypatch.setattr(selfplay, "STALL_SECONDS", 1)
+    issues: list[str] = []
+    runner = selfplay.make_runner("build", 2, lambda message: None, lambda kind, job, output: issues.append(kind),
+                                  usage=lambda pids: {pid: (int(1e8), 5.0) for pid in pids})  # no CPU used
+    started = time.time()
+    runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
+    assert time.time() - started < 15
+    assert any(kind.startswith("stuck:") for kind in issues)
+
+
+def test_a_pairing_that_keeps_failing_is_skipped(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path, "exit 3")  # crashes at once
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    issues: list[str] = []
+    runner = selfplay.make_runner("build", 2, lambda message: None, lambda kind, job, output: issues.append(kind))
+    runner([(selfplay.CANDIDATE, "Stone", "gauntlet")] * 8, None)
+    # The other slot's game, already running when the pairing was skipped, may crash too
+    assert selfplay.SKIP_AFTER <= sum(kind.startswith("crash:") for kind in issues) <= selfplay.SKIP_AFTER + 1
+    assert sum(kind.startswith("skipped:") for kind in issues) == 1
+    assert not any(kind.startswith("missing") for kind in issues)  # skipped games aren't waited for
+    issues.clear()
+    runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)  # still skipped in the next round
+    assert not issues
+
+
+def test_errors_in_a_finished_games_output_are_reported(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path, f"echo 'Assertion failed: unit != nullptr'\n{RECORD_A_WIN}")
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    issues: list[str] = []
+    runner = selfplay.make_runner("build", 2, lambda message: None, lambda kind, job, output: issues.append(kind))
+    results = runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
+    assert results == {(selfplay.CANDIDATE, "Stone"): ["WON"]}
+    assert issues and "Assertion failed" in issues[0]
+
+
+def test_the_issue_summary_groups_by_kind_and_pairing(tmp_path: Path) -> None:
+    log = tmp_path / "issues.log"
+    assert selfplay.summarize_issues(log) == "No issues logged."
+    entries = [{"time": "1", "issue": "crash: exit code 139", "bot": "A", "opponent": "Stone"},
+               {"time": "2", "issue": "crash: exit code 6", "bot": "A", "opponent": "Stone"},
+               {"time": "3", "issue": "stuck: no CPU", "bot": "A", "opponent": "ZZZKBot"}]
+    log.write_text("".join(json.dumps(e) + "\n" for e in entries))
+    summary = selfplay.summarize_issues(log).splitlines()
+    assert summary[0].startswith("3 issue(s)")
+    assert "2  crash" in summary[1] and "Stone" in summary[1]
+    assert "stuck" in summary[2]
