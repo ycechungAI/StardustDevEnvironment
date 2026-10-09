@@ -36,6 +36,8 @@ bots/*
 !bots/WorkerRush/
 !bots/recipes/
 !bots/ClaudeOpus55/
+!bots/ClaudeOpus55RL/
+bots/ClaudeOpus55RL/training/pending.json
 !bots/genai/
 !bots/compat/
 !bots/ComputerAI/
