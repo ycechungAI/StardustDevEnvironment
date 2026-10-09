@@ -238,6 +238,260 @@ Every game against a named opponent (`Bots.Play`, and the Steamhammer and Locutu
 
 Python is loaded from `python/` in the source tree, so edits to the bot take effect on the next run without rebuilding. At the end of each game the host prints the bot's frame times against the usual tournament limits.
 
+## Tools reference
+
+Every tool in `tools/` runs with the project's Python (`.venv/bin/python`). Each one prints the same options with `--help`.
+
+### run_games.py: play games
+
+Plays game tests several at a time, in windows or headless. It shows a progress line, a time estimate and the live stats window.
+
+```bash
+.venv/bin/python tools/run_games.py --opponent Stone --games 12
+```
+
+```bash
+.venv/bin/python tools/run_games.py --bot Stardust2025 --opponent BunkerBoxer --games 6 --ui none
+```
+
+```bash
+.venv/bin/python tools/run_games.py Steamhammer.4PoolHard
+```
+
+| Option | |
+|---|---|
+| `FILTER` | gtest filter to run, e.g. `Steamhammer.4PoolHard` (default `Bots.Play` with `--opponent`) |
+| `--opponent BOT` | bot from `bots/` to play against |
+| `--bot BOT` | bot to play as, instead of the Python port (e.g. `Stardust2025`) |
+| `--games N` | number of games (default 20 for `*RunTwenty` tests, otherwise 1) |
+| `--ui none\|1-6` | games at once, each in its own window (default 4); `none` plays them headless |
+| `--parallel N` | games at once with `--ui none` (default 4, at most 6) |
+| `--window-size WxH` | size of each game window (default `640x480`) |
+| `--interval S` | seconds between PROGRESS lines (default 30) |
+| `--build DIR` | build directory (default `build-ui` with windows, `build` with `--ui none`) |
+| `--live` | open the live stats window (it opens by itself when games have windows) |
+| `--no-live` | no live stats |
+
+### live_stats.py: live stats window
+
+Shows the games being played, in a window with a tab for each game. `run_games.py` starts it by itself. Run it alone to watch any folder.
+
+```bash
+.venv/bin/python tools/live_stats.py
+```
+
+```bash
+.venv/bin/python tools/live_stats.py build/test/parallel --open
+```
+
+| Option | |
+|---|---|
+| `SOURCES` | folders to search for `live.json`, or the files (default: every `build*/test` folder) |
+| `--port N` | port for the page (default 8765) |
+| `--open` | open the page in its own window |
+| `--browser` | with `--open`, use the web browser instead of a window |
+| `--max-age S` | leave out games whose file is older than this many seconds (default 300) |
+
+### bench_ui.py: what the windows cost
+
+Plays the same capped game several ways and compares frames per second. The runs are `ui6` (6 windows), `none6` (6 headless) and `ui1` (1 window).
+
+```bash
+.venv/bin/python tools/bench_ui.py
+```
+
+```bash
+.venv/bin/python tools/bench_ui.py --runs ui6,none6 --games 6 --no-live
+```
+
+| Option | |
+|---|---|
+| `--games N` | games per run (half that for `ui1`; default 12) |
+| `--frames N` | frame limit per game (default 10000) |
+| `--bot BOT` | bot to play as (default `Stone`) |
+| `--opponent BOT` | opponent (default `BunkerBoxer`) |
+| `--map NAME` | map (default `Fighting Spirit`) |
+| `--seed N` | random seed (default 4242) |
+| `--runs LIST` | which runs, from `ui6,none6,ui1` (default all three) |
+| `--no-live` | no live stats window |
+
+### watch.py: watch bots play each other
+
+Every pairing of 2 to 4 bots plays one game, each in its own window, with a details window beside them.
+
+```bash
+.venv/bin/python tools/watch.py StardustPy BananaBrain McRaveZ CreativeZerg --speed 2
+```
+
+```bash
+.venv/bin/python tools/watch.py --view build-ui/test/parallel/0/status.jsonl
+```
+
+| Option | |
+|---|---|
+| `BOTS` | 2 to 4 bots; every pairing plays one game |
+| `--speed X` | game speed: 1 is normal (Fastest), 2 twice that, 0 as fast as the bots allow (default 1) |
+| `--build DIR` | window build directory (default `build-ui`) |
+| `--screen WxH` | screen size in points, e.g. `1512x982` (default: detected) |
+| `--no-details` | no details window |
+| `--view FILE ...` | only show the details of games already played (their `status.jsonl` files) |
+
+### replays.py: look back at games
+
+Lists past games and summarises their highlights. It also plays a replay in a window and keeps comments about each game. Run it with no command to pick from the latest games.
+
+```bash
+.venv/bin/python tools/replays.py
+```
+
+```bash
+.venv/bin/python tools/replays.py list --opponent BunkerBoxer --result lost
+```
+
+```bash
+.venv/bin/python tools/replays.py summary 1
+```
+
+```bash
+.venv/bin/python tools/replays.py watch 1 --at decisive
+```
+
+```bash
+.venv/bin/python tools/replays.py comment 1 --text "too slow to expand"
+```
+
+| Command / option | |
+|---|---|
+| `list` | list games (`--last N`, default 30; 0 for all) |
+| `summary [GAME ...]` | write and show summaries (`--last N`, `--refresh` to rebuild them) |
+| `watch GAME` | play a replay in a window (`--at mm:ss`, `--at decisive` or `--at "fight N"`) |
+| `comment GAME` | add a comment (`--text TEXT`, or type it in) |
+| `comments [GAME ...]` | show comments |
+| `--bot`, `--opponent`, `--result`, `--map` | filters for `list`, `summary` and `comments` (`--result` is won, lost or draw) |
+| `--dir DIR` | folder of replays (default `build/test/replays`) |
+| `--by NAME` | name to put on comments (default: your login) |
+
+`GAME` is the number `list` shows (1 is the newest), part of a replay's file name, or a path.
+
+### elo.py: ratings
+
+Rates every bot from the results history and prints a leaderboard. It also writes `replays/ratings.json`.
+
+```bash
+.venv/bin/python tools/elo.py
+```
+
+| Option | |
+|---|---|
+| `--build DIR` | build directory whose `test/replays` to rate |
+| `--k K` | how far one game moves a rating |
+
+### ladder.py: climb the opponent ladder
+
+Plays a bot against the opponents in [bots/README.md](bots/README.md), weakest first. It stops at the first opponent it can't beat.
+
+```bash
+.venv/bin/python tools/ladder.py --games 3
+```
+
+```bash
+.venv/bin/python tools/ladder.py --bot ClaudeOpus55 --to ZZZKBot --keep-going
+```
+
+| Option | |
+|---|---|
+| `--bot BOT` | bot to play as (default: the Python port) |
+| `--games N` | games against each opponent (default 3) |
+| `--from BOT` | opponent to start at, skipping the ones below it |
+| `--to BOT` | last opponent to play, e.g. `ZZZKBot` to stop before Tier 1 |
+| `--keep-going` | play every opponent, even after a failed one |
+| `--parallel N` | passed on to `run_games.py` |
+
+### round_robin.py: rate bots by tier
+
+Each tier in `bots/tiers.json` plays a headless round robin. A stopped run resumes where it left off.
+
+```bash
+.venv/bin/python tools/round_robin.py --tier "Tier 1"
+```
+
+```bash
+.venv/bin/python tools/round_robin.py --table
+```
+
+| Option | |
+|---|---|
+| `--tier NAME` | tier to play (default: every tier with `play: true`) |
+| `--games N` | games per pairing (default: `games_per_pairing` in `bots/tiers.json`) |
+| `--parallel N` | games at once (default: one per two CPU cores) |
+| `--build DIR` | headless build directory (default `build`) |
+| `--min-fps N` | stop if a game plays fewer frames per second than this (default 24: real time) |
+| `--stall S` | stop if a game does not advance for this many seconds (default 60) |
+| `--interval S` | seconds between progress reports and checks (default 30) |
+| `--table` | only print the ratings |
+
+### selfplay.py: train ClaudeOpus55RL
+
+Trains ClaudeOpus55RL by self-play, the way Leela Zero trains its network. Each candidate set of parameters must beat the current best before it is promoted.
+
+```bash
+.venv/bin/python tools/selfplay.py --hours 12
+```
+
+```bash
+.venv/bin/python tools/selfplay.py --status
+```
+
+| Option | |
+|---|---|
+| `--bot BOT` | the bot that learns (default `ClaudeOpus55RL`; it must be built as `<bot>` and `<bot>Candidate`) |
+| `--tier 2\|1\|auto` | opponents: Tier 2, Tier 1, or `auto` (default): Tier 2 until its goal is reached, then Tier 1 |
+| `--hours H` | stop after this long (default: only at the goal) |
+| `--games N` | self-play games per candidate (default 20) |
+| `--gauntlet-games N` | games at least against each training bot per candidate (default 2) |
+| `--test-games N` | games against the tier's held-out test bot (default 4) |
+| `--parallel N` | games at once (default 6) |
+| `--game-memory-gb GB` | most memory one game may use before it is stopped (default: measured per opponent, at most 2 GB) |
+| `--memory-limit-gb GB` | most memory all games may use before stepping down to 4, 2, then 1 at once (default 6 GB, or ¾ of RAM if less) |
+| `--build DIR` | headless build directory (default `build`) |
+| `--approver CMD` | command that approves a promotion (exit 0), given the report's path |
+| `--auto-approve` | promote every candidate that passes the gate |
+| `--seed N` | random seed for the mutations |
+| `--status` | show where training stands and exit |
+| `--issues` | sum up `training/issues.log` and exit |
+
+### fetch_bot.py: fetch opponent bots
+
+Downloads an opponent bot into `bots/<Name>/` from its recipe in `bots/recipes/<Name>/`. Re-run CMake afterwards.
+
+```bash
+.venv/bin/python tools/fetch_bot.py --list
+```
+
+```bash
+.venv/bin/python tools/fetch_bot.py BunkerBoxer
+```
+
+| Option | |
+|---|---|
+| `NAME ...` | bots to fetch |
+| `--all` | fetch every recipe |
+| `--list` | list the recipes |
+
+### Generators
+
+These regenerate checked-in files and take no options, except where shown.
+
+| Command | Regenerates |
+|---|---|
+| `.venv/bin/python tools/gen_bwapi_bindings.py` | the pybind11 bindings and `python/bwapi.pyi`, after the BWAPI headers change |
+| `.venv/bin/python tools/gen_blocks.py SRC_DIR OUT_DIR` | `python/stardust/builder/blocks/*.py` from Stardust's block headers |
+| `python3 tools/gen_type_names.py` | OpenBW's unit, upgrade and tech display names (`TypeNames.h`) |
+| `python3 tools/gen_hud_font.py [FONT.ttf] [SIZE]` | the game window's HUD font (`hud_font.h`; needs Pillow) |
+| `python3 tools/make_creative_steamhammer.py` | the CreativeZerg and CreativeTerran configurations |
+
+`tools/game_feed.py` is a module used by `watch.py`; it has no command of its own.
+
 ## Tests without StarCraft
 
 ```bash
