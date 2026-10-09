@@ -256,8 +256,10 @@ def cannot_pass(results: list[str], remaining: int) -> bool:
 class Trainer:
     def __init__(self, runner: Runner, install: Callable[[dict[str, float], dict[str, float]], None],
                  approve: Callable[[dict[str, Any]], bool], log: Callable[[str], None], training: Path,
-                 games: int, gauntlet_games: int, rng: random.Random, test_games: int = 4) -> None:
+                 games: int, gauntlet_games: int, rng: random.Random, test_games: int = 4,
+                 describe: Callable[[str], None] = lambda text: None) -> None:
         self.runner = runner
+        self.describe = describe  # names what is playing now, for the progress line and the live stats page
         self.install = install
         self.approve = approve
         self.log = log
@@ -301,6 +303,7 @@ class Trainer:
             best = self.state.best or defaults()
             self.install(best, best)
             self.log(f"Generation {self.state.generation}: playing the best against the training bots for its baseline")
+            self.describe(f"generation {self.state.generation}: the best's baseline against the training bots")
             self.state.best_gauntlet = self.gauntlet(BEST)
             self.save()
 
@@ -313,6 +316,7 @@ class Trainer:
         best = self.state.best or defaults()
         self.install(best, best)
         self.log(f"The best won every game against the {len(TRAINING)} training bots: playing a confirming gauntlet")
+        self.describe(f"generation {self.state.generation}: the best's confirming gauntlet")
         confirm = self.gauntlet(BEST)
         self.record({"time": time.time(), "generation": self.state.generation, "confirming_gauntlet": confirm})
         self.state.best_gauntlet = {o: gauntlet.get(o, []) + confirm.get(o, []) for o in TRAINING}
@@ -320,6 +324,7 @@ class Trainer:
             self.save()
             return False
         self.log(f"Confirmed. Testing against the held-out bot, {TEST}: {self.test_games} game(s)")
+        self.describe(f"generation {self.state.generation}: the best's test against {TEST}")
         test = self.runner([(BEST, TEST, "gauntlet")] * self.test_games, None).get((BEST, TEST), [])
         self.state.tested_generation = self.state.generation
         self.record({"time": time.time(), "generation": self.state.generation, "test": {TEST: test}})
@@ -354,6 +359,7 @@ class Trainer:
         # do at least as well as the best. Stage 3, only for one that did: the held-out test bot, to gauge it.
         self_jobs: list[Job] = [(CANDIDATE, BEST, "self") if n % 2 == 0 else (BEST, CANDIDATE, "self")
                                 for n in range(self.games)]
+        self.describe(f"candidate {trial}, stage 1: self-play against generation {self.state.generation}")
         selfplay = candidate_view(self.runner(self_jobs, None, self_play_lost))
         selfplay_score = score(selfplay)
         self.log(f"  stage 1, self-play against the old version: {selfplay.count('WON')}/{len(selfplay)} won, "
@@ -366,6 +372,7 @@ class Trainer:
         passed = beats_old_version(selfplay)
         if passed:
             gauntlet_jobs = self.gauntlet_jobs(CANDIDATE)
+            self.describe(f"candidate {trial}, stage 2: the training bots")
             gauntlet = self.gauntlet_results(CANDIDATE, self.runner(gauntlet_jobs, None,
                                                                     training_bots_lost(bar, len(gauntlet_jobs))))
             entry["gauntlet"] = gauntlet
@@ -373,6 +380,7 @@ class Trainer:
                      f"(needs the best's {max(0.0, bar):.0%})")
             passed = gauntlet_score(gauntlet) >= bar and sum(map(len, gauntlet.values())) > 0
         if passed and self.test_games:
+            self.describe(f"candidate {trial}, stage 3: the held-out {TEST}")
             test = self.runner([(CANDIDATE, TEST, "gauntlet")] * self.test_games, None).get((CANDIDATE, TEST), [])
             entry["test"] = {TEST: test}
             self.log(f"  stage 3, the held-out {TEST}: {test.count('WON')}/{len(test)} won (a measure, not a gate)")
@@ -563,6 +571,29 @@ class Progress:
 
 
 PROGRESS = Progress()
+REPORT_SECONDS = 30  # between PROGRESS lines, for output that isn't a terminal (where the status line is off)
+
+
+def fmt(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def start_viewer(build: str, parallel: int, log: Callable[[str], None]) -> Any:
+    """The live stats page (tools/live_stats.py) over every slot's live.json, which each game's harness writes about
+    twice a second: its address is printed, and nothing is opened, as the games are headless. None if it can't
+    start."""
+    slots = [ROOT / build / "test" / "parallel" / str(slot) / "live.json" for slot in range(parallel)]
+    for path in slots:
+        path.unlink(missing_ok=True)  # an earlier run's last game
+    try:
+        from live_stats import Viewer  # noqa: E402 (tools/live_stats.py)
+        viewer = Viewer(slots)
+        log(f"LIVE stats at {viewer.start()} (a tab per game)")
+        return viewer
+    except OSError as error:
+        log(f"NOTE no live stats page: {error}")
+        return None
 
 
 def physical_memory() -> float:
@@ -650,9 +681,12 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
                 memory_limit: float = DEFAULT_MEMORY_LIMIT, profile: MemoryProfile | None = None,
                 self_slots: int = 1,
-                usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage) -> Runner:
+                usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage,
+                viewer: Any = None, note: Callable[[], str] = lambda: "") -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
-    tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
+    tools/run_games.py does), and reads the results the harness appends to replays/results.csv. Shows a status line
+    in the terminal (PROGRESS lines every REPORT_SECONDS when the output isn't one) and the round's progress on the
+    live stats page, `viewer`, with `note()` saying what is being played."""
     from run_games import prepare_worker_directory  # noqa: E402
 
     test_dir = ROOT / build / "test"
@@ -661,6 +695,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
     cap = [parallel]  # games at once; lowered for the rest of the run when the games use more than memory_limit
     failures: dict[tuple[str, str], int] = {}  # failures in a row, per pairing
     skipped: set[tuple[str, str]] = set()  # pairings that kept failing, not played again this run
+    durations: list[float] = []  # wall seconds of each finished game, for the time left
 
     def read_results(before: int) -> dict[tuple[str, str], list[str]]:
         results: dict[tuple[str, str], list[str]] = {}
@@ -688,6 +723,8 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         round_started = time.time()
         ended = [0]  # games finished or stopped this round
         decided = False  # the candidate can no longer pass: the rest of the round is skipped
+        tally: dict[str, int] = {}  # this round's results so far: WON, LOST, DRAW
+        next_report = round_started + REPORT_SECONDS
         for job in jobs:
             if (job[0], job[1]) in skipped:
                 queue.remove(job)
@@ -767,10 +804,26 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 self_total = sum(1 for job in jobs if job[2] == "self")
                 self_done = self_total - sum(1 for job in queue if job[2] == "self") - sum(
                     1 for _, _, job in running.values() if job[2] == "self")
-                minutes, seconds = divmod(int(time.time() - round_started), 60)
-                PROGRESS.show(ended[0], sum(wanted.values()),
-                              (f"self-play {self_done}/{self_total} · " if self_total else "")
-                              + f"{len(running)} playing (max {cap[0]}) · {minutes}m{seconds:02d}s")
+                now = time.time()
+                elapsed = now - round_started
+                # Each running game takes the average time of finished games (or SECONDS_PER_GAME), and the queued
+                # ones share the slots
+                average = sum(durations[-50:]) / len(durations[-50:]) if durations else SECONDS_PER_GAME
+                lefts = [max(0.0, average - (now - started)) for _, started, _ in running.values()]
+                left = max(max(lefts, default=0.0), (sum(lefts) + len(queue) * average) / max(1, cap[0]))
+                total = sum(wanted.values())
+                doing = note()
+                PROGRESS.show(ended[0], total, (f"{doing} · " if doing else "")
+                              + (f"self-play {self_done}/{self_total} · " if self_total else "")
+                              + f"{fmt(elapsed)} elapsed · ~{fmt(left)} left · {len(running)} playing (max {cap[0]})")
+                if viewer is not None:
+                    viewer.set_run(total=total, done=ended[0], playing=len(running), cap=cap[0], elapsed=elapsed,
+                                   left=left, results={k.lower(): n for k, n in tally.items()},
+                                   note=f"self-play training of {BEST}" + (f": {doing}" if doing else ""))
+                if not PROGRESS.enabled and now >= next_report:
+                    next_report += REPORT_SECONDS
+                    print(f"PROGRESS {fmt(elapsed)} elapsed | {ended[0]}/{total} done | {len(running)} playing "
+                          f"(max {cap[0]}) | ~{fmt(left)} left" + (f" | {doing}" if doing else ""), flush=True)
                 if running and time.time() - last_memory_check >= MEMORY_CHECK_SECONDS:
                     last_memory_check = time.time()
                     now = time.time()
@@ -833,16 +886,25 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                     if slot in peak:
                         profile.record(job, peak.pop(slot))
                     ended[0] += 1
+                    durations.append(time.time() - started)
                     text = output.read_text(errors="replace") if output.exists() else ""
                     marker = next((line.strip() for line in text.splitlines()
                                    if any(m in line for m in ERROR_MARKERS)), None)
                     if marker:
                         issue(f"error in the output, though the game finished: {marker[:200]}", job, output)
-                if lost and ended[0] > ended_before:
-                    left = queue + [job for _, _, job in running.values()]
-                    if lost(read_results(before), left):
+                if ended[0] > ended_before:
+                    so_far = read_results(before)
+                    tally = {}
+                    flip = {"WON": "LOST", "LOST": "WON"}
+                    for pair, outcomes in so_far.items():
+                        for outcome in outcomes:  # self-play from the candidate's side
+                            outcome = flip.get(outcome, outcome) if pair == (BEST, CANDIDATE) else outcome
+                            tally[outcome] = tally.get(outcome, 0) + 1
+                    remaining = queue + [job for _, _, job in running.values()]
+                    if lost and lost(so_far, remaining):
                         decided = True
-                        log(f"  it can't pass now even winning the {len(left)} game(s) left, so this stage stops here")
+                        log(f"  it can't pass now even winning the {len(remaining)} game(s) left, so this stage "
+                            "stops here")
         finally:
             PROGRESS.done()
             for process, _, _ in running.values():
@@ -1053,10 +1115,13 @@ def train(args: argparse.Namespace, parser: argparse.ArgumentParser, tier: str, 
            "1 GB until its opponent's games are measured (1.5 then 2 GB if needed), then 3 times what they "
            "usually use, at most 2 GB"))
     log(profile.summary())
+    viewer = start_viewer(args.build, parallel, log)
+    playing = [""]  # what the trainer is playing now: shown on the status line and the live stats page
     runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit,
-                         profile)
+                         profile, viewer=viewer, note=lambda: playing[0])
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
-                      args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
+                      args.games, args.gauntlet_games, random.Random(args.seed), args.test_games,
+                      describe=lambda text: playing.__setitem__(0, text))
     start = time.time()
     try:
         while not hours or time.time() - start < hours * 3600:
@@ -1070,6 +1135,10 @@ def train(args: argparse.Namespace, parser: argparse.ArgumentParser, tier: str, 
     except KeyboardInterrupt:
         log("Stopped; re-run to resume.")
         return "130"
+    finally:
+        if viewer is not None:
+            viewer.set_run(playing=0, note=f"self-play training of {BEST}: stopped")
+            viewer.stop()
     log(f"Time is up after {hours:.1f} h at generation {trainer.state.generation}; re-run to continue.")
     return "done"
 

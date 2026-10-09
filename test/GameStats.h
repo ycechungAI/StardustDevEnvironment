@@ -4,6 +4,7 @@
 #include "BW/BWData.h"
 
 #include <array>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <string>
@@ -56,6 +57,35 @@ void DrawStatsScreen(BWAPI::Game *game, const PlayerStats &me, const PlayerStats
 // Draws a one-line toolbar along the top of the game window: each player's army supply (and the most it has had),
 // minerals and gas right now
 void DrawToolbar(BWAPI::Game *game, const PlayerStats &me, const PlayerStats &opponent);
+
+// Writes the game's numbers to a small JSON file about twice a second, for tools/live_stats.py to show while games
+// run (headless or with a window). STARDUST_LIVE_FILE names the file: live.json in the working folder by default,
+// 0 to turn it off. The file is replaced in one step, so a reader never sees half of it.
+class LiveStats
+{
+public:
+    LiveStats(int game, const std::string &mapName, int seed, int frameLimit);
+
+    // Writes the current numbers, if half a second has passed since the last write
+    void update(BW::Game game, int frame, const PlayerStats &me, const PlayerStats &opponent);
+
+    // Writes the last numbers again with the result: WON, LOST or DRAW
+    void finish(int frame, const std::string &result);
+
+private:
+    void write();
+
+    std::string path;
+    std::string document;  // the JSON last written, without its closing brace, so finish() can add to it
+    int game;
+    std::string mapName;
+    int seed;
+    int frameLimit;
+    std::chrono::steady_clock::time_point started;
+    std::chrono::steady_clock::time_point lastWrite;
+    int current = 0;
+    std::string result;
+};
 
 // One-line summary of a finished game, for the test output
 std::string StatsSummary(const PlayerStats &me, const PlayerStats &opponent);
