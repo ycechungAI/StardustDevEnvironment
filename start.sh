@@ -11,6 +11,7 @@ OPPONENTS=(
     Steamhammer2025 Microwave McRaveZ CreativeZerg CreativeTerran
     WorkerRush PylonPuller ZZZKBot SparkTerran SparkZerg
     UAlbertaBotTerran UAlbertaBotZerg UAlbertaBotProtoss
+    Locutus Iron Dragon SAIDA WillyT Steamhammer
 )
 # watch.py can also field the Python port itself
 WATCH_BOTS=(StardustPy "${OPPONENTS[@]}")
@@ -50,7 +51,7 @@ bot_race() {
     case "$1" in
         Stone|BunkerBoxer|CreativeTerran|WorkerRush|SparkTerran|UAlbertaBotTerran|SAIDA|Dragon|WillyT|Iron)
             echo "Terran" ;;
-        Steamhammer2025|Microwave|McRaveZ|CreativeZerg|ZZZKBot|SparkZerg|UAlbertaBotZerg)
+        Steamhammer|Steamhammer2025|Microwave|McRaveZ|CreativeZerg|ZZZKBot|SparkZerg|UAlbertaBotZerg)
             echo "Zerg" ;;
         StardustPy) echo "Python port" ;;
         *) echo "Protoss" ;;
