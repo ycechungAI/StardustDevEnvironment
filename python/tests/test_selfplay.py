@@ -146,7 +146,7 @@ def test_a_failed_test_waits_for_the_next_generation(tmp_path: Path) -> None:
 
 
 def test_every_parameter_is_read_by_the_bot() -> None:
-    source = (Path(__file__).resolve().parents[2] / "bots" / "ClaudeOpus55RL" / "ClaudeOpus55RL.cpp").read_text()
+    source = (Path(__file__).resolve().parents[2] / "bots" / "RL_ClaudeOpus55" / "RL_ClaudeOpus55.cpp").read_text()
     for p in selfplay.PARAMS:
         assert f'"{p.name}"' in source, p.name
         assert p.low <= p.default <= p.high, p.name
@@ -279,7 +279,7 @@ def test_cannot_pass_is_exact() -> None:
 
 def test_a_candidate_that_cannot_pass_stops_the_round(tmp_path: Path, monkeypatch: Any) -> None:
     # The old version wins every game, whichever side it plays
-    fake_harness(tmp_path, 'sleep 0.3\nif [ "$STARDUST_BOT" = ClaudeOpus55RL ]; then R=WON; else R=LOST; fi\n'
+    fake_harness(tmp_path, 'sleep 0.3\nif [ "$STARDUST_BOT" = RL_ClaudeOpus55 ]; then R=WON; else R=LOST; fi\n'
                            'echo "t,$STARDUST_BOT,$STARDUST_OPPONENT,$R,100,map" >> replays/results.csv')
     monkeypatch.setattr(selfplay, "ROOT", tmp_path)
     log: list[str] = []
@@ -384,20 +384,20 @@ def test_tiers_split_into_training_bots_and_a_held_out_test() -> None:
         assert not selfplay.perfect({o: ["WON"] for o in selfplay.TIER2[1:-1]}, 1)  # Tier 1's bots now
     finally:
         selfplay.configure()
-    assert selfplay.TEST == "ZZZKBot" and selfplay.TRAINING_DIR.parts[-2:] == ("ClaudeOpus55RL", "training")
+    assert selfplay.TEST == "ZZZKBot" and selfplay.TRAINING_DIR.parts[-2:] == ("RL_ClaudeOpus55", "training")
 
 
 def test_auto_moves_on_to_tier_1_from_tier_2s_best(tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
     monkeypatch.setattr(selfplay, "ROOT", tmp_path)
     tier2 = selfplay.State(generation=7, elo=300.0, best={**selfplay.defaults(), "retreat_ratio": 1.7},
                            goal_reached=True)
-    (tmp_path / "bots" / "ClaudeOpus55RL" / "training").mkdir(parents=True)
-    tier2.save(tmp_path / "bots" / "ClaudeOpus55RL" / "training" / "state.json")
+    (tmp_path / "bots" / "RL_ClaudeOpus55" / "training").mkdir(parents=True)
+    tier2.save(tmp_path / "bots" / "RL_ClaudeOpus55" / "training" / "state.json")
     monkeypatch.setattr(sys, "argv", ["selfplay.py", "--status"])
     try:
         assert selfplay.main() == 0
     finally:
         selfplay.configure()
     assert "against Tier 1: generation 7" in capsys.readouterr().out
-    tier1 = selfplay.State.load(tmp_path / "bots" / "ClaudeOpus55RL" / "training-tier1" / "state.json")
+    tier1 = selfplay.State.load(tmp_path / "bots" / "RL_ClaudeOpus55" / "training-tier1" / "state.json")
     assert tier1.best == tier2.best and tier1.elo == 300.0 and not tier1.goal_reached

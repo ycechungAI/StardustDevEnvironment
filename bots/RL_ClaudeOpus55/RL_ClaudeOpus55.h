@@ -7,12 +7,12 @@
 #include <set>
 #include <vector>
 
-// ClaudeOpus55RL: ClaudeOpus55 with its key numbers and opening choices learned through self-play (tools/selfplay.py,
-// weights in bwapi-data/AI/ClaudeOpus55RL-*.json). ClaudeOpus55 is:
+// RL_ClaudeOpus55: ClaudeOpus55 with its key numbers and opening choices learned through self-play (tools/selfplay.py,
+// weights in bwapi-data/AI/RL_ClaudeOpus55-*.json). ClaudeOpus55 is:
 // A Protoss bot written by Claude Opus 5.5 under StarSkirmish's rules (C++, BWAPI 4.4, Protoss, no human-written bot
 // code; 3 hours of writing and practice games): gateway army of zealots and dragoons that adapts its opening to the
 // enemy race, defends at home, takes its natural, and fights as one group only when it judges the fight favourable.
-class ClaudeOpus55RL : public BWAPI::AIModule
+class RL_ClaudeOpus55 : public BWAPI::AIModule
 {
 public:
     void onStart() override;
