@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <fstream>
 
 const RegisteredBot *FindBot(const std::string &name)
 {
@@ -39,8 +40,9 @@ TEST(Bots, List)
 }
 
 // Plays STARDUST_OPPONENT=<bot name> for STARDUST_GAMES games (default 1), on STARDUST_TEST_MAP or random SSCAIT
-// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST. STARDUST_BOT=<bot name> plays as that bot instead of the
-// Python port (for example Stardust2025, the original C++ Stardust); its replays are named <us>_vs_<bot>_...
+// maps. Replays are named <bot>_<map>_<seed>_WON / _LOST / _DRAW (a draw: the frame or time limit ended the game).
+// STARDUST_BOT=<bot name> plays as that bot instead of the Python port (for example Stardust2025, the original C++
+// Stardust); its replays are named <us>_vs_<bot>_...
 TEST(Bots, Play)
 {
     const RegisteredBot *us = nullptr;
@@ -70,8 +72,16 @@ TEST(Bots, Play)
         games = std::max(1, std::atoi(gamesSetting));
     }
 
+    // Watching at a set speed (OPENBW_GAME_SPEED=<milliseconds per frame>; 42 is normal, StarCraft's Fastest, and 21
+    // twice that): allow 90 minutes of game time, so the wall-time limit follows the speed: 90 minutes at normal
+    // speed, 45 at x2. Without a set speed games run as fast as the bots allow, with the usual limits.
+    int msPerFrame = 0;
+    if (auto speed = std::getenv("OPENBW_GAME_SPEED"); speed && *speed) msPerFrame = std::atoi(speed);
+    constexpr int watchedFrameLimit = 90 * 60 * 1000 / 42;
+
     int count = 0;
     int lost = 0;
+    int drawn = 0;
     while (count < games)
     {
         BWTest test;
@@ -79,6 +89,11 @@ TEST(Bots, Play)
         test.opponentModule = bot->create;
         test.opponentName = bot->name;
         if (auto seed = std::getenv("STARDUST_TEST_SEED"); seed && *seed) test.randomSeed = std::atoi(seed);
+        if (msPerFrame > 0)
+        {
+            test.frameLimit = watchedFrameLimit;
+            test.timeLimit = 90 * 60 * msPerFrame / 42;
+        }
         if (us)
         {
             test.myRace = us->race;
@@ -87,17 +102,29 @@ TEST(Bots, Play)
         }
         test.onEndMine = [&](bool won)
         {
+            // Leaving at the frame or time limit means neither bot won
+            const char *result = won ? "WON" : (test.limitReached ? "DRAW" : "LOST");
             std::ostringstream replayName;
             if (us) replayName << us->name << "_vs_";
-            replayName << bot->name << "_" << test.map->shortname() << "_" << test.randomSeed
-                       << (won ? "_WON" : "_LOST");
+            replayName << bot->name << "_" << test.map->shortname() << "_" << test.randomSeed << "_" << result;
             test.replayName = replayName.str();
-            if (!won) lost++;
+            if (!won && test.limitReached) drawn++;
+            else if (!won) lost++;
 
             count++;
+            // The status feed's last line, for tools/watch.py's end-of-game screen
+            if (auto statusFile = std::getenv("OPENBW_STATUS_FILE"); statusFile && *statusFile)
+            {
+                std::ofstream status(statusFile, std::ios::app);
+                status << "{\"end\":{\"result\":\"" << result << "\",\"us\":\"" << test.myName << "\",\"opponent\":\""
+                       << bot->name << "\",\"map\":\"" << test.map->shortname() << "\"}}" << std::endl;
+            }
+            // One line per game for tools/round_robin.py
+            std::cout << "[result] us=" << test.myName << " opponent=" << bot->name << " result=" << result
+                      << " map=" << test.map->shortname() << " seed=" << test.randomSeed << std::endl;
             std::cout << "---------------------------------------------" << std::endl;
             std::cout << "VS " << bot->name << " AFTER " << count << " GAME" << (count == 1 ? "" : "S") << ": "
-                      << (count - lost) << " won; " << lost << " lost" << std::endl;
+                      << (count - lost - drawn) << " won; " << lost << " lost; " << drawn << " drawn" << std::endl;
             std::cout << "---------------------------------------------" << std::endl;
         };
         test.expectWin = false;

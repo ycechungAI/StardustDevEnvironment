@@ -206,6 +206,9 @@ struct Game {
   std::vector<int> takeKeyPresses();
   std::tuple<int, int, void*> GameScreenBuffer();
   void setOnDraw(std::function<void(uint8_t*, size_t)> onDraw);
+  // Names to show for the local player and the others in the window's HUD and the status feed (OPENBW_STATUS_FILE),
+  // instead of the players' in-game names. Call before the game's first frame.
+  void setPlayerNames(const std::string& local, const std::string& others);
   // Calls onKillUnit (with the unit still as it was) whenever the engine kills a unit, whatever the visibility
   void setOnKillUnit(std::function<void(Unit)> onKillUnit);
   std::tuple<int, int, uint32_t*> drawGameScreen(int x, int y, int width, int height);
