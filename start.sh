@@ -25,7 +25,7 @@ ask_int() {
             echo "$ans"
             return
         fi
-        echo "enter a number between $min and $max"
+        echo "enter a number between $min and $max" >&2
     done
 }
 
@@ -40,7 +40,7 @@ ask_choice() {
             echo "$ans"
             return
         fi
-        echo "choose one of: ${opts//|/, }"
+        echo "choose one of: ${opts//|/, }" >&2
     done
 }
 
@@ -62,24 +62,20 @@ pick_bot() {
     local -n arr="$arr_name"
     local i ans
     while true; do
-        echo "$prompt"
+        # menu goes to stderr: stdout is captured as the return value
+        echo "$prompt" >&2
         for i in "${!arr[@]}"; do
             if [ -n "${arr[$i]}" ]; then
-                printf "  %2d) %-22s %s\n" "$((i + 1))" "${arr[$i]}" "$(bot_race "${arr[$i]}")"
+                printf "  %2d) %-22s %s\n" "$((i + 1))" "${arr[$i]}" "$(bot_race "${arr[$i]}")" >&2
             fi
         done
-        printf "   0) other (type a name)\n"
-        read -rp "number: " ans
-        if [[ "$ans" =~ ^[0-9]+$ ]]; then
-            if [ "$ans" -eq 0 ]; then
-                read -rp "bot name: " ans
-                [ -n "$ans" ] && { echo "$ans"; return; }
-            elif [ "$ans" -ge 1 ] && [ "$ans" -le "${#arr[@]}" ] && [ -n "${arr[$((ans - 1))]}" ]; then
-                echo "${arr[$((ans - 1))]}"
-                return
-            fi
+        read -rp "Which AI do you want to play? Enter its number: " ans
+        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le "${#arr[@]}" ] \
+            && [ -n "${arr[$((ans - 1))]}" ]; then
+            echo "${arr[$((ans - 1))]}"
+            return
         fi
-        echo "invalid choice, try again"
+        echo "invalid choice, try again" >&2
     done
 }
 
@@ -93,17 +89,23 @@ option1_4pool() {
 }
 
 option2_custom_games() {
-    local opponents=("${OPPONENTS[@]}")
-    local opponent games ui wins
-    opponent="$(pick_bot "Choose your opponent:" opponents)"
+    local bots=( "${WATCH_BOTS[@]}" )
+    local ai1 ai2 games ui wins j
+    ai1="$(pick_bot "Which AI do you want to play as?" bots)"
+    for j in "${!bots[@]}"; do
+        [ "${bots[$j]}" = "$ai1" ] && bots[$j]=""
+    done
+    ai2="$(pick_bot "Which AI should it play against?" bots)"
     games="$(ask_int "How many games" 1 100 12)"
     ui="$(ask_choice "Show the game windows? (Y/N)" "y|n" "n")"
+    local cmd=("$PY" tools/run_games.py)
+    [ "$ai1" != "StardustPy" ] && cmd+=(--bot "$ai1")
+    cmd+=(--opponent "$ai2" --games "$games")
     if [ "$ui" = "y" ]; then
         wins="$(ask_int "How many windows? (1, 2, 4 or 6)" 1 6 4)"
-        run_cmd "$PY" tools/run_games.py --opponent "$opponent" --games "$games" --ui "$wins"
-    else
-        run_cmd "$PY" tools/run_games.py --opponent "$opponent" --games "$games"
+        cmd+=(--ui "$wins")
     fi
+    run_cmd "${cmd[@]}"
 }
 
 option3_build() {
