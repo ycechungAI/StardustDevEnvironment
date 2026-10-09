@@ -60,7 +60,7 @@ struct window_impl {
 		if (window) fatal_error("window already created");
 		Uint32 flags = 0;
 		flags |= SDL_WINDOW_RESIZABLE;
-		window = SDL_CreateWindow(title, 0, 0, width, height, flags);
+		window = SDL_CreateWindow(title, x, y, width, height, flags);
 		if (!window) log("SDL_CreateWindow failed: %s\n", SDL_GetError());
 		#ifdef EMSCRIPTEN
 		SDL_EventState(SDL_MOUSEBUTTONDOWN, SDL_ENABLE);
@@ -212,6 +212,19 @@ void window::update_surface() {
 
 window::operator bool() const {
 	return (bool)*impl;
+}
+
+// Added for the Stardust test harness, to lay several game windows out on the screen
+bool get_usable_bounds(int* x, int* y, int* width, int* height) {
+	sdl_init();
+	if (!sdl_initialized) return false;
+	SDL_Rect rect;
+	if (SDL_GetDisplayUsableBounds(0, &rect) != 0) return false;
+	*x = rect.x;
+	*y = rect.y;
+	*width = rect.w;
+	*height = rect.h;
+	return true;
 }
 
 }

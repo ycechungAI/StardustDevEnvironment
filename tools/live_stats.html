@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Games</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #677085; --line: #e1e4ea;
+  --p1: #2f6fde; --p2: #d9622b; --good: #1f9d55; --bad: #d23b3b; --draw: #9a7b1c; --track: #e9ecf1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --panel: #1b2029; --text: #e6e9ef; --muted: #8e97a8; --line: #2b3240;
+    --p1: #6ea0ff; --p2: #ff9b63; --good: #4cc982; --bad: #ff6b6b; --draw: #e0c060; --track: #262c38;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #1b2029; --text: #e6e9ef; --muted: #8e97a8; --line: #2b3240;
+  --p1: #6ea0ff; --p2: #ff9b63; --good: #4cc982; --bad: #ff6b6b; --draw: #e0c060; --track: #262c38;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+header { padding: 12px 16px 0; }
+h1 { font-size: 17px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--good); display: inline-block; }
+.pulse.live { animation: pulse 1s ease-in-out infinite; }
+.pulse.dead { background: var(--bad); }
+@keyframes pulse { 50% { opacity: .25; } }
+.muted { color: var(--muted); font-weight: normal; font-size: 13px; }
+.run { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+.bar { flex: 1 1 220px; max-width: 420px; height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--p1); transition: width .4s; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); padding: 0 16px; }
+.tab { border: 1px solid transparent; border-bottom: none; background: none; color: var(--muted); padding: 7px 12px;
+  border-radius: 7px 7px 0 0; cursor: pointer; white-space: nowrap; font: inherit; display: flex; gap: 6px;
+  align-items: center; }
+.tab.on { background: var(--panel); color: var(--text); border-color: var(--line); margin-bottom: -1px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.dot.playing { background: var(--good); animation: pulse 1.2s ease-in-out infinite; }
+.dot.WON { background: var(--good); } .dot.LOST { background: var(--bad); } .dot.DRAW { background: var(--draw); }
+.dot.stopped { background: var(--bad); }
+main { padding: 14px 16px 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.card h2 { font-size: 14px; margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+.card h2 a { color: inherit; text-decoration: none; cursor: pointer; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.sub { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
+.badge { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 9px; border: 1px solid currentColor;
+  white-space: nowrap; }
+.badge.WON { color: var(--good); } .badge.LOST { color: var(--bad); } .badge.DRAW { color: var(--draw); }
+.badge.playing { color: var(--good); } .badge.stopped { color: var(--bad); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 2px 4px; text-align: right; }
+th:first-child, td:first-child { text-align: left; color: var(--muted); font-weight: normal; }
+thead th { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+.c1 { color: var(--p1); } .c2 { color: var(--p2); }
+svg { display: block; width: 100%; }
+.big { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 8px; }
+.num { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+.num b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.num span { color: var(--muted); font-size: 12px; }
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 12px; }
+.chart h3 { font-size: 13px; margin: 0 0 4px; }
+.units { columns: 2 150px; font-size: 13px; margin-top: 8px; }
+.units div { display: flex; justify-content: space-between; break-inside: avoid; padding: 1px 0; }
+.empty { color: var(--muted); padding: 30px 0; text-align: center; }
+@media (max-width: 640px) { .big { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span id="pulse" class="pulse live"></span>Live games <span id="status" class="muted">connecting…</span></h1>
+  <div id="run" class="run"></div>
+</header>
+<nav id="tabs" class="tabs"></nav>
+<main id="main"><div class="empty">Waiting for games…</div></main>
+<script>
+"use strict";
+const STATS = [["Minerals", "minerals"], ["Gas", "gas"], ["Supply", p => `${p.supplyUsed}/${p.supplyMax}`],
+  ["Workers", "workers"], ["Army supply", "armySupply"], ["Units", "units"], ["Buildings", "buildings"],
+  ["Killed / lost", p => `${p.unitsKilled} / ${p.unitsLost + p.buildingsLost}`]];
+// History columns, per player: workers, army, minerals, gas, minerals mined, gas mined, units (then the opponent's)
+const COLUMNS = { workers: 0, army: 1, minerals: 2, gas: 3, mined: 4, gasMined: 5, units: 6 };
+let data = null, selected = "all", failures = 0;
+try { selected = localStorage.getItem("liveTab") || "all"; } catch (e) {}
+if (location.hash.length > 1) selected = decodeURIComponent(location.hash.slice(1));
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const clock = seconds => { seconds = Math.max(0, Math.floor(seconds)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
+const value = (p, stat) => typeof stat[1] === "function" ? stat[1](p) : (p[stat[1]] ?? 0);
+const state = g => g.data.state === "over" ? (g.data.result || "over") : g.data.state;
+const race = r => (r || "?")[0];
+
+function select(id) {
+  selected = id;
+  try { localStorage.setItem("liveTab", id); } catch (e) {}
+  history.replaceState(null, "", "#" + encodeURIComponent(id));
+  render();
+}
+
+function line(points, width, height, max, color, dashed) {
+  if (points.length < 2) return "";
+  const x0 = points[0][0], x1 = points[points.length - 1][0] || 1;
+  const path = points.map(([x, y]) => `${((x - x0) / Math.max(1, x1 - x0) * width).toFixed(1)},${(height - y / max * (height - 2) - 1).toFixed(1)}`).join(" ");
+  return `<polyline fill="none" stroke="${color}" stroke-width="1.6" ${dashed ? 'stroke-dasharray="4 3"' : ""} points="${path}"/>`;
+}
+
+// One chart: the same history column for both players (or a sum of columns)
+function chart(g, columns, height) {
+  const width = 300, h = g.history;
+  const pick = (row, side) => columns.reduce((sum, c) => sum + row[1 + side * 7 + c], 0);
+  const series = [0, 1].map(side => h.map(row => [row[0], pick(row, side)]));
+  const max = Math.max(1, ...series.flat().map(p => p[1]));
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="height:${height}px">
+    <line x1="0" x2="${width}" y1="${height - 1}" y2="${height - 1}" stroke="var(--line)"/>
+    ${line(series[0], width, height, max, "var(--p1)")}${line(series[1], width, height, max, "var(--p2)")}</svg>`;
+}
+
+function sparkline(g) {
+  const width = 300, height = 46, h = g.history;
+  const series = [0, 1].flatMap(side => [COLUMNS.workers, COLUMNS.army].map(c => h.map(row => [row[0], row[1 + side * 7 + c]])));
+  const max = Math.max(1, ...series.flat().map(p => p[1]));
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="height:${height}px;margin-top:6px">
+    ${line(series[0], width, height, max, "var(--p1)")}${line(series[1], width, height, max, "var(--p1)", true)}
+    ${line(series[2], width, height, max, "var(--p2)")}${line(series[3], width, height, max, "var(--p2)", true)}</svg>`;
+}
+
+function subline(g) {
+  const d = g.data, speed = g.speed > 0 && d.state === "playing" ? ` · ×${g.speed.toFixed(0)} speed` : "";
+  return `${esc(d.map)} · game time ${clock(d.frame / 24)} (frame ${d.frame})${speed} · ${d.window ? "window" : "headless"} · folder ${esc(g.folder)}`;
+}
+
+function card(g) {
+  const d = g.data, [me, them] = d.players, s = state(g);
+  return `<div class="card">
+    <h2><a onclick="select('${esc(g.id)}')">${esc(me.name)} <span class="muted">(${race(me.race)})</span> vs ${esc(them.name)} <span class="muted">(${race(them.race)})</span></a>
+      <span class="badge ${s}">${s === "playing" ? "playing" : esc(s)}</span></h2>
+    <div class="sub">${subline(g)}</div>
+    <table><thead><tr><th></th><th class="c1">${esc(me.name)}</th><th class="c2">${esc(them.name)}</th></tr></thead>
+    <tbody>${STATS.map(stat => `<tr><td>${stat[0]}</td><td>${value(me, stat)}</td><td>${value(them, stat)}</td></tr>`).join("")}</tbody></table>
+    ${sparkline(g)}
+    <div class="sub" style="margin:2px 0 0">workers (solid) and army supply (dashed) over game time</div>
+  </div>`;
+}
+
+function unitList(p) {
+  const rows = Object.entries(p.unitTypes || {}).sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => `<div><span>${esc(name.replace(/^(Protoss|Terran|Zerg)_/, "").replace(/_/g, " "))}</span><b>${count}</b></div>`);
+  return rows.join("") || '<div class="muted">nothing yet</div>';
+}
+
+function detail(g) {
+  const d = g.data, s = state(g);
+  const panel = (p, cls) => `<div class="card"><h2><span class="${cls}">${esc(p.name)}</span><span class="muted">${esc(p.race)}</span></h2>
+    <div class="nums">${STATS.map(stat => `<div class="num"><b>${value(p, stat)}</b><span>${stat[0]}</span></div>`).join("")}
+      <div class="num"><b>${p.mineralsGathered + p.gasGathered}</b><span>Mined in all</span></div></div>
+    <div class="units">${unitList(p)}</div></div>`;
+  const charts = [["Workers", [COLUMNS.workers]], ["Army supply", [COLUMNS.army]], ["Units (workers too)", [COLUMNS.units]],
+    ["Minerals and gas mined", [COLUMNS.mined, COLUMNS.gasMined]], ["Minerals and gas in the bank", [COLUMNS.minerals, COLUMNS.gas]]];
+  return `<div class="card" style="margin-bottom:12px"><h2><span>${esc(d.players[0].name)} vs ${esc(d.players[1].name)}</span>
+      <span class="badge ${s}">${s === "playing" ? "playing" : esc(s)}</span></h2><div class="sub" style="margin:2px 0 0">${subline(g)} · seed ${d.seed}</div></div>
+    <div class="big">${panel(d.players[0], "c1")}${panel(d.players[1], "c2")}</div>
+    <div class="charts">${charts.map(([title, columns]) => `<div class="card chart"><h3>${title}
+      <span class="muted">(<span class="c1">${esc(d.players[0].name)}</span>, <span class="c2">${esc(d.players[1].name)}</span>)</span></h3>${chart(g, columns, 120)}</div>`).join("")}</div>`;
+}
+
+function renderRun() {
+  const r = data.run || {}, el = document.getElementById("run");
+  if (!r.total) { el.innerHTML = ""; return; }
+  const done = r.done || 0, pct = Math.round(100 * done / r.total);
+  const results = Object.entries(r.results || {}).filter(([, n]) => n).map(([k, n]) => `${n} ${esc(k)}`).join(", ");
+  el.innerHTML = `<div class="bar"><div style="width:${pct}%"></div></div>
+    <span><b>${done}/${r.total}</b> games done</span><span>${r.playing ?? 0} playing (at most ${r.cap ?? "?"} at once)</span>
+    ${r.elapsed != null ? `<span>${clock(r.elapsed)} elapsed</span>` : ""}${r.left != null ? `<span>~${clock(r.left)} left</span>` : ""}
+    ${results ? `<span>${results}</span>` : ""}${r.note ? `<span class="muted">${esc(r.note)}</span>` : ""}`;
+}
+
+function render() {
+  if (!data) return;
+  const games = data.games, playing = games.filter(g => g.data.state === "playing");
+  if (selected !== "all" && !games.some(g => g.id === selected)) selected = "all";
+  document.getElementById("tabs").innerHTML = [`<button class="tab ${selected === "all" ? "on" : ""}" onclick="select('all')">All games (${playing.length} playing)</button>`]
+    .concat([...playing, ...games.filter(g => g.data.state !== "playing").reverse()].map(g => {
+      const [me, them] = g.data.players;
+      return `<button class="tab ${selected === g.id ? "on" : ""}" onclick="select('${esc(g.id)}')"><span class="dot ${state(g)}"></span>${g.number} · ${esc(me.name)} vs ${esc(them.name)}</button>`;
+    })).join("");
+  const main = document.getElementById("main");
+  if (selected === "all") {
+    const shown = playing.length ? playing : games.slice(-6);
+    main.innerHTML = shown.length ? `<div class="grid">${shown.map(card).join("")}</div>` +
+      (playing.length && games.length > playing.length ? `<p class="muted">${games.length - playing.length} finished game(s) in the tabs.</p>` : "")
+      : '<div class="empty">Waiting for games…</div>';
+  } else {
+    main.innerHTML = detail(games.find(g => g.id === selected));
+  }
+  renderRun();
+}
+
+async function poll() {
+  try {
+    const response = await fetch("/data", { cache: "no-store" });
+    data = await response.json();
+    failures = 0;
+    const playing = data.games.filter(g => g.data.state === "playing").length;
+    document.getElementById("status").textContent = `${playing} playing · updated ${new Date().toLocaleTimeString()}`;
+    document.getElementById("pulse").className = "pulse live";
+    render();
+  } catch (e) {
+    if (++failures > 3) {
+      document.getElementById("status").textContent = "the viewer has stopped (the run is over)";
+      document.getElementById("pulse").className = "pulse dead";
+    }
+  }
+}
+poll();
+setInterval(poll, 500);
+</script>
+</body>
+</html>

@@ -65,3 +65,60 @@ diff -ruN a/BunkerBoxerModule/ProductionManager.h b/BunkerBoxerModule/Production
 +	BWAPI::Unit conscript();
  };
  
+diff -ruN a/BunkerBoxerModule/FieldCommand.cpp b/BunkerBoxerModule/FieldCommand.cpp
+--- a/BunkerBoxerModule/FieldCommand.cpp	2026-10-09 05:33:52
++++ b/BunkerBoxerModule/FieldCommand.cpp	2026-10-09 05:33:52
+@@ -66,7 +66,7 @@
+ 			if (assaultLocations.size() == 0)
+ 			{
+ 				// attack CLOSEST enemy
+-				BWAPI::Unit attackEnemy;
++				BWAPI::Unit attackEnemy = nullptr;
+ 				for (auto &e : BWAPI::Broodwar->enemy()->getUnits())
+ 				{
+ 					if ((attackEnemy == nullptr) || (e->getDistance(u) < attackEnemy->getDistance(u)))
+@@ -74,7 +74,7 @@
+ 						attackEnemy = e;
+ 					}
+ 				}
+-				u->attack(attackEnemy, false);
++				if (attackEnemy) u->attack(attackEnemy, false);
+ 				continue;
+ 			}
+ 
+@@ -125,7 +125,7 @@
+ 			}
+ 		}
+ 
+-		if (BWAPI::Broodwar->getClosestUnitInRectangle(
++		if (!assaultLocations.empty() && BWAPI::Broodwar->getClosestUnitInRectangle(
+ 			BWAPI::Position(assaultLocations[0]), nullptr,
+ 			BWAPI::Position(assaultLocations[0]).x - 20, BWAPI::Position(assaultLocations[0]).y - 20,
+ 			40, 40))
+@@ -223,7 +223,7 @@
+ 						}
+ 					}
+ 
+-					if ((attackEnemy->getType() == BWAPI::UnitTypes::Protoss_Zealot || attackEnemy->getType() == BWAPI::UnitTypes::Zerg_Zergling 
++					if (attackEnemy && (attackEnemy->getType() == BWAPI::UnitTypes::Protoss_Zealot || attackEnemy->getType() == BWAPI::UnitTypes::Zerg_Zergling 
+ 						|| attackEnemy->getType() == BWAPI::UnitTypes::Terran_Marine)
+ 						&& attackEnemy->getDistance(u) < 16
+ 						&& bunkers.size() > 0 && bunkers[0]->getDistance(u) < 400)
+@@ -368,7 +368,7 @@
+ 					else if (!u->isConstructing())
+ 					{
+ 						// ATTACK CLOSEST
+-						BWAPI::Unit attackEnemy;
++						BWAPI::Unit attackEnemy = nullptr;
+ 						for (auto &e : BWAPI::Broodwar->enemy()->getUnits())
+ 						{
+ 							if ((attackEnemy == nullptr) || (e->getDistance(u) < attackEnemy->getDistance(u)))
+@@ -376,7 +376,7 @@
+ 								attackEnemy = e;
+ 							}
+ 						}
+-						if (bunkers[0]->getDistance(attackEnemy) < 40)
++						if (attackEnemy && bunkers[0]->getDistance(attackEnemy) < 40)
+ 							u->attack(attackEnemy, false);
+ 					}
+ 				}

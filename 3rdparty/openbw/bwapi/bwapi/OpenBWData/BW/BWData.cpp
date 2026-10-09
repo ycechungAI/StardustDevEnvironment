@@ -180,6 +180,8 @@ struct ui_wrapper {
   // Keys pressed in the window, collected on the UI thread and taken by the game thread
   std::mutex keys_mut;
   std::vector<int> keys;
+  // How often the window is drawn; the game waits while it is (OPENBW_UI_DRAW_MS, 40 by default)
+  std::chrono::milliseconds draw_interval{40};
   bwgame::game_player get_player(bwgame::state& st) {
     bwgame::game_player player;
     player.set_st(st);
@@ -205,6 +207,7 @@ struct ui_wrapper {
 
       size_t screen_width = 800;
       size_t screen_height = 600;
+      place_window(ui, screen_width, screen_height);
 
       ui.resize(screen_width, screen_height);
       ui.screen_pos = {(int)ui.game_st.map_width / 2 - (int)screen_width / 2, (int)ui.game_st.map_height / 2 - (int)screen_height / 2};
@@ -219,8 +222,18 @@ struct ui_wrapper {
         this->on_draw(data, data_pitch);
       };
 
+      // The picture is drawn while the game waits, then copied to the screen after letting it go on:
+      // the copy reads no game state (OPENBW_UI_DEFER=0 shows it with the game waiting, as before, to compare).
+      // OPENBW_UI_TIMING=1 prints how long each part takes.
+      ui.defer_present = !(std::getenv("OPENBW_UI_DEFER") && std::string(std::getenv("OPENBW_UI_DEFER")) == "0");
+      bool timing = std::getenv("OPENBW_UI_TIMING") && std::atoi(std::getenv("OPENBW_UI_TIMING")) > 0;
+      int draws = 0;
+      double locked_ms = 0;
+      double present_ms = 0;
+      auto timing_start = clock.now();
+
       while (!exit_thread) {
-        cv.wait_for(l, std::chrono::milliseconds(42), [&]{
+        cv.wait_for(l, draw_interval + std::chrono::milliseconds(2), [&]{
           return run_update || exit_thread;
         });
         run_update = false;
@@ -228,9 +241,64 @@ struct ui_wrapper {
         last_update = clock.now();
         ui.update();
         window_closed = ui.window_closed;
+
+        auto drawn = clock.now();
+        l.unlock();
+        ui.present();
+        auto presented = clock.now();
+        l.lock();
+
+        if (timing) {
+          ++draws;
+          locked_ms += std::chrono::duration<double, std::milli>(drawn - last_update).count();
+          present_ms += std::chrono::duration<double, std::milli>(presented - drawn).count();
+          if (presented - timing_start >= std::chrono::seconds(10) || exit_thread) {
+            std::fprintf(stderr, "OpenBW window: %d draws, %.2f ms with the game waiting, %.2f ms showing it\n",
+                         draws, locked_ms / draws, present_ms / draws);
+            draws = 0;
+            locked_ms = present_ms = 0;
+            timing_start = presented;
+          }
+        }
       }
     });
 
+  }
+
+  // Window settings from the environment, so a script can lay several games out on the screen:
+  //   OPENBW_UI_DRAW_MS=<ms>       how often to draw (40 by default)
+  //   OPENBW_WINDOW_SIZE=640x480   the window's size (800x600 by default)
+  //   OPENBW_WINDOW_GRID=i,c,r     window i (from 0) of a grid c columns wide and r rows high, packed into the
+  //                                top left of the screen; the window shrinks (keeping its shape) to fit its cell
+  //   OPENBW_WINDOW_TITLE=<title>
+  void place_window(ui_functions& ui, size_t& width, size_t& height) {
+    if (auto ms = std::getenv("OPENBW_UI_DRAW_MS"); ms && std::atoi(ms) > 0) {
+      draw_interval = std::chrono::milliseconds(std::atoi(ms));
+    }
+    if (auto title = std::getenv("OPENBW_WINDOW_TITLE"); title && *title) ui.window_title = title;
+    if (auto size = std::getenv("OPENBW_WINDOW_SIZE"); size && *size) {
+      int w = 0, h = 0;
+      if (std::sscanf(size, "%dx%d", &w, &h) == 2 && w >= 160 && h >= 120) {
+        width = w;
+        height = h;
+      }
+    }
+    auto grid = std::getenv("OPENBW_WINDOW_GRID");
+    int index = 0, columns = 0, rows = 0;
+    if (!grid || std::sscanf(grid, "%d,%d,%d", &index, &columns, &rows) != 3) return;
+    if (columns < 1 || rows < 1 || index < 0 || index >= columns * rows) return;
+    int left, top, usable_width, usable_height;
+    if (!native_window::get_usable_bounds(&left, &top, &usable_width, &usable_height)) return;
+
+    const int title_bar = 28;  // the macOS title bar, above the window's content
+    double scale = std::min({1.0, (double)(usable_width / columns) / width,
+                             (double)(usable_height / rows - title_bar) / height});
+    if (scale < 1.0) {
+      width = std::max(160, (int)(width * scale)) & ~1;
+      height = std::max(120, (int)(height * scale)) & ~1;
+    }
+    ui.window_x = left + (index % columns) * (int)width;
+    ui.window_y = top + (index / columns) * ((int)height + title_bar) + title_bar;
   }
   ~ui_wrapper() {
     exit_thread = true;
@@ -239,7 +307,7 @@ struct ui_wrapper {
   }
   void update() {
     auto now = clock.now();
-    if (now - last_update < std::chrono::milliseconds(40)) return;
+    if (now - last_update < draw_interval) return;
     run_update = true;
     cv.notify_all();
   }

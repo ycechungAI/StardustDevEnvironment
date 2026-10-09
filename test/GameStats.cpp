@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <unistd.h>
 
 namespace
 {
@@ -254,4 +255,101 @@ void AppendResult(const PlayerStats &me, const PlayerStats &opponent, const std:
         std::fwrite(text.data(), 1, text.size(), file);
         std::fclose(file);
     }
+}
+
+LiveStats::LiveStats(int game, const std::string &mapName, int seed, int frameLimit)
+        : game(game), mapName(mapName), seed(seed), frameLimit(frameLimit), started(std::chrono::steady_clock::now())
+{
+    auto file = std::getenv("STARDUST_LIVE_FILE");
+    if (!file || !*file) path = "live.json";
+    else if (std::string(file) != "0") path = file;
+}
+
+void LiveStats::update(BW::Game game, int frame, const PlayerStats &me, const PlayerStats &opponent)
+{
+    if (path.empty()) return;
+    auto now = std::chrono::steady_clock::now();
+    if (now - lastWrite < std::chrono::milliseconds(500)) return;
+    lastWrite = now;
+
+    auto player = [&](const PlayerStats &stats, const char *characterName)
+    {
+        nlohmann::json out = {
+                {"name",             stats.name},
+                {"race",             stats.race.getName()},
+                {"minerals",         stats.minerals},
+                {"gas",              stats.gas},
+                {"supplyUsed",       stats.supplyUsed},
+                {"supplyMax",        stats.supplyMax},
+                {"workers",          stats.workers},
+                {"armySupply",       stats.armySupply},
+                {"mineralsGathered", stats.mineralsGathered},
+                {"gasGathered",      stats.gasGathered},
+                {"unitsKilled",      stats.unitsKilled},
+                {"unitsLost",        stats.unitsLost},
+                {"buildingsLost",    stats.buildingsLost},
+        };
+        // Every unit type the player has (made or in production), and the totals of units and buildings
+        int units = 0;
+        int buildings = 0;
+        nlohmann::json types = nlohmann::json::object();
+        for (int owner = 0; owner < 12; owner++)
+        {
+            auto bwPlayer = game.getPlayer(owner);
+            if (characterName != std::string(bwPlayer.szName())) continue;
+            for (auto type : BWAPI::UnitTypes::allUnitTypes())
+            {
+                if (type.getID() >= 228) continue;
+                int count = bwPlayer.unitCountsAll(type.getID());
+                if (count <= 0) continue;
+                types[type.getName()] = count;
+                (type.isBuilding() ? buildings : units) += count;
+            }
+            break;
+        }
+        out["units"] = units;
+        out["buildings"] = buildings;
+        out["unitTypes"] = types;
+        return out;
+    };
+
+    nlohmann::json doc = {
+            {"pid",         (int) getpid()},
+            {"game",        this->game},
+            {"map",         mapName},
+            {"seed",        seed},
+            {"frameLimit",  frameLimit},
+            {"window",      std::get<0>(game.GameScreenBuffer()) > 0},
+            {"players",     {player(me, "Tests"), player(opponent, "Opponent")}},
+    };
+    document = doc.dump();
+    document.pop_back();  // the closing brace
+    current = frame;
+    write();
+}
+
+void LiveStats::finish(int frame, const std::string &result)
+{
+    if (path.empty() || document.empty()) return;
+    current = frame;
+    this->result = result;
+    write();
+}
+
+void LiveStats::write()
+{
+    auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    std::ostringstream text;
+    text << document << ",\"frame\":" << current << ",\"wallSeconds\":" << std::fixed << std::setprecision(1)
+         << seconds << ",\"state\":\"" << (result.empty() ? "playing" : "over") << "\",\"result\":\"" << result
+         << "\",\"updated\":" << std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::system_clock::now().time_since_epoch()).count() << "}\n";
+    auto temporary = path + ".tmp";
+    {
+        std::ofstream file(temporary, std::ios::trunc);
+        if (!file.good()) return;
+        file << text.str();
+    }
+    std::error_code error;
+    std::filesystem::rename(temporary, path, error);
 }

@@ -92,5 +92,27 @@ In the user's words, lightly condensed:
 44. If minerals go above 400, build another gateway, a stargate or a robotics facility, to produce more units.
 45. Which of the three to build depends on our army composition and the enemy's.
 46. The standard four gateways, then more gateways in the middle game, is a workable plan.
+47. Commit only part of the way to a strategy: each one has trade-offs. One or two high templar for storm is enough; five is too many. Two: one for defence, one for offence. They are slow, so losing one hurts: keep them from being sniped, because they are valuable and can turn a battle.
+48. Defence is a 50/50 call, so how far to go with it is a matter of degree too.
+49. Against Zerg, corsairs are good for sniping overlords to limit the enemy's supply, in any situation.
+50. Against Terran, our units are far superior except to siege tanks and battlecruisers: keep the pressure up. Unless it is massing marines, producing a lot of units and attacking wins; once it builds tanks or battlecruisers, be more careful.
+51. More defence early against Zerg, and against Terran, defence against drops.
+52. The reaver plan can go further: a shuttle dropping two reavers to harass and kill workers. Less money for the opponent means it builds fewer units.
+53. If a base and its workers go down, rebuild the right number of workers to keep production going: expanding and making probes both matter.
+54. Storm works well on Zerg ground units too, because Zerg mass-produces them.
+55. Find replays of the world's top three Protoss players and copy their style: what they do right against each race.
+    What Claude found in 43 tl.net replays of Bisu, Best and Stork (about 30 read cleanly in OpenBW):
+    - PvT: 1-gate core, dragoon range at once, natural at 4-5 minutes behind 2-4 dragoons (or nexus first), robotics
+      and an observer; only 1-2 gateways until 6-8 minutes; probes never stop (21-25 at 5:00, 40-55 at 10:00); the army
+      is mostly dragoons and a citadel before 7:00 is rare.
+    - PvZ: forge expand (forge 1:40, cannon 2:20, nexus 2:10-2:45, gateway 3:00, core 3:45), stargate and corsairs about
+      4:30, citadel and zealot speed about 4:50, templar archives about 7:00, 2-5 high templar and 4 gateways by 8-10
+      minutes, 40-50 probes.
+    - PvP (one clean game): 1-gate core, zealot then dragoons, natural at 4:30 behind 3 dragoons.
+56. A shuttle can also drop a high templar on a saturated mineral line to storm the workers. Pick it back up after the storm and get out, unless it has energy for a second storm, and the enemy will be more alert after the first.
+57. Against a Protoss that puts cannons at its second base, drop gateway units into its main from two shuttles while its army is away: a decent chance of winning.
+58. Two high templar if the enemy is all in on ground units; otherwise spend the gas on something else.
+59. Against an opponent with no detection, hide the templar archives and make dark templar instead of high templar: either a stealth attack on its workers, or mixed in with the ground army for its damage if there is enough gas.
+60. Build what counters mech and heavily armoured units like ultralisks (the user asked for immortals, which are StarCraft 2 only; in Brood War, dragoons and reavers).
 
 The user also chose to carry LunaOpus55's new ideas (from ChatGPT's plan in `prompts/LunaOpus55-reply.md`) over to ClaudeOpus55 once LunaOpus55 was dropped: dragoon focus fire, and reavers against siege tanks and static defence. Its third idea, dragoons kiting melee units, was already in ClaudeOpus55.

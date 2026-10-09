@@ -241,6 +241,16 @@ namespace
         backtrace_symbols_fd(array, size, STDERR_FILENO);
     }
 
+    // Moves a file or folder, copying it when a rename can't (replays/ may be a link to another disk)
+    void moveAcrossDisks(const std::string &from, const std::string &to)
+    {
+        std::error_code error;
+        std::filesystem::rename(from, to, error);
+        if (!error) return;
+        std::filesystem::copy(from, to, std::filesystem::copy_options::recursive);
+        std::filesystem::remove_all(from);
+    }
+
     void moveFileToReadIfExists(const std::string &filename)
     {
         if (!std::filesystem::exists(filename)) return;
@@ -629,6 +639,9 @@ void BWTest::runGame(bool opponent)
                                           });
     }
 
+    // The numbers tools/live_stats.py shows while the game runs
+    LiveStats live(gameNumber.load(), map->shortname(), randomSeed, frameLimit);
+
     // In the game window: [s] toggles the stats screen, [r] saves the replay so far
     bool showStats = true;
     auto ratings = ReadRatings();
@@ -660,6 +673,7 @@ void BWTest::runGame(bool opponent)
         {
             lastMyStats = PlayerStats::read(game, "Tests", myName, losses);
             lastOpponentStats = PlayerStats::read(game, "Opponent", opponentDisplayName, losses);
+            if (lastMyStats && lastOpponentStats) live.update(game, h->getFrameCount(), *lastMyStats, *lastOpponentStats);
 
             // STARDUST_OBSERVE=<frames> prints both players' unit counts at that interval, like watching the replay
             static int observeInterval = std::getenv("STARDUST_OBSERVE") ? std::atoi(std::getenv("STARDUST_OBSERVE")) : 0;
@@ -762,7 +776,9 @@ void BWTest::runGame(bool opponent)
         std::lock_guard<std::mutex> lock(historyMutex);
         saveReplaySoFar = nullptr;
     }
-    std::cout << "Game over " << (opponent ? "(opponent) " : "") << "after " << h->getFrameCount() << " frames" << std::endl;
+    // Read now: once the game has ended, the frame count goes back to 0
+    int framesPlayed = h->getFrameCount();
+    std::cout << "Game over " << (opponent ? "(opponent) " : "") << "after " << framesPlayed << " frames" << std::endl;
     if (!opponent) gameOwner.getGame().setOnKillUnit(nullptr);
 
     h->update();
@@ -827,10 +843,11 @@ void BWTest::runGame(bool opponent)
             if (!opponentName.empty() && !(noResults && *noResults && std::string(noResults) != "0"))
             {
                 std::string result = gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST");
-                AppendResult(*me, *them, result, h->getFrameCount(), map->shortname(), randomSeed,
+                AppendResult(*me, *them, result, framesPlayed, map->shortname(), randomSeed,
                              gameId.str() + ".rep");
             }
         }
+        live.finish(framesPlayed, gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST"));
 
         // If enabled, write the replay file
         // Otherwise remove the cvis directory
@@ -840,13 +857,14 @@ void BWTest::runGame(bool opponent)
             replayFilename << "replays/" << gameId.str() << ".rep";
             std::filesystem::create_directories("replays");
             BWAPI::BroodwarImpl.bwgame.saveReplay(replayFilename.str());
+            std::cout << "REPLAY " << gameId.str() << ".rep" << std::endl;  // tools/run_games.py reads this
 
             // Move the cvis directory
             if (std::filesystem::exists("bwapi-data/write/cvis"))
             {
                 std::ostringstream cvisFilename;
                 cvisFilename << "replays/" << gameId.str() << ".rep.cvis";
-                std::filesystem::rename("bwapi-data/write/cvis", cvisFilename.str());
+                moveAcrossDisks("bwapi-data/write/cvis", cvisFilename.str());
             }
 
             // Move log files
@@ -858,7 +876,7 @@ void BWTest::runGame(bool opponent)
 
                 std::ostringstream newLogFilename;
                 newLogFilename << logDirectory.str() << "/" << Log::LogFileName().substr(Log::LogFileName().rfind('/') + 1);
-                std::filesystem::rename(Log::LogFileName(), newLogFilename.str());
+                moveAcrossDisks(Log::LogFileName(), newLogFilename.str());
             }
         }
         else

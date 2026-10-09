@@ -604,6 +604,14 @@ struct ui_functions: ui_util_functions {
 	bool exit_on_close = true;
 	bool window_closed = false;
 
+	// Added for the Stardust test harness: the window's title and position, and whether update() leaves the copy to
+	// the window for present(), so the caller can draw while it holds the game's lock and show it after letting go
+	a_string window_title = "OpenBW";
+	int window_x = 0;
+	int window_y = 0;
+	bool defer_present = false;
+	bool present_pending = false;
+
 	xy screen_pos;
     uint32_t vision = 0;
 
@@ -1989,7 +1997,7 @@ struct ui_functions: ui_util_functions {
 	size_t scroll_speed_n = 0;
 
 	void resize(int width, int height) {
-		if (!wnd && create_window) wnd.create("OpenBW", 0, 0, width, height);
+		if (!wnd && create_window) wnd.create(window_title.c_str(), window_x, window_y, width, height);
 		screen_width = width;
 		screen_height = height;
 		//view_scale = fp16::integer(1) - (fp16::integer(1) / 4);
@@ -2330,6 +2338,19 @@ struct ui_functions: ui_util_functions {
 		rgba_surface->unlock();
 
 		if (wnd) {
+			if (defer_present) present_pending = true;
+			else {
+				rgba_surface->blit(&*window_surface, 0, 0);
+				wnd.update_surface();
+			}
+		}
+	}
+
+	// Shows the picture the last update() drew, when defer_present is set. It reads no game state.
+	void present() {
+		if (!present_pending) return;
+		present_pending = false;
+		if (wnd && rgba_surface && window_surface) {
 			rgba_surface->blit(&*window_surface, 0, 0);
 			wnd.update_surface();
 		}

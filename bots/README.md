@@ -88,7 +88,7 @@ A new bot learns little from losing every game to Stardust, so the opponents for
 
 ## Playing as another bot
 
-`--bot` plays any of these bots in Stardust's place, with the game window too (`--build build-ui`):
+`--bot` plays any of these bots in Stardust's place. The games get windows, like any other `run_games.py` run (`--ui none` for headless):
 
 ```bash
 .venv/bin/python tools/run_games.py --bot Stardust2025 --opponent BananaBrain --games 10

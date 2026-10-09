@@ -2,7 +2,27 @@
 
 A StarCraft: Brood War bot written in Python, built on [StardustDevEnvironment](https://github.com/bmnielsen/StardustDevEnvironment), the development environment of the [Stardust](https://github.com/bmnielsen/Stardust) bot.
 
-The bot itself is Python (`python/stardust/`). A small C++ host embeds CPython in a BWAPI AI module and exposes the complete BWAPI API to it. Everything else from the dev environment is unchanged:
+## Changes made by Ycechung
+
+This fork ([ycechungAI](https://github.com/ycechungAI)) adds the following to Bruce Nielsen's dev environment (October 2026):
+
+- **A Python port of Stardust.** BWAPI bindings for Python (pybind11), generated from the BWAPI headers with a type stub for editors and mypy. A C++ host embeds CPython in the bot, and Stardust's logic is ported to `python/stardust/`. pytest and mypy check it without StarCraft.
+- **Game windows.** OpenBW shows each game in a window with a toolbar (army supply, minerals, gas). Keys save the replay so far, pause the game, change its speed or show a stats screen with both players' Elo.
+- **Many games at once.** `tools/run_games.py` plays 4 games at once by default (up to 6 with `--ui 6`), each in its own 640x480 window, tiled on the screen. `--ui none` plays them headless instead. When memory runs short, fewer games play at once. A moving progress line in the terminal shows the elapsed and remaining time. Window drawing was reworked so that a window holds up its game for less time.
+- **Live stats.** `tools/live_stats.py` is a window of its own with a tab for each game being played, plus one tab with all of them. It shows minerals, gas, supply, workers and army, live, with charts. It works for both headless and window games.
+- **Opponent bots.** `bots/` holds about twenty bots to play against: recent AIIDE tournament bots, Tier 2 bots that each play one unusual strategy, and stand-ins for the computer players. Some are recipes that `tools/fetch_bot.py` downloads and patches. `--bot` plays as any of them. See [bots/README.md](bots/README.md).
+- **Results, Elo and replays.**
+  - Every game goes into `results.csv` with resources mined and units killed and lost, and `tools/elo.py` rates the bots from it.
+  - `tools/ladder.py` plays a bot up the ladder of opponents.
+  - `tools/replays.py` summarises a replay (fights, build orders, problems), plays it in a window and keeps viewers' comments.
+- **AI-written bots.** `ClaudeOpus55` is a Protoss bot whose strategy and code are by Claude Opus 5.5, under rules adapted from the StarSkirmish benchmark. It beats 5 of the 7 Tier 2 bots. The prompts and every piece of human advice given are listed in [bots/genai/README.md](bots/genai/README.md). The `claudeopus55-rl` branch trains it further with headless self-play (`tools/selfplay.py`).
+- **A sturdier harness.**
+  - A hang watchdog records why a game got stuck, then ends the game.
+  - Exits are crash-safe, and a fix tears down the sync server cleanly.
+  - New settings: a fixed seed for replaying a game (`STARDUST_TEST_SEED`), a unit-count printout (`STARDUST_OBSERVE`), and a way to keep practice games out of the ratings (`STARDUST_NO_RESULTS`).
+  - Build fixes for Linux and for current macOS toolchains.
+
+The bot itself is Python (`python/stardust/`). A small C++ host embeds CPython in a BWAPI AI module and exposes the complete BWAPI API to it. It keeps the rest of the dev environment:
 
 - [OpenBW](http://www.openbw.com/) as the game engine.
 - [Steamhammer](http://satirist.org/ai/starcraft/steamhammer/) and [Locutus](https://github.com/bmnielsen/Locutus) as test opponents.
@@ -54,11 +74,57 @@ The test harness, maps and opponents are described in `test/`: `Steamhammer.cpp`
 
 To play other bots, put them in `bots/` (see [bots/README.md](bots/README.md)) and run `.venv/bin/python tools/run_games.py --opponent <bot>`. Steamhammer, Locutus, Iron, McRave, the `WorkerRush` example and five recent tournament bots, among them the original C++ Stardust (`Stardust2025`), are available out of the box. `--bot <name>` plays as one of them instead of the Python port.
 
-`tools/run_games.py` runs the same tests with a time estimate up front and a progress line (elapsed time, frame, time left) every 30 seconds:
+### Several games at once
+
+`tools/run_games.py` runs the same tests, several at a time, each game in its own window by default:
 
 ```bash
 .venv/bin/python tools/run_games.py Steamhammer.4PoolHard
 ```
+
+```bash
+.venv/bin/python tools/run_games.py --opponent Stone --games 12
+```
+
+- **`--ui N`** plays up to N games at once (1 to 6; 4 by default, as 6 at once slows a 10-core Mac), each in its own 640x480 window. The windows tile from the top left of the screen:
+  - 6 games: 3 columns by 2 rows.
+  - 4 games: 2 by 2.
+  - 2 games: side by side.
+
+  On a screen too small for the grid (1920x1080, say), the windows shrink and keep their shape. `--window-size` changes the size. The windows come from the window build, `build-ui` (see "Watching a game"). Without that build, games play headless and a note says so.
+- **`--ui none`** plays the games headless, from `build`. `--parallel N` sets how many play at once (4 by default, up to 6). Self-play training (`tools/selfplay.py`, on the `claudeopus55-rl` branch) plays many games at once, so it always runs headless.
+- **Memory.** Fewer games play at once when memory runs short: 6, then 4, 2 or 1. The check runs before starting and every 2 seconds during play. It steps down when less than 2 GB is free, or when the games use more than three quarters of the machine's memory. The newest games are then stopped and played again later. A game that uses over 4 GB has a leaking bot, so it is stopped and not played again.
+- **Folders.** Each game is its own test process, so each gets its own random map and seed (unless `STARDUST_TEST_MAP` or `STARDUST_TEST_SEED` is set). The process runs in `<build>/test/parallel/<slot>/` with its own `bwapi-data/write` and writes its output to `run_games.log` there. The maps, data files and replays folder are shared.
+
+While games play, the bottom line of the terminal shows:
+- a spinner, a progress bar and moving dots;
+- the time elapsed and the time left;
+- how many games are playing, and each one's game time.
+
+A `PROGRESS` line is printed every 30 seconds as well (`--interval`), for output that isn't a terminal. For each finished game, the script prints:
+- a `GAME` line with the result and the replay's name;
+- its `STATS` line;
+- its rating changes.
+
+At the end it prints the tally (`DONE`), any failed tests or Python errors, and the Elo leaderboard. Ctrl-C stops every game.
+
+### Live stats
+
+`tools/live_stats.py` shows the games as they play, in one window of its own (a pywebview window, from the dev dependencies; the web browser if pywebview isn't installed). There is a tab for each game and one tab with all of them. Each shows both players' minerals, gas, supply, workers, army, units and buildings, with charts over game time. It works the same for headless and window games.
+
+`tools/run_games.py` starts the page and prints its address (`LIVE stats at http://localhost:...`). The window opens by itself when the games have windows, or with `--live`, and stays open after the run with how the games ended. There is only one: the next run shows its games in the window already open. `--no-live` turns it off. The address also works in a web browser. It uses port 8765, or the next free port after it.
+
+About twice a second, each game's harness writes its numbers to `live.json` in its working folder. On its own, the viewer watches any folders, by default every `live.json` under `build*/test`:
+
+```bash
+.venv/bin/python tools/live_stats.py
+```
+
+```bash
+.venv/bin/python tools/live_stats.py build/test/parallel --open
+```
+
+### Settings
 
 Test harness options, as environment variables:
 
@@ -71,6 +137,9 @@ Test harness options, as environment variables:
 | `STARDUST_PROFILE_STARTUP` | write a cProfile of the bot's `onStart` to this file |
 | `STARDUST_PROFILE_FRAMES` | write a cProfile of all `onFrame` calls to this file (every 1000 frames and at the end) |
 | `STARDUST_LOG_GC` | log Python garbage collections taking at least this many milliseconds to the bot log |
+| `STARDUST_HANG_SECONDS` | end a game whose frame hasn't moved for this many seconds. The cause is written to `replays/unfinished/`. `tools/run_games.py` sets 120 |
+| `STARDUST_NO_RESULTS` | `1` keeps games out of `results.csv`, and so out of the Elo ratings (for practice and timing runs) |
+| `STARDUST_LIVE_FILE` | where the game writes its live stats (`live.json` by default); `0` turns them off |
 | `OPENBW_GAME_SPEED` | milliseconds per frame in the game window (42 is StarCraft's "fastest"); by default it runs as fast as the bot allows |
 
 `kill -USR1 <pid>` on a running `tests` process prints the bot's Python stack.
@@ -87,7 +156,25 @@ cmake -S . -B build-ui -DCMAKE_BUILD_TYPE=Release -DOPENBW_ENABLE_UI=ON
 cmake --build build-ui -j
 ```
 
-Put the MPQ files in `build-ui/test/` as well, then run games from there (or with `tools/run_games.py ... --build build-ui`). Only our bot's game gets a window, not the opponent's. Drawing the window slows the game a little.
+Put the MPQ files in `build-ui/test/` as well. `tools/run_games.py` plays from `build-ui` when it exists, with up to 6 windows tiled on the screen (see "Several games at once"); you can also run `./tests` from `build-ui/test` yourself. Only our bot's game gets a window, not the opponent's.
+
+The window is drawn every 40 ms. The game waits only while the picture is drawn, not while it's put on the screen. Drawing still slows the game a little. Window settings, as environment variables (`tools/run_games.py` sets the size, grid and title):
+
+| Variable | |
+|---|---|
+| `OPENBW_WINDOW_SIZE` | the window's size, e.g. `640x480` (800x600 by default) |
+| `OPENBW_WINDOW_GRID` | `i,columns,rows`: put the window in cell `i` (from 0) of a grid packed into the top left of the screen. The window shrinks to fit its cell |
+| `OPENBW_WINDOW_TITLE` | the window's title |
+| `OPENBW_UI_DRAW_MS` | milliseconds between draws (40 by default) |
+| `OPENBW_UI_TIMING` | `1` prints, every 10 seconds, how long drawing held up the game and how long showing it took |
+| `OPENBW_UI_DEFER` | `0` shows the picture while the game waits, as before, for comparison |
+| `OPENBW_ENABLE_UI` | `0` plays headless from a window build |
+
+`tools/bench_ui.py` measures what the windows cost. It plays the same 10000-frame game (fixed map and seed, kept out of the results) 6 at a time in windows, 6 at a time headless, and 1 at a time in a window, then prints the frames per second of each. Run it with nothing else busy. On a 10-core M-series Mac, 6 windows played about 15% slower than 6 headless games, and 3.5 times as fast as one window at a time:
+
+```bash
+.venv/bin/python tools/bench_ui.py
+```
 
 A toolbar along the top of the window shows each player's army supply (with the most it has had this game), minerals and gas.
 
@@ -215,3 +302,9 @@ Upstream applied these modifications to OpenBW to integrate it into the environm
 
 - The BWAPI 4.4 latcom changes have been applied to OpenBW's BWAPI fork.
 - The CherryVis OpenBW patch has been applied to support unit creation by triggers.
+
+This fork changes OpenBW's window (`3rdparty/openbw/openbw/ui/` and `OpenBWData/BW/BWData.cpp`):
+
+- A toolbar, the stats screen (`s`) and the save-replay key (`r`).
+- The window's size, place on the screen, title and drawing rate come from environment variables (see "Watching a game"). That lets `tools/run_games.py` tile several games.
+- The picture is drawn while the game waits, then put on the screen after the game has moved on. Before, the game waited for both.

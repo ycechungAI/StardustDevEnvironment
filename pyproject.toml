@@ -15,6 +15,7 @@ dev = [
     "pytest>=8",
     "mypy>=1.10",
     "libclang>=18",  # only needed to regenerate the bindings (tools/gen_bwapi_bindings.py)
+    "pywebview>=5",  # the live stats window (tools/live_stats.py)
 ]
 
 [tool.uv]
