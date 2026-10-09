@@ -58,7 +58,7 @@ Everything is saved as it happens, in `training/`:
 - `selfplay.log`: the run's log.
 - `issues.log` and `issues/`: the bug-finding log (above).
 
-**Memory.** Every 2 seconds the trainer adds up the memory its games use (each game is the harness plus the opponent it starts). Over the limit, three quarters of the computer's RAM by default (12 GB on a 16 GB Mac), it stops the newest games, plays them again later and steps down from 6 games at once to 4, then 2, then 1 for the rest of the run. A single game over 4 GB is a bot leaking memory: it is stopped and reported in `issues.log`. Closing the terminal or Ctrl+C stops every game.
+**Memory.** Every 2 seconds the trainer adds up the memory its games use (each game is the harness plus the opponent it starts). Over the limit, 6 GB by default (or three quarters of the RAM if that is less), so the computer stays usable, it stops the newest games, plays them again later and steps down from 6 games at once to 4, then 2, then 1 for the rest of the run. A single game over 4 GB is a bot leaking memory: it is stopped and reported in `issues.log`. Closing the terminal or Ctrl+C stops every game.
 
 **Bug finding.** Training finds games that go wrong, stops them, logs them and carries on:
 - **Crash:** the game exits with an error.
@@ -81,7 +81,7 @@ Useful options:
 - `--gauntlet-games`: games at least against each training bot (default 2).
 - `--test-games`: games against ZZZKBot (default 4).
 - `--parallel`: games at once (default 6).
-- `--memory-limit-gb`: the most memory the games may use together (default: three quarters of the RAM).
+- `--memory-limit-gb`: the most memory the games may use together (default 6 GB, or three quarters of the RAM if less).
 - `--hours`: stop after this long.
 - `--seed`: random seed for the candidates.
 

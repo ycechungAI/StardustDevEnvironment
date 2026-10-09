@@ -408,6 +408,7 @@ STALL_SECONDS = 120  # a game whose processes use no CPU for this long is stuck 
 SKIP_AFTER = 3  # a pairing that fails this many times in a row is skipped for the rest of the run
 ERROR_MARKERS = ("Segmentation fault", "Assertion failed", "assertion failed", "terminate called", "Abort trap",
                  "Traceback (most recent call last)", "Unhandled exception", "AddressSanitizer", "std::bad_alloc")
+DEFAULT_MEMORY_LIMIT = 6e9  # leaves the rest of the computer usable, even on an 8 GB machine
 GAME_MEMORY_LIMIT = 4e9  # a single game using more than this is a bot leaking memory: it is stopped and reported
 
 
@@ -536,7 +537,7 @@ def step_down(cap: int) -> int:
 
 def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
-                memory_limit: float = 12e9,
+                memory_limit: float = DEFAULT_MEMORY_LIMIT,
                 usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
@@ -805,7 +806,7 @@ def main() -> int:
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
     parser.add_argument("--memory-limit-gb", type=float, default=None,
                         help="the most memory the games may use together before stepping down to 4, 2, then 1 "
-                             "game at once (default: three quarters of this computer's RAM)")
+                             "game at once (default: 6 GB, or three quarters of the RAM if that is less)")
     parser.add_argument("--build", default="build", help="headless build directory (default: build)")
     parser.add_argument("--approver", help="command that approves a promotion (exit 0), given the report's path")
     parser.add_argument("--auto-approve", action="store_true", help="promote every candidate that passes the gate")
@@ -869,7 +870,8 @@ def main() -> int:
     # Games run in their own process groups, so closing the terminal doesn't reach them: stop them on the way out
     for hangup in (signal.SIGHUP, signal.SIGTERM):
         signal.signal(hangup, lambda number, frame: sys.exit(1))
-    memory_limit = args.memory_limit_gb * 1e9 if args.memory_limit_gb else 0.75 * physical_memory()
+    memory_limit = (args.memory_limit_gb * 1e9 if args.memory_limit_gb
+                    else min(DEFAULT_MEMORY_LIMIT, 0.75 * physical_memory()))
     log(f"Memory: the games may use {memory_limit / 1e9:.1f} GB together, {GAME_MEMORY_LIMIT / 1e9:g} GB each")
     runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit)
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
