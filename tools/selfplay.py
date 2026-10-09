@@ -223,6 +223,32 @@ Job = tuple[str, str, str]
 Lost = Callable[[dict[tuple[str, str], list[str]], list[Job]], bool]
 
 
+def hours_minutes(seconds: float) -> str:
+    hours, minutes = divmod(int(seconds) // 60, 60)
+    return f"{hours} h {minutes:02d} m"
+
+
+def time_trained(bot: str) -> float:
+    """Seconds spent training `bot`, over every run and tier, read from the selfplay.log files: each run goes from its
+    START line to the last line it logged."""
+    total = 0.0
+    for log_file in (ROOT / "bots" / bot).glob("training*/selfplay.log"):
+        run_start = last = None
+        for line in log_file.read_text(errors="replace").splitlines():
+            try:
+                when = time.mktime(time.strptime(line[:19], "%Y-%m-%d %H:%M:%S"))
+            except ValueError:
+                continue
+            if " START self-play" in line:
+                if run_start is not None and last is not None:
+                    total += last - run_start
+                run_start = when
+            last = when
+        if run_start is not None and last is not None:
+            total += last - run_start
+    return total
+
+
 class Runner(Protocol):
     def __call__(self, jobs: list[Job], fill: Callable[[], Job] | None,
                  lost: Lost | None = None) -> dict[tuple[str, str], list[str]]: ...
@@ -1003,6 +1029,7 @@ def train(args: argparse.Namespace, parser: argparse.ArgumentParser, tier: str, 
         print(f"{BEST} against {tier}: generation {state.generation}, Elo {state.elo:+.0f} over its start, "
               f"{state.candidates_tried} candidate(s) tried, step scale {state.scale:.2f}, goal "
               f"{'reached' if state.goal_reached else 'not yet'}")
+        print(f"Time trained, every run: {hours_minutes(time_trained(args.bot))}")
         print(f"Training bots: {', '.join(TRAINING)}; held out to test: {TEST}; dropped: {DROPPED}")
         if state.best_gauntlet:
             print(f"Best against the {len(TRAINING)} training bots: {gauntlet_score(state.best_gauntlet):.0%}: "
@@ -1032,7 +1059,9 @@ def train(args: argparse.Namespace, parser: argparse.ArgumentParser, tier: str, 
     parallel = max(2, args.parallel)
     waves = (math.ceil(args.games / parallel) + math.ceil(len(TRAINING) * args.gauntlet_games / parallel)
              + math.ceil(args.test_games / parallel))
-    log(f"START self-play training of {BEST} against {tier}: generation {state.generation}, Elo {state.elo:+.0f}. "
+    trained_before = time_trained(args.bot)
+    log(f"START self-play training of {BEST} against {tier}: generation {state.generation}, Elo {state.elo:+.0f}, "
+        f"trained {hours_minutes(trained_before)} before this run. "
         f"Training bots: {', '.join(TRAINING)}; test: {TEST}. Each candidate: {args.games} self-play games "
         f"{parallel} at a time, then, if it passed, {len(TRAINING) * args.gauntlet_games} against the training bots, "
         f"then, if it did as well as the best, {args.test_games} against {TEST}: at most roughly "
@@ -1065,10 +1094,14 @@ def train(args: argparse.Namespace, parser: argparse.ArgumentParser, tier: str, 
                     f"(Elo {trainer.state.elo:+.0f}): the best beat the {len(TRAINING)} training bots in every game "
                     f"twice in a row, and the held-out {TEST} in every test game.")
                 return "goal"
-            log(f"Elapsed {(time.time() - start) / 3600:.1f} h; generation {trainer.state.generation}, "
+            elapsed = time.time() - start
+            log(f"Elapsed {hours_minutes(elapsed)} this run, {hours_minutes(trained_before + elapsed)} in all; "
+                f"generation {trainer.state.generation}, "
                 f"Elo {trainer.state.elo:+.0f}, {tier} {gauntlet_score(trainer.state.best_gauntlet or {}):.0%}")
     except KeyboardInterrupt:
-        log("Stopped; re-run to resume.")
+        elapsed = time.time() - start
+        log(f"Stopped after {hours_minutes(elapsed)} this run, {hours_minutes(trained_before + elapsed)} in all; "
+            "re-run to resume.")
         return "130"
     log(f"Time is up after {hours:.1f} h at generation {trainer.state.generation}; re-run to continue.")
     return "done"
