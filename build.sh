@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Sets up and builds the project: Python dependencies, the opponent bots that are only recipes, then the test harness.
 #
-# Usage: ./build.sh            (JOBS=8 ./build.sh to build with 8 jobs instead of 4)
+# Usage: ./build.sh            (JOBS=8 ./build.sh to build with 8 jobs; BUILD_MEMORY_GB=16 ./build.sh for a 16 GB limit)
 #
 # Safe to re-run: bots already in bots/ are left alone, and CMake only rebuilds what changed.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-JOBS="${JOBS:-4}"
 
 step() { printf '\n==> %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing $1: $2" >&2; exit 1; }; }
@@ -38,9 +37,11 @@ else
 fi
 
 step "Configuring (cmake -S . -B build -DCMAKE_BUILD_TYPE=Release)"
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTARDUST_BUILD_MEMORY_GB="${BUILD_MEMORY_GB:-10}"
+# As many jobs as fit in the memory limit, worked out by CMake (see STARDUST_BUILD_MEMORY_GB in CMakeLists.txt)
+JOBS="${JOBS:-$(cat build/build_jobs.txt)}"
 
-step "Building the tests target with $JOBS jobs"
+step "Building the tests target with $JOBS jobs (at most ${BUILD_MEMORY_GB:-10} GB)"
 cmake --build build -j "$JOBS" --target tests
 
 step "Done"

@@ -163,7 +163,7 @@ Bots written in **C++ against BWAPI 4.x**, built from source. They're compiled i
 3. Re-run CMake and build:
 
    ```bash
-   cmake -S . -B build && cmake --build build -j
+   cmake -S . -B build && cmake --build build -j 5
    ```
 
 A folder without `bot.cmake` is skipped with a message, so a half-copied bot doesn't break the build.
