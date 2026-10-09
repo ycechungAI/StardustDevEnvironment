@@ -9,7 +9,14 @@ namespace Config
     {
         bool ConfigFileFound                = false;
         bool ConfigFileParsed               = false;
+        // Builds of this source with other settings (bots/CreativeZerg, bots/CreativeTerran) name their own file
+#ifdef STEAMHAMMER_CONFIG_NAME
+#define STEAMHAMMER_STRINGIZE2(x) #x
+#define STEAMHAMMER_STRINGIZE(x) STEAMHAMMER_STRINGIZE2(x)
+        std::string ConfigFileLocation      = "bwapi-data/AI/" STEAMHAMMER_STRINGIZE(STEAMHAMMER_CONFIG_NAME) ".json";
+#else
         std::string ConfigFileLocation      = "bwapi-data/AI/Steamhammer_5.3.6.json";
+#endif
     }
 
 	// Default values in case a configuration entry

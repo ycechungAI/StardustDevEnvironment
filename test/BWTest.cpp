@@ -353,6 +353,8 @@ void BWTest::run()
         // Only our own game gets a window (in builds with OPENBW_ENABLE_UI). The window belongs to the main thread,
         // which doesn't exist in this forked process.
         setenv("OPENBW_ENABLE_UI", "0", 1);
+        // Only our own game writes the status feed for tools/watch.py
+        unsetenv("OPENBW_STATUS_FILE");
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         runGame(true);
@@ -523,6 +525,7 @@ void BWTest::runGame(bool opponent)
     BW::GameOwner gameOwner;
     BWAPI::BroodwarImpl_handle h(gameOwner.getGame());
     h->setCharacterName(opponent ? "Opponent" : "Tests");
+    if (!opponent) gameOwner.getGame().setPlayerNames(myName, opponentName.empty() ? "Opponent" : opponentName);
     h->setGameType(BWAPI::GameTypes::Melee);
     BWAPI::BroodwarImpl.bwgame.setMapFileName(map->filename);
     BWAPI::Race race = opponent ? opponentRace : myRace;
@@ -807,6 +810,7 @@ void BWTest::runGame(bool opponent)
             {
                 std::cout << "Frame limit reached; leaving game" << std::endl;
                 leftGame = reachedLimit = true;
+                if (!opponent) limitReached = true;
                 h->leaveGame();
             }
 
@@ -817,6 +821,7 @@ void BWTest::runGame(bool opponent)
                 {
                     std::cout << "Time limit reached; leaving game" << std::endl;
                     leftGame = reachedLimit = true;
+                    if (!opponent) limitReached = true;
                     h->leaveGame();
                 }
             }
@@ -825,6 +830,13 @@ void BWTest::runGame(bool opponent)
 
             beat(opponent, NextFrame);
             gameOwner.getGame().nextFrame();
+
+            // For tools/run_games.py and tools/round_robin.py, which watch every game's speed whatever the bots
+            if (!opponent && !leftGame && h->getFrameCount() % 1000 == 0)
+            {
+                auto seconds = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - startTime).count();
+                std::cout << "[progress] frame=" << h->getFrameCount() << " seconds=" << seconds << std::endl;
+            }
         }
         catch (std::exception &ex)
         {

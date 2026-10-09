@@ -1,8 +1,23 @@
-diff --git a/src/Steamhammer/Source/GameRecord.cpp b/src/Steamhammer/Source/GameRecord.cpp
-index 63bd90c..7130e53 100644
+--- a/src/Steamhammer/Source/Config.cpp
++++ b/src/Steamhammer/Source/Config.cpp
+@@ -9,7 +9,14 @@
+     {
+         bool ConfigFileFound                = false;
+         bool ConfigFileParsed               = false;
++        // Builds of this source with other settings (bots/CreativeZerg, bots/CreativeTerran) name their own file
++#ifdef STEAMHAMMER_CONFIG_NAME
++#define STEAMHAMMER_STRINGIZE2(x) #x
++#define STEAMHAMMER_STRINGIZE(x) STEAMHAMMER_STRINGIZE2(x)
++        std::string ConfigFileLocation      = "bwapi-data/AI/" STEAMHAMMER_STRINGIZE(STEAMHAMMER_CONFIG_NAME) ".json";
++#else
+         std::string ConfigFileLocation      = "bwapi-data/AI/Steamhammer_5.3.6.json";
++#endif
+     }
+ 
+ 	// Default values in case a configuration entry
 --- a/src/Steamhammer/Source/GameRecord.cpp
 +++ b/src/Steamhammer/Source/GameRecord.cpp
-@@ -694,7 +694,7 @@ void GameRecord::setSkillInfo(Skill * skill, int i, const std::vector<int> & inf
+@@ -694,7 +694,7 @@
  
  void GameRecord::debugLog()
  {
@@ -11,11 +26,9 @@ index 63bd90c..7130e53 100644
  
      std::stringstream msg;
  
-diff --git a/src/Steamhammer/Source/MapGrid.h b/src/Steamhammer/Source/MapGrid.h
-index 0bc9b72..1a7f41e 100644
 --- a/src/Steamhammer/Source/MapGrid.h
 +++ b/src/Steamhammer/Source/MapGrid.h
-@@ -61,7 +61,7 @@ public:
+@@ -61,7 +61,7 @@
      GridCell & getCell(BWAPI::Position pos) { return getCellByIndex(pos.y / cellSize, pos.x / cellSize); }
      GridCell & getCell(BWAPI::Unit unit)    { return getCell(unit->getPosition()); }
  
@@ -24,8 +37,24 @@ index 0bc9b72..1a7f41e 100644
  	int lastSeenFrame(const BWAPI::Position & pos);
  	
  	// Track comsat scans so we don't scan the same place again too soon.
-diff --git a/src/Steamhammer/Source/ParseUtils.h b/src/Steamhammer/Source/ParseUtils.h
-index 4493578..33771cd 100644
+--- a/src/Steamhammer/Source/ParseUtils.cpp
++++ b/src/Steamhammer/Source/ParseUtils.cpp
+@@ -1,3 +1,4 @@
++#include <filesystem>
+ #include <fstream>
+ 
+ #include "ParseUtils.h"
+@@ -160,6 +161,10 @@
+         JSONTools::ReadString("PreparedDataDirectory", io, Config::IO::PreparedDataDir);
+         JSONTools::ReadString("ReadDirectory", io, Config::IO::ReadDir);
+         JSONTools::ReadString("WriteDirectory", io, Config::IO::WriteDir);
++        // A per-bot folder may not exist yet
++        std::error_code directoryError;
++        std::filesystem::create_directories(Config::IO::ReadDir, directoryError);
++        std::filesystem::create_directories(Config::IO::WriteDir, directoryError);
+ 
+         JSONTools::ReadString("OpeningTimingFile", io, Config::IO::OpeningTimingFile);
+         
 --- a/src/Steamhammer/Source/ParseUtils.h
 +++ b/src/Steamhammer/Source/ParseUtils.h
 @@ -1,7 +1,7 @@
@@ -37,11 +66,9 @@ index 4493578..33771cd 100644
  
  namespace UAlbertaBot
  {
-diff --git a/src/Steamhammer/Source/StrategyBossZerg.h b/src/Steamhammer/Source/StrategyBossZerg.h
-index 7587192..9575aab 100644
 --- a/src/Steamhammer/Source/StrategyBossZerg.h
 +++ b/src/Steamhammer/Source/StrategyBossZerg.h
-@@ -24,7 +24,7 @@ enum class TechUnit : int
+@@ -24,7 +24,7 @@
  
  class StrategyBossZerg
  {

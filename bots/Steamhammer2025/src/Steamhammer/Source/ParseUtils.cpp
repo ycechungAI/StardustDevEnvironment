@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <fstream>
 
 #include "ParseUtils.h"
@@ -160,6 +161,10 @@ void ParseUtils::ParseConfigFile(const std::string & filename)
         JSONTools::ReadString("PreparedDataDirectory", io, Config::IO::PreparedDataDir);
         JSONTools::ReadString("ReadDirectory", io, Config::IO::ReadDir);
         JSONTools::ReadString("WriteDirectory", io, Config::IO::WriteDir);
+        // A per-bot folder may not exist yet
+        std::error_code directoryError;
+        std::filesystem::create_directories(Config::IO::ReadDir, directoryError);
+        std::filesystem::create_directories(Config::IO::WriteDir, directoryError);
 
         JSONTools::ReadString("OpeningTimingFile", io, Config::IO::OpeningTimingFile);
         

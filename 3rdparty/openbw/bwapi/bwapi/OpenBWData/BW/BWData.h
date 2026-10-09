@@ -229,6 +229,9 @@ struct Game {
   std::string autoCameraLabel();
   // What the automatic observer camera saw since the last call (empty without it)
   std::vector<CameraEvent> takeCameraEvents();
+  // Names to show for the local player and the others in the window's HUD and the status feed (OPENBW_STATUS_FILE),
+  // instead of the players' in-game names. Call before the game's first frame.
+  void setPlayerNames(const std::string& local, const std::string& others);
   // Calls onKillUnit (with the unit still as it was) whenever the engine kills a unit, whatever the visibility
   void setOnKillUnit(std::function<void(Unit)> onKillUnit);
   std::tuple<int, int, uint32_t*> drawGameScreen(int x, int y, int width, int height);
