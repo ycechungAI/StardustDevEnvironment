@@ -5,10 +5,10 @@ Usage: python tools/run_games.py <gtest filter> [--games N] [--ui none|1-6] [--b
        python tools/run_games.py --opponent <bot> [--games N] ...   (plays Bots.Play against a bot from bots/)
        python tools/run_games.py --bot Stardust2025 --opponent <bot> ... (plays as that bot instead of the Python port)
 
---ui N plays up to N games at once (1 to 6, default 6), each in its own 640x480 OpenBW window, tiled on the screen:
+--ui N plays up to N games at once (1 to 6, default 4), each in its own 640x480 OpenBW window, tiled on the screen:
 6 as 3 columns x 2 rows, 4 as 2 x 2, 2 side by side, and smaller on a screen too small for them. The games come from
 the window build, build-ui (cmake -B build-ui -DOPENBW_ENABLE_UI=ON -DCMAKE_BUILD_TYPE=Release). --ui none plays them
-headless from build, as tools/selfplay.py always does; --parallel N sets how many then (default 6). Either way fewer
+headless from build, as tools/selfplay.py always does; --parallel N sets how many then (default 4). Either way fewer
 games run at once when there isn't enough free memory for them all: 6, then 4, 2 or 1, both when starting and while
 playing (the newest games are then stopped and played again later).
 
@@ -16,7 +16,7 @@ Each game is its own test process, in its own folder <build>/test/parallel/<slot
 OpenBW connection directory, sharing the maps, data files and replays folder; its output goes to run_games.log there.
 The harness writes the game's numbers to live.json in that folder twice a second. The line at the bottom of the
 terminal (a spinner, a bar and moving dots) and the live stats page (tools/live_stats.py: a tab per game and one with
-them all, opened in the browser when the games have windows) show them as the games play. PROGRESS lines are printed
+them all, opened in a window of its own when the games have windows) show them as the games play. PROGRESS lines are printed
 every --interval seconds as well, for output that isn't a terminal.
 """
 
@@ -32,6 +32,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import elo  # tools/elo.py
 
@@ -42,6 +43,7 @@ TYPICAL_FRAMES = 13_700
 TYPICAL_SECONDS_PER_GAME = 150
 FRAME_LIMIT = 30_000  # BWTest's default frame limit
 TIME_LIMIT = 600  # BWTest's default wall-time limit per game, in seconds
+HANG_LIMIT = TIME_LIMIT + 300  # a game still running after this long is stopped (the harness should have ended it)
 
 # Watching at a set speed (OPENBW_GAME_SPEED, milliseconds per frame; 42 is normal speed), Bots.Play allows 90 minutes
 # of game time instead: 90 minutes at normal speed, 45 at x2
@@ -51,9 +53,9 @@ if MS_PER_FRAME:
     FRAME_LIMIT = 90 * 60 * 1000 // 42
     TIME_LIMIT = 90 * 60 * MS_PER_FRAME // 42
     TYPICAL_SECONDS_PER_GAME = max(TYPICAL_SECONDS_PER_GAME, TYPICAL_FRAMES * MS_PER_FRAME // 1000)
-HANG_LIMIT = TIME_LIMIT + 300  # a game still running after this long is stopped (the harness should have ended it)
 
 MAX_AT_ONCE = 6
+DEFAULT_AT_ONCE = 4  # games at once unless --ui or --parallel says otherwise: 6 is too many for a 10-core Mac
 AT_ONCE_STEPS = (6, 4, 2, 1)  # games at once, stepping down when memory runs short
 GRIDS = {1: (1, 1), 2: (2, 1), 3: (3, 1), 4: (2, 2), 5: (3, 2), 6: (3, 2)}  # games at once: window columns, rows
 WINDOW_SIZE = "640x480"
@@ -266,12 +268,13 @@ class Game:
     read_to: int  # how far its output has been read for finished games
     existing_logs: set[Path]
 
-    def live(self) -> dict | None:
+    def live(self) -> dict[str, Any] | None:
         """The numbers the harness writes to live.json as the game plays."""
         try:
-            return json.loads((self.directory / "live.json").read_text())
+            data = json.loads((self.directory / "live.json").read_text())
         except (OSError, ValueError):
             return None
+        return data if isinstance(data, dict) else None
 
     def position(self) -> tuple[int, float] | None:
         """(frame, seconds playing) of the game: from live.json, or for older builds the Stardust bot's own log."""
@@ -309,17 +312,17 @@ def main() -> int:
                                       "(e.g. Stardust2025, the original C++ Stardust)")
     parser.add_argument("--games", type=int, default=0,
                         help="number of games (default: 20 for *RunTwenty, else 1)")
-    parser.add_argument("--ui", "--UI", default=str(MAX_AT_ONCE), metavar="none|1-6",
-                        help=f"games at once, each in its own window (default {MAX_AT_ONCE}); none plays them "
+    parser.add_argument("--ui", "--UI", default=str(DEFAULT_AT_ONCE), metavar="none|1-6",
+                        help=f"games at once, each in its own window (default {DEFAULT_AT_ONCE}); none plays them "
                              "headless")
     parser.add_argument("--parallel", type=int, default=0,
-                        help=f"games at once with --ui none (default {MAX_AT_ONCE})")
+                        help=f"games at once with --ui none (default {DEFAULT_AT_ONCE})")
     parser.add_argument("--window-size", default=WINDOW_SIZE,
                         help=f"each game window's size (default {WINDOW_SIZE}; smaller when the screen is)")
     parser.add_argument("--interval", type=float, default=30, help="seconds between PROGRESS lines (default 30)")
     parser.add_argument("--build", help="build directory (default build-ui with windows, build with --ui none)")
     parser.add_argument("--live", action="store_true",
-                        help="open the live stats page in the browser (it opens by itself when games have windows)")
+                        help="open the live stats window (it opens by itself when games have windows)")
     parser.add_argument("--no-live", action="store_true", help="no live stats page")
     args = parser.parse_args()
 
@@ -331,7 +334,7 @@ def main() -> int:
         parser.error("give a gtest filter or --opponent")
     ui = args.ui.strip().lower()
     if ui in ("none", "off", "0"):
-        windows, wanted = False, args.parallel or MAX_AT_ONCE
+        windows, wanted = False, min(args.parallel or DEFAULT_AT_ONCE, MAX_AT_ONCE)
     elif ui.isdigit() and 1 <= int(ui) <= MAX_AT_ONCE:
         windows, wanted = True, min(args.parallel or int(ui), MAX_AT_ONCE)
     else:
@@ -369,7 +372,7 @@ def main() -> int:
     print(f"START {args.filter}{' vs ' + args.opponent if args.opponent else ''}: {games} game(s), {at_once} at a "
           f"time, {'each in its own window' if windows else 'headless'} ({build.name}), estimated {fmt(estimate)} "
           f"(at most {fmt(worst)} with the {TIME_LIMIT // 60}-minute limit per game)", flush=True)
-    if at_once < wanted:
+    if at_once < wanted and free_memory is not None:
         print(f"MEMORY {free_memory / 1e9:.1f} GB free: {at_once} game(s) at once instead of {wanted}", flush=True)
     if windows:
         print(f"WINDOWS {columns} x {rows}, {args.window_size} each (smaller if the screen is)", flush=True)
@@ -407,6 +410,7 @@ def main() -> int:
     next_report = start + args.interval
     next_memory_check = start + MEMORY_CHECK_SECONDS
     me = args.bot or "StardustPy"
+    frame_limit = int(os.environ.get("STARDUST_TEST_FRAME_LIMIT") or FRAME_LIMIT)
 
     def launch(number: int) -> None:
         slot = min(free)
@@ -547,21 +551,23 @@ def main() -> int:
                         stopped(game, "to free memory", again=True)
                     next_memory_check = now + MEMORY_SETTLE_SECONDS
 
-            # Each running game is assumed to reach the typical length at its pace so far (capped by the time limit);
-            # games not started yet take the average time of finished games (or the typical one), shared by the slots
+            # Each running game is assumed to reach the typical length at its pace so far, or the frame limit once
+            # past it (capped by the time limit); games not started yet take the average time of finished games (or
+            # the typical one), shared by the slots
             positions = [(game, game.position()) for game in sorted(running.values(), key=lambda g: g.slot)]
             per_game = sum(durations) / len(durations) if durations else TYPICAL_SECONDS_PER_GAME
             lefts = []
             for game, position in positions:
                 frame, seconds = position or (0, now - game.started)
                 rate = frame / seconds if frame and seconds > 0 else 0.0
-                game_left = max(0.0, TYPICAL_FRAMES - frame) / rate if rate > 0 else max(0.0, per_game - seconds)
+                target = min(TYPICAL_FRAMES, frame_limit) if frame < min(TYPICAL_FRAMES, frame_limit) else frame_limit
+                game_left = max(0.0, target - frame) / rate if rate > 0 else max(0.0, per_game - seconds)
                 lefts.append(min(game_left, max(0.0, TIME_LIMIT - seconds)))
             left = max(max(lefts, default=0.0), (sum(lefts) + len(queue) * per_game) / max(1, cap))
             elapsed = now - start
             times = " ".join(game_time(position[0]) if position else "…" for _, position in positions)
-            PROGRESS.show(done, games, f"{len(running)} playing (max {cap}){' · ' + times if times else ''} · "
-                                       f"{fmt(elapsed)} elapsed · ~{fmt(left)} left")
+            PROGRESS.show(done, games, f"{fmt(elapsed)} elapsed · ~{fmt(left)} left · {len(running)} playing "
+                                       f"(max {cap}){' at ' + times if times else ''}")
             if viewer is not None:
                 viewer.set_run(total=games, done=done, playing=len(running), cap=cap, elapsed=elapsed, left=left,
                                results=dict(results), note="windows" if windows else "headless")
@@ -571,7 +577,7 @@ def main() -> int:
                 frames = ", ".join(f"{position[0]} ({game_time(position[0])})" for _, position in positions
                                    if position) or "starting"
                 long_game = any(position and position[0] > TYPICAL_FRAMES for _, position in positions)
-                note = f", a game is longer than typical (frame limit {FRAME_LIMIT})" if long_game else ""
+                note = f", a game is longer than typical (frame limit {frame_limit})" if long_game else ""
                 log(f"PROGRESS {fmt(elapsed)} elapsed | {done}/{games} done | {len(running)} playing (max {cap}) "
                     f"at frame {frames} | ~{fmt(left)} left{note}")
     except KeyboardInterrupt:

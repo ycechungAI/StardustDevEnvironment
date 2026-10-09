@@ -79,9 +79,28 @@ private:
     bool rangedNeeded = false;         // hydralisks, lurkers or mutalisks: zealots are poor, dragoons only
     bool rushSeen = false;             // early mass gateways/barracks or early zealots/zerglings: hold the expansion
     bool barracksRush = false;         // two early barracks: marines are coming, zealots answer them best
+    bool stormTech = false;            // mostly marines seen: templar and storm on one base, ahead of dragoon range
+    bool heavyTerranSeen = false;      // siege tanks or battlecruisers: against Terran, attack only with a clear edge
+    // stormTech with storm not yet researching: the gas is kept for the citadel, the archives and storm
+    bool stormPending() const;
+    std::pair<int, int> stormCost() const;  // minerals and gas to keep for the next step towards storm
     // A rush seen early and our gateway units not yet a match for it: zealots before probes, gas or the natural, and
     // the army waits by the nexus
     bool rushMode() const;
+    // Against a marine rush: the first zealots before gas, the core and more than 16 probes
+    bool zealotsFirst() const;
+    // No enemy air army seen in the last minute and a half: storm is worth its gas then (the user: two templar if they
+    // are all in on ground units, otherwise spend the gas on something else)
+    bool groundArmyOnly() const;
+    // The enemy can see cloaked units: a detector or an observatory seen, or one of our dark templar was hit
+    bool detectionSeen = false;
+    // Against Terran or Protoss with no detection seen: dark templar instead of high templar (the user: hide the
+    // archives, then dark templar to kill workers unseen, or with the army for its damage when there is gas to spare)
+    bool darkTemplarPlan() const;
+    std::set<int> darkRaiders;    // dark templar raiding the enemy's mineral lines, by unit ID
+    std::set<int> darkAssigned;   // dark templar already sent raiding or to the army
+    void controlDarkRaiders();
+    BWAPI::TilePosition hiddenSpot() const;  // a powered spot in the main as far as possible from the ramp
 
     // Set when the natural is due, so production leaves money for it
     bool expansionDue = false;
@@ -139,12 +158,15 @@ private:
     void scoutEnemy();
     void trackEnemy();
     void controlArmy();
-    void fight(BWAPI::Unit unit, BWAPI::Position goal);
+    // With a leash, only enemies within `leash` of `anchor` (or already in weapon range) are taken on, and a unit beyond
+    // it with nothing in range walks back to the anchor
+    void fight(BWAPI::Unit unit, BWAPI::Position goal, BWAPI::Position anchor = BWAPI::Positions::None, int leash = 0);
     void controlObservers(const BWAPI::Unitset &army);
     void controlCorsairs(const BWAPI::Unitset &army);
-    // High templar: storm on clumps of enemies, else stay behind the army
+    // High templar: storm on clumps of enemies, else one stays home and one follows the army, each behind it
     void controlTemplar(const BWAPI::Unitset &army);
     std::vector<std::pair<BWAPI::Position, int>> recentStorms;  // where and when, so two templar don't storm one spot
+    int homeTemplar = -1;  // ID of the high templar that stays home with the defenders; the other goes with the army
     BWAPI::Unitset threatsNearHome() const;
     static double strength(BWAPI::Unit unit);
     // Fighting power of a group: (total durability) x (total damage per frame), which values concentration

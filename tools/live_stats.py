@@ -1,6 +1,7 @@
-"""Shows the games being played, live, in one browser window with a tab per game (and one with all of them at once):
+"""Shows the games being played, live, in a window of its own with a tab per game (and one with all of them at once):
 minerals, gas, supply, workers, army, units and buildings for both players, with charts over game time. Works the
-same for headless games and window games.
+same for headless games and window games. The window is pywebview's (a dev dependency); without it, or with
+--browser, the page opens in the web browser instead.
 
 Each game's harness writes live.json in its working folder about twice a second (LiveStats in test/GameStats.h).
 tools/run_games.py starts this viewer itself and prints its address (--live also opens it). On its own it watches
@@ -11,8 +12,12 @@ any folders:
 """
 
 import argparse
+import importlib.util
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -25,9 +30,63 @@ PAGE = Path(__file__).resolve().parent / "live_stats.html"
 DEFAULT_PORT = 8765
 SCAN_SECONDS = 0.5
 STALE_SECONDS = 15  # a game whose file hasn't changed for this long has stopped (killed, or hung)
-ACTIVE = ("playing", "paused")  # states of a game still going (a paused game keeps rewriting its file)
 KEEP_FINISHED = 60  # finished games kept for their tabs
 HISTORY_POINTS = 400  # chart points kept per game; older ones are thinned out
+ACTIVE = ("playing", "paused")  # states of a game still going (a paused game keeps rewriting its file)
+WINDOW_TITLE = "Stardust live stats"
+WINDOW_FILE = Path(tempfile.gettempdir()) / "stardust_live_window.json"  # the open window: its pid and page
+
+
+def window_pid() -> int | None:
+    """The process id of the live stats window, if one is open."""
+    try:
+        pid = int(json.loads(WINDOW_FILE.read_text())["pid"])
+        command = subprocess.run(["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True).stdout
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return pid if "live_stats.py --window" in command else None
+
+
+def open_page(url: str, browser: bool = False) -> None:
+    """Opens the page in a window of its own, or in the web browser when asked to or pywebview isn't installed.
+
+    The window runs in a process of its own (macOS only shows windows from a process's main thread), and stays open
+    after the run, showing how the games ended, until it is closed. There is only ever one: a later run shows its
+    page in the window that is already open."""
+    if browser or importlib.util.find_spec("webview") is None:
+        webbrowser.open(url)
+        return
+    if (pid := window_pid()) is not None:
+        WINDOW_FILE.write_text(json.dumps({"pid": pid, "url": url, "opened": time.time()}))
+        return
+    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--window", url], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def show_window(url: str) -> None:
+    """The window itself: the page in a native web view."""
+    import webview
+    request = {"pid": os.getpid(), "url": url, "opened": time.time()}
+    WINDOW_FILE.write_text(json.dumps(request))
+    window = webview.create_window(WINDOW_TITLE, url, width=1200, height=820)
+    assert window is not None
+
+    def follow_requests() -> None:
+        """Shows each later run's page here (open_page writes it to WINDOW_FILE)."""
+        shown = request["opened"]
+        while True:
+            time.sleep(0.5)
+            try:
+                latest = json.loads(WINDOW_FILE.read_text())
+            except (OSError, ValueError):
+                continue
+            if latest.get("pid") == os.getpid() and latest.get("opened") != shown:
+                shown = latest["opened"]
+                window.load_url(latest["url"])
+
+    webview.start(follow_requests)
+    if window_pid() == os.getpid():
+        WINDOW_FILE.unlink(missing_ok=True)
 
 
 class LiveGames:
@@ -42,7 +101,7 @@ class LiveGames:
         self.started = time.time()
 
     def files(self) -> list[Path]:
-        found = []
+        found: list[Path] = []
         for source in self.sources:
             if source.is_dir():
                 found += source.rglob("live.json")
@@ -135,15 +194,16 @@ class Viewer:
             def log_message(self, *args: Any) -> None:
                 pass
 
-        self.server: ThreadingHTTPServer | None = None
+        server = None
         for candidate in range(port, port + 20):
             try:
-                self.server = ThreadingHTTPServer(("127.0.0.1", candidate), Handler)
+                server = ThreadingHTTPServer(("127.0.0.1", candidate), Handler)
                 break
             except OSError:
                 continue
-        if self.server is None:
+        if server is None:
             raise OSError(f"no free port from {port} to {port + 19}")
+        self.server = server
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}/"
         self.stopping = threading.Event()
 
@@ -165,14 +225,13 @@ class Viewer:
         with self.games.lock:
             self.games.run.update(info)
 
-    def open(self) -> None:
-        webbrowser.open(self.url)
+    def open(self, browser: bool = False) -> None:
+        open_page(self.url, browser)
 
     def stop(self) -> None:
         self.stopping.set()
         self.games.scan()  # the last numbers, so the page shows how the games ended
-        if self.server is not None:
-            self.server.shutdown()
+        self.server.shutdown()
 
 
 def main() -> int:
@@ -180,16 +239,21 @@ def main() -> int:
     parser.add_argument("sources", nargs="*", help="folders to search for live.json, or the files (default: "
                                                    "every build*/test folder)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--open", action="store_true", help="open the page in the browser")
+    parser.add_argument("--open", action="store_true", help="open the page in its own window")
+    parser.add_argument("--browser", action="store_true", help="with --open, open it in the web browser instead")
+    parser.add_argument("--window", metavar="URL", help=argparse.SUPPRESS)  # open_page's window process
     parser.add_argument("--max-age", type=float, default=300,
                         help="leave out games whose file is older than this many seconds (default 300)")
     args = parser.parse_args()
+    if args.window:
+        show_window(args.window)
+        return 0
     sources = [Path(s) for s in args.sources] or [d / "test" for d in ROOT.glob("build*") if (d / "test").is_dir()]
     viewer = Viewer(sources, args.port, args.max_age)
     url = viewer.start()
     print(f"Live stats at {url} (watching {', '.join(str(s) for s in sources)}); Ctrl-C to stop", flush=True)
     if args.open:
-        viewer.open()
+        viewer.open(args.browser)
     try:
         while True:
             time.sleep(3600)

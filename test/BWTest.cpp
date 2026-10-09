@@ -243,6 +243,16 @@ namespace
         backtrace_symbols_fd(array, size, STDERR_FILENO);
     }
 
+    // Moves a file or folder, copying it when a rename can't (replays/ may be a link to another disk)
+    void moveAcrossDisks(const std::string &from, const std::string &to)
+    {
+        std::error_code error;
+        std::filesystem::rename(from, to, error);
+        if (!error) return;
+        std::filesystem::copy(from, to, std::filesystem::copy_options::recursive);
+        std::filesystem::remove_all(from);
+    }
+
     void moveFileToReadIfExists(const std::string &filename)
     {
         if (!std::filesystem::exists(filename)) return;
@@ -946,7 +956,7 @@ void BWTest::runGame(bool opponent)
             {
                 std::ostringstream cvisFilename;
                 cvisFilename << "replays/" << gameId.str() << ".rep.cvis";
-                std::filesystem::rename("bwapi-data/write/cvis", cvisFilename.str());
+                moveAcrossDisks("bwapi-data/write/cvis", cvisFilename.str());
             }
 
             // Move log files
@@ -958,7 +968,7 @@ void BWTest::runGame(bool opponent)
 
                 std::ostringstream newLogFilename;
                 newLogFilename << logDirectory.str() << "/" << Log::LogFileName().substr(Log::LogFileName().rfind('/') + 1);
-                std::filesystem::rename(Log::LogFileName(), newLogFilename.str());
+                moveAcrossDisks(Log::LogFileName(), newLogFilename.str());
             }
         }
         else

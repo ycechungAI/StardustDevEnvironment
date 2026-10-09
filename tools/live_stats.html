@@ -93,8 +93,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "
 const clock = seconds => { seconds = Math.max(0, Math.floor(seconds)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
 const value = (p, stat) => typeof stat[1] === "function" ? stat[1](p) : (p[stat[1]] ?? 0);
 const state = g => g.data.state === "over" ? (g.data.result || "over") : g.data.state;
-const active = g => g.data.state === "playing" || g.data.state === "paused";
 const race = r => (r || "?")[0];
+const active = g => g.data.state === "playing" || g.data.state === "paused";
 
 function select(id) {
   selected = id;
