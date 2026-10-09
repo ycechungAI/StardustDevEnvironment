@@ -20,6 +20,8 @@ The details window has a tab per game:
 games.
 """
 
+from __future__ import annotations
+
 import argparse
 import itertools
 import os
@@ -29,11 +31,16 @@ import subprocess
 import sys
 import tempfile
 import time
-import tkinter as tk
-import tkinter.font as tkfont
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import ttk
+
+try:
+    import tkinter as tk
+    import tkinter.font as tkfont
+    from tkinter import ttk
+    TK_ERROR = ""
+except ImportError as error:  # Homebrew's Python leaves Tk out: brew install python-tk@3.<minor>
+    TK_ERROR = str(error)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from game_feed import (FeedReader, GameModel, PlayerStats, army_units, game_time)  # noqa: E402
@@ -402,6 +409,12 @@ def main() -> int:
     parser.add_argument("--view", nargs="+", type=Path, metavar="STATUS_FILE",
                         help="only show the details of games already played (their status.jsonl files)")
     args = parser.parse_args()
+
+    if TK_ERROR:
+        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        print(f"watch.py needs Tkinter, which this Python lacks ({TK_ERROR}).\n"
+              f"With Homebrew's Python, install it with: brew install python-tk@{version}", file=sys.stderr)
+        return 1
 
     root = tk.Tk()
     width, height = screen_size(root, args.screen)
