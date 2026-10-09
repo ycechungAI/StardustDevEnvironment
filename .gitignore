@@ -42,6 +42,8 @@ bots/*
 !bots/Microwave/
 !bots/Steamhammer2025/
 !bots/Stardust2025/
+!bots/CreativeZerg/
+!bots/CreativeTerran/
 bots/*/**/*.dll
 # Stardust's mining-training folder is a copy of its author's whole dev environment, only needed to retrain
 bots/Stardust2025/mining-training/

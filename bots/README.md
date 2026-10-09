@@ -18,7 +18,7 @@ cd build/test && ./tests --gtest_filter=Bots.List
 
 ## Bots included
 
-These come with the repository, already patched to build here (each folder's licence files say what you may do with it; most forbid entering them in public tournaments without their author's permission):
+These come with the repository, already patched to build here (the two Creative bots are this repository's own settings for Steamhammer) (each folder's licence files say what you may do with it; most forbid entering them in public tournaments without their author's permission):
 
 | Bot | Race | Notes |
 |-----|------|-------|
@@ -27,6 +27,8 @@ These come with the repository, already patched to build here (each folder's lic
 | `Steamhammer2025` | Zerg | Steamhammer 5.3.6 (AIIDE 2025) |
 | `Microwave` | Zerg | AIIDE 2025 |
 | `McRaveZ` | Zerg | McRave as entered in AIIDE 2024/2025 |
+| `CreativeZerg` | Zerg | Steamhammer2025 opening only with gambits: proxy hatchery, hydralisk and lurker rushes, queens, defilers, guardians (see its README) |
+| `CreativeTerran` | Terran | Steamhammer2025 opening only with gambits: proxy barracks and factory, bunker rush, drops, wraiths (see its README) |
 
 These are included only as recipes (`bots/recipes/<Name>/`), either because their source states no licence or because it's large. Fetch them, then re-run CMake:
 
