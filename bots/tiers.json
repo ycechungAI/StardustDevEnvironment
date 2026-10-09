@@ -1,5 +1,5 @@
 {
-  "about": "Tiers for tools/round_robin.py. Each tier plays a round robin; its last-placed bot is rated at the tier's floor and the others above it by their results, capped below the next tier's floor. Move a bot by moving its line. A bot that is not built here is listed at its tier's floor, as not played.",
+  "about": "Tiers for tools/round_robin.py. Each tier plays a round robin; its last-placed bot is rated at the tier's floor and the others above it by their results, capped below the next tier's floor. Move a bot by moving its line. A bot that is not built here is listed at its tier's floor, as not played. A tier's \"skip\" lists bots that stay at their listed place without playing.",
   "games_per_pairing": 10,
   "tiers": [
     {
@@ -14,9 +14,13 @@
         "SAIDA": "AIIDE 2018 champion, Terran built to beat the bots of its time; 14-0 in your old table. Not committed (no licence): tools/fetch_bot.py SAIDA",
         "Locutus": "Stardust's predecessor, a top Protoss of 2018-2019; 63% in your old table, the weakest record in this tier",
         "Microwave": "Zerg on Steamhammer's base, a regular AIIDE entrant; 89% in your old table",
-        "StardustPy": "This repository's Python port of Stardust (ClaudeOpus55 in your old table?): 73% over 577 games there, between Iron and Locutus",
-        "Dragon": "Terran, a strong SSCAIT bot of recent years; 89% in your old table. Not in this repository"
-      }
+        "StardustPy": "This repository's Python port of Stardust. No record in your old table; placed with the bot it ports, and it beat BananaBrain and Steamhammer in its first test games. The round robin will show whether it belongs here",
+        "ClaudeOpus55": "Its own bot, separate from the Python port: 73% over 577 games in your old table, between Iron and Locutus. Already rated elsewhere, so not played here",
+        "Dragon": "Terran, a strong SSCAIT bot of recent years; 89% in your old table. A recipe: tools/fetch_bot.py Dragon"
+      },
+      "skip": [
+        "ClaudeOpus55"
+      ]
     },
     {
       "name": "Tier 2",
@@ -29,7 +33,7 @@
         "CreativeZerg": "Steamhammer 5.3.6 opening only with gambits: wins less, sometimes upsets stronger bots",
         "CreativeTerran": "Steamhammer 5.3.6 playing Terran, the race it is weakest at, opening only with gambits",
         "WorkerRush": "The example bot: attacks with its workers. 0 wins in your old table; the tier's floor marker",
-        "WillyT": "Terran; 78% in your old table, close to Steamhammer2025. Not in this repository",
+        "WillyT": "Terran; 78% in your old table, close to Steamhammer2025. A recipe: tools/fetch_bot.py WillyT",
         "ZZZKBot": "Zerg 4-pool specialist, AIIDE 2017 champion but easy to defend against now; 32% in your old table. Not in this repository",
         "ComputerTerran": "StarCraft's built-in computer AI, the 1500 reference. OpenBW cannot run it",
         "ComputerProtoss": "StarCraft's built-in computer AI, the 1500 reference. OpenBW cannot run it",

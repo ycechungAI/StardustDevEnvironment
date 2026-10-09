@@ -16,7 +16,7 @@ Ratings: in each tier, an Elo-scale Bradley-Terry fit of the tier's results (a d
 rated at the tier's floor, the others above it by their results, capped just below the next tier's floor, so every
 bot of a higher tier is rated above every bot of a lower one. +/- is one standard deviation. A bot at the cap, or
 scoring 85% or more, is marked "promote?"; one scoring 15% or less, "relegate?". Bots that are not built here are
-listed at their tier's floor, as not played.
+listed at their tier's floor, as not played, as are those in a tier's "skip" list.
 """
 
 import argparse
@@ -242,13 +242,15 @@ def print_ratings(tiers: list[dict[str, Any]], available: set[str], results: lis
         higher = [f for f in floors if f > floors[position]]
         if higher:
             ceiling = min(higher)
-        in_tier = set(bots)
+        skip = set(tier.get("skip", []))
+        in_tier = set(bots) - skip
         scores = [score_of(r) for r in results if r["us"] in in_tier and r["opponent"] in in_tier]
         notes = {bot: ("not built here" if bot not in available else "not played") for bot in bots}
+        notes.update({bot: "skipped (rated elsewhere)" for bot in skip})
         if not tier.get("play", True):
             notes = {bot: "tier not played" for bot in bots}
-        table = rate_tier(bots, available if tier.get("play", True) else set(), scores, floors[position], ceiling,
-                          notes)
+        playable = (available - skip) if tier.get("play", True) else set()
+        table = rate_tier(bots, playable, scores, floors[position], ceiling, notes)
         print()
         print(format_table(str(tier["name"]), floors[position], table))
 
@@ -286,8 +288,9 @@ def main() -> int:
     played = Counter(pair_key(r["us"], r["opponent"]) for r in read_results(results_path))
     queues: list[list[tuple[str, str]]] = []
     for tier in chosen:
-        bots = [bot for bot in tier["bots"] if bot in available]
-        missing = [bot for bot in tier["bots"] if bot not in available]
+        skip = set(tier.get("skip", []))
+        bots = [bot for bot in tier["bots"] if bot in available and bot not in skip]
+        missing = [bot for bot in tier["bots"] if bot not in available and bot not in skip]
         if missing:
             print(f"{tier['name']}: not built here, so not played: {', '.join(missing)}")
         for a, b in itertools.combinations(bots, 2):
