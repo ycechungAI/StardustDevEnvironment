@@ -95,6 +95,24 @@ PARAMS = [
     Param("army_first_ratio", 2.0, 1.0, 3.5, 0.3, integer=False),
     Param("terran_opening", 0, 0, 1, 1, choices=2),
     Param("protoss_opening", 0, 0, 1, 1, choices=2),
+    # Situational awareness
+    Param("home_threat_radius", 900, 600, 1400, 100),
+    Param("natural_threat_radius", 600, 400, 1000, 75),
+    Param("rush_window", 9000, 6000, 13000, 750),
+    Param("rush_min_units", 4, 2, 8, 1),
+    Param("scout_supply", 9, 7, 14, 1),
+    Param("scout_until", 6000, 4000, 9000, 500),
+    # Build order and macro
+    Param("army_for_natural_vs_protoss", 8, 4, 14, 2),
+    Param("army_for_natural", 6, 3, 12, 2),
+    Param("expand_strength_ratio", 0.8, 0.5, 1.3, 0.1, integer=False),
+    Param("probes_per_base_before_next", 18, 12, 24, 2),
+    Param("max_gateways", 12, 6, 16, 2),
+    Param("gateways_per_base", 3, 2, 5, 1),
+    Param("zealots_before_core_vs_terran", 3, 1, 6, 1),
+    Param("zealots_before_core", 4, 2, 8, 1),
+    # Unit reactions
+    Param("uphill_penalty", 2.0, 1.2, 3.0, 0.2, integer=False),
 ]
 
 
@@ -126,6 +144,13 @@ def score(results: list[str]) -> float:
     if not results:
         return 0.0
     return sum(1.0 if r == "WON" else 0.5 if r == "DRAW" else 0.0 for r in results) / len(results)
+
+
+def beats_old_version(results: list[str]) -> bool:
+    """The gate: at least 55%, and a standard error clear of 50%, so that luck alone rarely promotes a candidate
+    that only changes something that doesn't matter (at 20 games, 13 wins; even candidates pass about 1 time in 8)."""
+    points = score(results)
+    return points >= GATE and points - math.sqrt(points * (1 - points) / max(1, len(results))) > 0.5
 
 
 def elo_margin(points: float) -> float:
@@ -278,13 +303,13 @@ class Trainer:
         selfplay += ["LOST" if r == "WON" else "WON" if r == "LOST" else r for r in played.get((BEST, CANDIDATE), [])]
         selfplay_score = score(selfplay)
         self.log(f"  self-play against the old version: {selfplay.count('WON')}/{len(selfplay)} won, "
-                 f"score {selfplay_score:.0%} (needs {GATE:.0%})")
+                 f"score {selfplay_score:.0%} (needs {GATE:.0%}, clear of 50% by a standard error)")
         gauntlet = self.gauntlet_results(CANDIDATE, played)
         bar = gauntlet_score(self.state.best_gauntlet or {}) - GAUNTLET_TOLERANCE
         self.log(f"  training bots: score {gauntlet_score(gauntlet):.0%} (needs {max(0.0, bar):.0%})")
         entry: dict[str, Any] = {"time": time.time(), "candidate": trial, "generation": self.state.generation,
                                  "params": candidate, "changed": changed, "selfplay": selfplay, "gauntlet": gauntlet}
-        passed = selfplay_score >= GATE and gauntlet_score(gauntlet) >= bar
+        passed = beats_old_version(selfplay) and gauntlet_score(gauntlet) >= bar
         approved = False
         if passed:
             report = {"candidate": trial, "generation": self.state.generation + 1, "changed": changes,
@@ -318,7 +343,35 @@ class Trainer:
 # Running real games
 
 
-def make_runner(build: str, parallel: int, log: Callable[[str], None]) -> Runner:
+HANG_SECONDS = 1800  # a game still running after this long is killed and reported as a hang
+
+
+def make_issue_log(training: Path, build: str, log: Callable[[str], None]) -> Callable[[str, Job, Path | None], None]:
+    """Bug finding: every crash, hang, lost result and draw goes to training/issues.log with the weights that played
+    and a copy of the game's output, so a later session can find the cause in the bot and fix it."""
+    weights_dir = ROOT / build / "test" / "bwapi-data" / "AI"
+
+    def issue(kind: str, job: Job, output: Path | None) -> None:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        kept = None
+        if output is not None and output.exists():
+            kept = training / "issues" / f"{stamp}-{job[0]}-vs-{job[1]}.log"
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(output, kept)
+        weights_file = weights_dir / f"{job[0]}.json"
+        weights = json.loads(weights_file.read_text()) if weights_file.exists() else None
+        entry = {"time": stamp, "issue": kind, "bot": job[0], "opponent": job[1], "lane": job[2],
+                 "output": str(kept) if kept else None, "weights": weights}
+        training.mkdir(parents=True, exist_ok=True)
+        with (training / "issues.log").open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+        log(f"  issue: {kind}: {job[0]} vs {job[1]}" + (f" (output kept in {kept})" if kept else ""))
+
+    return issue
+
+
+def make_runner(build: str, parallel: int, log: Callable[[str], None],
+                issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
     from run_games import prepare_worker_directory  # noqa: E402
@@ -374,13 +427,19 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None]) -> Runner
                         break
                 time.sleep(0.5)
                 for slot, (process, started, job) in list(running.items()):
+                    output = test_dir / "parallel" / str(slot) / "selfplay.log"
                     if process.poll() is None:
+                        if time.time() - started > HANG_SECONDS:
+                            process.kill()
+                            process.wait()
+                            issue(f"hang: killed after {HANG_SECONDS} s", job, output)
+                            del running[slot]
+                            free.append(slot)
                         continue
                     del running[slot]
                     free.append(slot)
                     if process.returncode not in (0, 1):
-                        log(f"  {job[0]} vs {job[1]} exited {process.returncode} after {time.time() - started:.0f} s "
-                            f"(see {test_dir / 'parallel' / str(slot) / 'selfplay.log'})")
+                        issue(f"crash: exit code {process.returncode} after {time.time() - started:.0f} s", job, output)
         finally:
             for process, _, _ in running.values():
                 process.kill()
@@ -392,10 +451,13 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None]) -> Runner
             fields = line.split(",")
             if len(fields) > 3:
                 results.setdefault((fields[1], fields[2]), []).append(fields[3])
+                if fields[3] == "DRAW":
+                    issue(f"draw: the game hit the frame or time limit after {fields[4] if len(fields) > 4 else '?'} "
+                          "frames", (fields[1], fields[2], ""), None)
         for (us, opponent), games in wanted.items():
             got = len(results.get((us, opponent), []))
             if got < games:
-                log(f"  only {got} of {games} game(s) of {us} vs {opponent} finished")
+                issue(f"missing results: only {got} of {games} game(s) finished", (us, opponent, ""), None)
         return results
 
     return run
@@ -494,10 +556,11 @@ def main() -> int:
         f"{per_generation} self-play games per candidate, one at a time beside {parallel - 1} games against the training bots, roughly "
         f"{minutes:.0f} minutes each"
         + (f"; stopping after {args.hours:g} h" if args.hours else "; until the goal")
-        + ". Goal: beat all 7 Tier 2 bots in every game, twice in a row.")
+        + f". Goal: win every game against the {len(TRAINING)} training bots, then every test game against {TEST}.")
 
     approve = make_approve(args.approver, args.auto_approve, TRAINING_DIR, log)
-    trainer = Trainer(make_runner(args.build, parallel, log), make_install(args.build), approve, log, TRAINING_DIR,
+    runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log))
+    trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()
     try:

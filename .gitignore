@@ -38,6 +38,7 @@ bots/*
 !bots/ClaudeOpus55/
 !bots/ClaudeOpus55RL/
 bots/ClaudeOpus55RL/training/pending.json
+bots/ClaudeOpus55RL/training/issues/
 !bots/genai/
 !bots/compat/
 !bots/ComputerAI/

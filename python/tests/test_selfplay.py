@@ -64,6 +64,9 @@ def test_scores_and_elo() -> None:
     assert selfplay.elo_margin(0.5) == 0
     assert round(selfplay.elo_margin(0.75)) == 191
     assert selfplay.elo_margin(1.0) < 1000
+    assert not selfplay.beats_old_version(["WON"] * 12 + ["LOST"] * 8)
+    assert selfplay.beats_old_version(["WON"] * 13 + ["LOST"] * 7)
+    assert selfplay.beats_old_version(["WON"] * 3)
 
 
 def test_the_gate_rejects_a_weaker_candidate(tmp_path: Path) -> None:
@@ -79,7 +82,7 @@ def test_the_gate_rejects_a_weaker_candidate(tmp_path: Path) -> None:
 def test_training_improves_reaches_the_goal_and_stops(tmp_path: Path) -> None:
     games = FakeGames(2)
     t = trainer(tmp_path, games)
-    for _ in range(400):
+    for _ in range(3000):  # only 3 of the parameters matter to the fake bots, so most candidates change nothing
         if t.generation():
             break
     assert t.state.goal_reached
@@ -137,3 +140,29 @@ def test_a_failed_test_waits_for_the_next_generation(tmp_path: Path) -> None:
     played = games.played
     assert not t.check_goal()  # not tested again until a new generation
     assert games.played == played
+
+
+def test_every_parameter_is_read_by_the_bot() -> None:
+    source = (Path(__file__).resolve().parents[2] / "bots" / "ClaudeOpus55RL" / "ClaudeOpus55RL.cpp").read_text()
+    for p in selfplay.PARAMS:
+        assert f'"{p.name}"' in source, p.name
+        assert p.low <= p.default <= p.high, p.name
+
+
+def test_issues_are_logged_with_the_weights(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    weights = build / "test" / "bwapi-data" / "AI"
+    weights.mkdir(parents=True)
+    (weights / f"{selfplay.CANDIDATE}.json").write_text(json.dumps({"retreat_ratio": 1.4}))
+    output = tmp_path / "game.log"
+    output.write_text("Segmentation fault")
+    selfplay.ROOT, root = tmp_path, selfplay.ROOT
+    try:
+        issue = selfplay.make_issue_log(tmp_path / "training", "build", lambda message: None)
+        issue("crash: exit code 139", (selfplay.CANDIDATE, "Stone", "gauntlet"), output)
+    finally:
+        selfplay.ROOT = root
+    entry = json.loads((tmp_path / "training" / "issues.log").read_text())
+    assert entry["issue"].startswith("crash") and entry["opponent"] == "Stone"
+    assert entry["weights"] == {"retreat_ratio": 1.4}
+    assert Path(entry["output"]).read_text() == "Segmentation fault"

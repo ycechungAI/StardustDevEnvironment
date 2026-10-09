@@ -25,6 +25,24 @@ namespace
     double ArmyFirstRatio = 2.0; // the army comes before the build order when theirs is this many times ours
     int TerranOpening = 0;       // 0: two gateways, then the core; 1: one gateway and the core first
     int ProtossOpening = 0;      // 0: two gateways, then the core; 1: one gateway and the core first
+    // Situational awareness
+    int HomeThreatRadius = 900;  // enemies this close to the main are threats to answer
+    int NaturalThreatRadius = 600;
+    int RushWindow = 9000;       // frames during which a seen rush still decides what to build
+    int RushMinUnits = 4;        // fewer army units than this keeps us in rush mode
+    int ScoutSupply = 9;         // supply at which the scout leaves
+    int ScoutUntil = 6000;       // frame after which scouting a known main stops
+    // Build order and macro
+    int ArmyForNaturalVsProtoss = 8;
+    int ArmyForNatural = 6;
+    double ExpandStrengthRatio = 0.8;  // expand only when our army is at least this strong relative to theirs
+    int ProbesPerBaseBeforeNext = 18;  // probes per nexus before another base
+    int MaxGateways = 12;
+    int GatewaysPerBase = 3;
+    int ZealotsBeforeCoreVsTerran = 3;
+    int ZealotsBeforeCore = 4;
+    // Unit reactions
+    double UphillPenalty = 2.0;  // how many times stronger an enemy above us counts
 
 #ifndef CLAUDEOPUS55RL_WEIGHTS
 #define CLAUDEOPUS55RL_WEIGHTS best
@@ -70,10 +88,31 @@ namespace
         ArmyFirstRatio = value("army_first_ratio", ArmyFirstRatio);
         TerranOpening = integer("terran_opening", TerranOpening);
         ProtossOpening = integer("protoss_opening", ProtossOpening);
+        HomeThreatRadius = integer("home_threat_radius", HomeThreatRadius);
+        NaturalThreatRadius = integer("natural_threat_radius", NaturalThreatRadius);
+        RushWindow = integer("rush_window", RushWindow);
+        RushMinUnits = integer("rush_min_units", RushMinUnits);
+        ScoutSupply = integer("scout_supply", ScoutSupply);
+        ScoutUntil = integer("scout_until", ScoutUntil);
+        ArmyForNaturalVsProtoss = integer("army_for_natural_vs_protoss", ArmyForNaturalVsProtoss);
+        ArmyForNatural = integer("army_for_natural", ArmyForNatural);
+        ExpandStrengthRatio = value("expand_strength_ratio", ExpandStrengthRatio);
+        ProbesPerBaseBeforeNext = integer("probes_per_base_before_next", ProbesPerBaseBeforeNext);
+        MaxGateways = integer("max_gateways", MaxGateways);
+        GatewaysPerBase = integer("gateways_per_base", GatewaysPerBase);
+        ZealotsBeforeCoreVsTerran = integer("zealots_before_core_vs_terran", ZealotsBeforeCoreVsTerran);
+        ZealotsBeforeCore = integer("zealots_before_core", ZealotsBeforeCore);
+        UphillPenalty = value("uphill_penalty", UphillPenalty);
         std::printf("ClaudeOpus55RL: weights from %s: probes %d/base (%d on one base, at most %d), attack at %d then %d, "
                     "retreat below %d or at %.2fx, regroup %d, army first at %.2fx, openings T%d P%d\n",
                     WeightsFile, ProbesPerBase, OneBaseProbes, MaxProbes, FirstAttackArmy, LaterAttackArmy, RetreatBelow,
                     RetreatRatio, RegroupDistance, ArmyFirstRatio, TerranOpening, ProtossOpening);
+        std::printf("ClaudeOpus55RL: threats within %d/%d, rush until frame %d or %d units, scout at %d supply until frame %d, "
+                    "natural at %d army (%d vs Protoss), expand at %.2fx strength and %d probes/base, gateways %d + %d/base "
+                    "(at most %d), zealots before core %d (%d vs Terran), uphill %.2fx\n",
+                    HomeThreatRadius, NaturalThreatRadius, RushWindow, RushMinUnits, ScoutSupply, ScoutUntil, ArmyForNatural,
+                    ArmyForNaturalVsProtoss, ExpandStrengthRatio, ProbesPerBaseBeforeNext, 4, GatewaysPerBase, MaxGateways,
+                    ZealotsBeforeCore, ZealotsBeforeCoreVsTerran, UphillPenalty);
     }
 
     bool isArmy(UnitType type)
@@ -1241,14 +1280,14 @@ void ClaudeOpus55RL::buildStructures()
             addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), myDurability, myDps);
     }
     for (auto &[id, seen] : enemyArmy) addToGroup(seen.type, seen.health, theirDurability, theirDps);
-    bool notOutmatched = groupStrength(myDurability, myDps) >= 0.8 * groupStrength(theirDurability, theirDps);
-    int armyForNatural = enemyRace == Races::Protoss ? 8 : 6;
+    bool notOutmatched = groupStrength(myDurability, myDps) >= ExpandStrengthRatio * groupStrength(theirDurability, theirDps);
+    int armyForNatural = enemyRace == Races::Protoss ? ArmyForNaturalVsProtoss : ArmyForNatural;
     bool wantBase = base && !underAttack && coreDone && pendingCount(UnitTypes::Protoss_Nexus) == 0
-                    && !(rushSeen && Broodwar->getFrameCount() < 9000)
+                    && !(rushSeen && Broodwar->getFrameCount() < RushWindow)
                     && notOutmatched
-                    && (nexusCount < 2 ? army >= armyForNatural : holding && self->allUnitCount(UnitTypes::Protoss_Probe) >= 18 * nexusCount);
+                    && (nexusCount < 2 ? army >= armyForNatural : holding && self->allUnitCount(UnitTypes::Protoss_Probe) >= ProbesPerBaseBeforeNext * nexusCount);
     expansionDue = wantBase;
-    int gatewayCap = std::min(12, 4 + 3 * (self->completedUnitCount(UnitTypes::Protoss_Nexus) - 1));
+    int gatewayCap = std::min(MaxGateways, 4 + GatewaysPerBase * (self->completedUnitCount(UnitTypes::Protoss_Nexus) - 1));
     if (wantBase && freeMinerals >= 400)
     {
         build(UnitTypes::Protoss_Nexus, base->depot);
@@ -1479,7 +1518,8 @@ void ClaudeOpus55RL::trainUnits()
 
     // Before the core, zealots from the two gateways (more when a rush is coming); three against Terran, four against
     // a marine rush
-    int zealotsBeforeCore = enemyRace == Races::Terran ? (barracksRush ? 4 : 3) : (rushSeen ? 6 : 4);
+    int zealotsBeforeCore = enemyRace == Races::Terran ? (barracksRush ? ZealotsBeforeCoreVsTerran + 1 : ZealotsBeforeCoreVsTerran)
+                                                       : (rushSeen ? ZealotsBeforeCore + 2 : ZealotsBeforeCore);
     if (buildOrderStep < buildOrder.size())
     {
         auto &step = buildOrder[buildOrderStep];
@@ -1787,12 +1827,12 @@ void ClaudeOpus55RL::scoutEnemy()
     {
         // The main is known (a two-player map, or just found): the scout looks round it once, for an early pool, a
         // proxy-free main (so the gateways are elsewhere), tech buildings and the size of the army
-        if (frame > 6000 || scout && !scout->exists())
+        if (frame > ScoutUntil || scout && !scout->exists())
         {
             finish();
             return;
         }
-        if (self->supplyUsed() / 2 < 9) return;
+        if (self->supplyUsed() / 2 < ScoutSupply) return;
         if (!scout)
         {
             scout = chooseBuilder(home);
@@ -1820,7 +1860,7 @@ void ClaudeOpus55RL::scoutEnemy()
         }
         return;
     }
-    if (self->supplyUsed() / 2 < 9) return;
+    if (self->supplyUsed() / 2 < ScoutSupply) return;
 
     if (!scout || !scout->exists())
     {
@@ -1850,7 +1890,7 @@ Unitset ClaudeOpus55RL::threatsNearHome() const
             if (!unit->isVisible() || unit->getType().isFlyer() && !unit->getType().canAttack()) continue;
             if (unit->getType().isBuilding() && !unit->getType().canAttack()) continue;
             if (!unit->isDetected()) continue;  // nothing the army can do about it; observers and cannons can
-            bool near = unit->getDistance(home) < 900 || haveNatural && unit->getDistance(natural->center) < 600;
+            bool near = unit->getDistance(home) < HomeThreatRadius || haveNatural && unit->getDistance(natural->center) < NaturalThreatRadius;
             if (!near) continue;
             // A worker attacking ours (or building in our base) is a threat on its own: a lone drone or SCV left
             // alone kills probe after probe. Workers only walking about count when there are several
@@ -1864,7 +1904,7 @@ Unitset ClaudeOpus55RL::threatsNearHome() const
 
 bool ClaudeOpus55RL::rushMode() const
 {
-    if (!rushSeen || Broodwar->getFrameCount() >= 9000) return false;
+    if (!rushSeen || Broodwar->getFrameCount() >= RushWindow) return false;
 
     // Four units are not enough while the rush keeps coming (5 zealots killed 4 of ours at the ramp once the gas and
     // probes had started again): the rush lasts until our army, those in production too, matches the one seen
@@ -1881,7 +1921,7 @@ bool ClaudeOpus55RL::rushMode() const
         addToGroup(unit->getType(), unit->isCompleted() ? unit->getHitPoints() + unit->getShields() : 0, myDurability, myDps);
     }
     for (auto &[id, seen] : enemyArmy) addToGroup(seen.type, seen.health, theirDurability, theirDps);
-    return units < 4 || groupStrength(myDurability, myDps) < groupStrength(theirDurability, theirDps);
+    return units < RushMinUnits || groupStrength(myDurability, myDps) < groupStrength(theirDurability, theirDps);
 }
 
 void ClaudeOpus55RL::addToGroup(UnitType type, int health, double &durability, double &dps)
@@ -2352,7 +2392,7 @@ void ClaudeOpus55RL::controlArmy()
                 addToGroup(unit->getType(), unit->getHitPoints() + unit->getShields(), freshDurability, freshDps);
         }
         hurtNeeded = theirs > 0 && ours >= 1.5 * theirs && groupStrength(freshDurability, freshDps) < 1.5 * theirs;
-        if (theirs * (uphill ? 2.0 : 1.0) > ours * RetreatRatio && !maxed)
+        if (theirs * (uphill ? UphillPenalty : 1.0) > ours * RetreatRatio && !maxed)
         {
             attacking = false;
             wave++;
