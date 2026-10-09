@@ -38,12 +38,20 @@ struct PlayerStats
     int unitsKilled = 0;
     int unitsLost = 0;
     int buildingsLost = 0;
+    int units = 0;      // everything but buildings, made or in production (larvae aside)
+    int buildings = 0;  // finished or not
+    int value = 0;      // what all of them cost, minerals + gas
 
     // Reads the player whose in-game (character) name is characterName; name is what to call it.
     // Kills and losses come from losses: a player is credited with every unit the other players lost.
     static std::optional<PlayerStats> read(BW::Game game, const std::string &characterName, const std::string &name,
                                            const Losses &losses);
 };
+
+// The result of a game stopped at the frame or time limit, judged instead of calling it a draw: a player down to one
+// building and one unit (or less) has lost; otherwise the player whose units and buildings are worth a quarter more
+// (and at least 500 more) has won; otherwise it is a draw. Returns WON, LOST or DRAW for `me`, and why in `why`.
+std::string JudgeAtLimit(const PlayerStats &me, const PlayerStats &opponent, std::string &why);
 
 // Every unit type the player has (made or in production) with its count, e.g. " Opponent: Zerg_Drone=9 Zerg_Zergling=6"
 std::string ObserveUnitCounts(BW::Game game, const std::string &characterName, const std::string &name);
@@ -70,8 +78,9 @@ public:
     // Writes the current numbers, if half a second has passed since the last write
     void update(BW::Game game, int frame, const PlayerStats &me, const PlayerStats &opponent);
 
-    // Writes the last numbers again with the result: WON, LOST or DRAW
-    void finish(int frame, const std::string &result);
+    // Writes the last numbers again with the result: WON, LOST or DRAW, and how it was decided when the game was
+    // stopped at a limit
+    void finish(int frame, const std::string &result, const std::string &decided = "");
 
     // While the user has paused the game: rewrites the numbers now and then, marked as paused, so the file doesn't
     // look stale. Called with false when the game goes on.
@@ -90,6 +99,7 @@ private:
     std::chrono::steady_clock::time_point lastWrite;
     int current = 0;
     std::string result;
+    std::string decided;
     bool paused = false;
 };
 

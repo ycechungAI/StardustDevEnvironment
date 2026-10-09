@@ -927,6 +927,14 @@ void BWTest::runGame(bool opponent)
         // Print the game's stats, and record it in the results history if we know who the opponent was
         auto &me = lastMyStats;
         auto &them = lastOpponentStats;
+        // A game stopped at a limit is judged on how the players stand, rather than called a draw
+        std::string gameResult = gameOwner.getGame().won() ? "WON" : "LOST";
+        std::string decided;
+        if (gameResult != "WON" && reachedLimit)
+        {
+            gameResult = me && them ? JudgeAtLimit(*me, *them, decided) : "DRAW";
+            std::cout << "Judged at the limit: " << gameResult << (decided.empty() ? "" : ", " + decided) << std::endl;
+        }
         if (me && them)
         {
             std::cout << "STATS " << StatsSummary(*me, *them) << std::endl;
@@ -934,12 +942,11 @@ void BWTest::runGame(bool opponent)
             auto noResults = std::getenv("STARDUST_NO_RESULTS");
             if (!opponentName.empty() && !(noResults && *noResults && std::string(noResults) != "0"))
             {
-                std::string result = gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST");
-                AppendResult(*me, *them, result, framesPlayed, map->shortname(), randomSeed,
+                AppendResult(*me, *them, gameResult, framesPlayed, map->shortname(), randomSeed,
                              gameId.str() + ".rep");
             }
         }
-        live.finish(framesPlayed, gameOwner.getGame().won() ? "WON" : (reachedLimit ? "DRAW" : "LOST"));
+        live.finish(framesPlayed, gameResult, decided);
 
         // If enabled, write the replay file
         // Otherwise remove the cvis directory

@@ -68,6 +68,12 @@ svg { display: block; width: 100%; }
 .units { columns: 2 150px; font-size: 13px; margin-top: 8px; }
 .units div { display: flex; justify-content: space-between; break-inside: avoid; padding: 1px 0; }
 .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+.scrubber { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.scrubber input { flex: 1 1 240px; accent-color: var(--p1); }
+.scrubber button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); cursor: pointer; }
+.scrubber button:disabled { opacity: .45; cursor: default; }
+.decided { color: var(--muted); font-size: 12px; margin-top: 4px; }
 @media (max-width: 640px) { .big { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -81,11 +87,12 @@ svg { display: block; width: 100%; }
 <script>
 "use strict";
 const STATS = [["Minerals", "minerals"], ["Gas", "gas"], ["Supply", p => `${p.supplyUsed}/${p.supplyMax}`],
-  ["Workers", "workers"], ["Army supply", "armySupply"], ["Units", "units"], ["Buildings", "buildings"],
-  ["Killed / lost", p => `${p.unitsKilled} / ${p.unitsLost + p.buildingsLost}`]];
-// History columns, per player: workers, army, minerals, gas, minerals mined, gas mined, units (then the opponent's)
-const COLUMNS = { workers: 0, army: 1, minerals: 2, gas: 3, mined: 4, gasMined: 5, units: 6 };
+  ["Workers", "workers"], ["Army supply", "armySupply"], ["Production", "production"], ["Units", "units"],
+  ["Buildings", "buildings"], ["Killed / lost", p => `${p.unitsKilled} / ${p.lost}`]];
+// Each history row: the frame, then data.fields for the first player, then the same for the second
 let data = null, selected = "all", failures = 0;
+// The time slider of the game shown in its tab: the history row picked, or null to follow the game as it goes
+let scrub = null, scrubGame = null;
 try { selected = localStorage.getItem("liveTab") || "all"; } catch (e) {}
 if (location.hash.length > 1) selected = decodeURIComponent(location.hash.slice(1));
 
@@ -95,6 +102,16 @@ const value = (p, stat) => typeof stat[1] === "function" ? stat[1](p) : (p[stat[
 const state = g => g.data.state === "over" ? (g.data.result || "over") : g.data.state;
 const race = r => (r || "?")[0];
 const active = g => g.data.state === "playing" || g.data.state === "paused";
+
+// One player's numbers at a history row, by field name
+function playerAt(g, side, row) {
+  const fields = data.fields, r = g.history[row], p = {};
+  if (!r) return p;
+  fields.forEach((f, i) => { p[f] = r[1 + side * fields.length + i]; });
+  return p;
+}
+// A player's numbers now: what the game wrote, with production and losses from the newest history row
+const playerNow = (g, side) => Object.assign({}, playerAt(g, side, g.history.length - 1), g.data.players[side]);
 
 function select(id) {
   selected = id;
@@ -110,20 +127,26 @@ function line(points, width, height, max, color, dashed) {
   return `<polyline fill="none" stroke="${color}" stroke-width="1.6" ${dashed ? 'stroke-dasharray="4 3"' : ""} points="${path}"/>`;
 }
 
-// One chart: the same history column for both players (or a sum of columns)
-function chart(g, columns, height) {
-  const width = 300, h = g.history;
-  const pick = (row, side) => columns.reduce((sum, c) => sum + row[1 + side * 7 + c], 0);
+// One chart: the same history field for both players (or a sum of fields), with a line at the slider's time
+function chart(g, names, height, cursorFrame) {
+  const width = 300, h = g.history, n = data.fields.length, columns = names.map(f => data.fields.indexOf(f));
+  const pick = (row, side) => columns.reduce((sum, c) => sum + row[1 + side * n + c], 0);
   const series = [0, 1].map(side => h.map(row => [row[0], pick(row, side)]));
   const max = Math.max(1, ...series.flat().map(p => p[1]));
+  let cursor = "";
+  if (cursorFrame != null && h.length > 1) {
+    const x0 = h[0][0], x1 = h[h.length - 1][0], x = (cursorFrame - x0) / Math.max(1, x1 - x0) * width;
+    cursor = `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="0" y2="${height}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  }
   return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="height:${height}px">
     <line x1="0" x2="${width}" y1="${height - 1}" y2="${height - 1}" stroke="var(--line)"/>
-    ${line(series[0], width, height, max, "var(--p1)")}${line(series[1], width, height, max, "var(--p2)")}</svg>`;
+    ${line(series[0], width, height, max, "var(--p1)")}${line(series[1], width, height, max, "var(--p2)")}${cursor}</svg>`;
 }
 
 function sparkline(g) {
-  const width = 300, height = 46, h = g.history;
-  const series = [0, 1].flatMap(side => [COLUMNS.workers, COLUMNS.army].map(c => h.map(row => [row[0], row[1 + side * 7 + c]])));
+  const width = 300, height = 46, h = g.history, n = data.fields.length;
+  const columns = ["workers", "armySupply"].map(f => data.fields.indexOf(f));
+  const series = [0, 1].flatMap(side => columns.map(c => h.map(row => [row[0], row[1 + side * n + c]])));
   const max = Math.max(1, ...series.flat().map(p => p[1]));
   return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="height:${height}px;margin-top:6px">
     ${line(series[0], width, height, max, "var(--p1)")}${line(series[1], width, height, max, "var(--p1)", true)}
@@ -136,7 +159,7 @@ function subline(g) {
 }
 
 function card(g) {
-  const d = g.data, [me, them] = d.players, s = state(g);
+  const d = g.data, me = playerNow(g, 0), them = playerNow(g, 1), s = state(g);
   return `<div class="card">
     <h2><a onclick="select('${esc(g.id)}')">${esc(me.name)} <span class="muted">(${race(me.race)})</span> vs ${esc(them.name)} <span class="muted">(${race(them.race)})</span></a>
       <span class="badge ${s}">${s === "playing" ? "playing" : esc(s)}</span></h2>
@@ -145,6 +168,7 @@ function card(g) {
     <tbody>${STATS.map(stat => `<tr><td>${stat[0]}</td><td>${value(me, stat)}</td><td>${value(them, stat)}</td></tr>`).join("")}</tbody></table>
     ${sparkline(g)}
     <div class="sub" style="margin:2px 0 0">workers (solid) and army supply (dashed) over game time</div>
+    ${d.decided ? `<div class="decided">Judged at the limit: ${esc(d.decided)}</div>` : ""}
   </div>`;
 }
 
@@ -154,19 +178,50 @@ function unitList(p) {
   return rows.join("") || '<div class="muted">nothing yet</div>';
 }
 
+// A game's tab: its numbers at the time the slider is at (the end, or now, unless moved), and charts over the game.
+// The slider stays in place while the rest is redrawn, so it can be dragged while the game goes on.
 function detail(g) {
-  const d = g.data, s = state(g);
+  const main = document.getElementById("main"), d = g.data, s = state(g), last = g.history.length - 1;
+  if (scrubGame !== g.id) { scrub = null; scrubGame = g.id; }
+  let slider = document.getElementById("scrub");
+  if (!slider || slider.dataset.game !== g.id) {
+    main.innerHTML = `<div id="detailHead"></div>
+      <div class="card scrubber"><span class="muted">Game time</span>
+        <input type="range" id="scrub" min="0" step="1" data-game="${esc(g.id)}" aria-label="Game time">
+        <b id="scrubTime"></b><button id="scrubLive">Latest</button></div>
+      <div id="detailBody"></div>`;
+    slider = document.getElementById("scrub");
+    slider.addEventListener("input", () => {
+      const game = data.games.find(x => x.id === slider.dataset.game);
+      scrub = game && +slider.value < game.history.length - 1 ? +slider.value : null;
+      detail(game);
+    });
+    document.getElementById("scrubLive").addEventListener("click", () => {
+      scrub = null;
+      detail(data.games.find(x => x.id === slider.dataset.game));
+    });
+  }
+  if (scrub != null && scrub > last) scrub = null;
+  const row = scrub ?? last, frame = g.history[row]?.[0] ?? d.frame, latest = scrub == null;
+  slider.max = Math.max(0, last);
+  slider.value = row;
+  document.getElementById("scrubTime").textContent = `${clock(frame / 24)}${latest ? (active(g) ? " (now)" : " (end)") : ""}`;
+  document.getElementById("scrubLive").disabled = latest;
+
+  document.getElementById("detailHead").innerHTML = `<div class="card" style="margin-bottom:12px"><h2><span>${esc(d.players[0].name)} vs ${esc(d.players[1].name)}</span>
+      <span class="badge ${s}">${s === "playing" ? "playing" : esc(s)}</span></h2><div class="sub" style="margin:2px 0 0">${subline(g)} · seed ${d.seed}</div>
+      ${d.decided ? `<div class="decided">Judged at the limit: ${esc(d.decided)}</div>` : ""}</div>`;
+  const shown = [0, 1].map(side => latest ? playerNow(g, side) : Object.assign({}, d.players[side], playerAt(g, side, row)));
   const panel = (p, cls) => `<div class="card"><h2><span class="${cls}">${esc(p.name)}</span><span class="muted">${esc(p.race)}</span></h2>
     <div class="nums">${STATS.map(stat => `<div class="num"><b>${value(p, stat)}</b><span>${stat[0]}</span></div>`).join("")}
       <div class="num"><b>${p.mineralsGathered + p.gasGathered}</b><span>Mined in all</span></div></div>
-    <div class="units">${unitList(p)}</div></div>`;
-  const charts = [["Workers", [COLUMNS.workers]], ["Army supply", [COLUMNS.army]], ["Units (workers too)", [COLUMNS.units]],
-    ["Minerals and gas mined", [COLUMNS.mined, COLUMNS.gasMined]], ["Minerals and gas in the bank", [COLUMNS.minerals, COLUMNS.gas]]];
-  return `<div class="card" style="margin-bottom:12px"><h2><span>${esc(d.players[0].name)} vs ${esc(d.players[1].name)}</span>
-      <span class="badge ${s}">${s === "playing" ? "playing" : esc(s)}</span></h2><div class="sub" style="margin:2px 0 0">${subline(g)} · seed ${d.seed}</div></div>
-    <div class="big">${panel(d.players[0], "c1")}${panel(d.players[1], "c2")}</div>
-    <div class="charts">${charts.map(([title, columns]) => `<div class="card chart"><h3>${title}
-      <span class="muted">(<span class="c1">${esc(d.players[0].name)}</span>, <span class="c2">${esc(d.players[1].name)}</span>)</span></h3>${chart(g, columns, 120)}</div>`).join("")}</div>`;
+    ${latest ? `<div class="units">${unitList(p)}</div>` : `<div class="sub" style="margin-top:8px">Unit list: move the slider to the end</div>`}</div>`;
+  const charts = [["Workers", ["workers"]], ["Army supply", ["armySupply"]], ["Supply used", ["supplyUsed"]],
+    ["Production buildings", ["production"]], ["Units (workers too)", ["units"]],
+    ["Minerals and gas mined", ["mineralsGathered", "gasGathered"]], ["Minerals and gas in the bank", ["minerals", "gas"]]];
+  document.getElementById("detailBody").innerHTML = `<div class="big">${panel(shown[0], "c1")}${panel(shown[1], "c2")}</div>
+    <div class="charts">${charts.map(([title, names]) => `<div class="card chart"><h3>${title}
+      <span class="muted">(<span class="c1">${esc(d.players[0].name)}</span>, <span class="c2">${esc(d.players[1].name)}</span>)</span></h3>${chart(g, names, 120, latest ? null : frame)}</div>`).join("")}</div>`;
 }
 
 function renderRun() {
@@ -196,7 +251,7 @@ function render() {
       (playing.length && games.length > playing.length ? `<p class="muted">${games.length - playing.length} finished game(s) in the tabs.</p>` : "")
       : '<div class="empty">Waiting for games…</div>';
   } else {
-    main.innerHTML = detail(games.find(g => g.id === selected));
+    detail(games.find(g => g.id === selected));
   }
   renderRun();
 }

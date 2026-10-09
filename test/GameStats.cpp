@@ -111,9 +111,38 @@ std::optional<PlayerStats> PlayerStats::read(BW::Game game, const std::string &c
         {
             if (other != owner) stats.unitsKilled += losses.units[other];
         }
+        for (auto type : BWAPI::UnitTypes::allUnitTypes())
+        {
+            if (type.getID() >= 228 || type == BWAPI::UnitTypes::Zerg_Larva) continue;
+            int count = player.unitCountsAll(type.getID());
+            if (count <= 0) continue;
+            (type.isBuilding() ? stats.buildings : stats.units) += count;
+            stats.value += count * (type.mineralPrice() + type.gasPrice());
+        }
         return stats;
     }
     return std::nullopt;
+}
+
+std::string JudgeAtLimit(const PlayerStats &me, const PlayerStats &opponent, std::string &why)
+{
+    auto beaten = [](const PlayerStats &p) { return p.buildings <= 1 && p.units <= 1; };
+    auto worth = [](const PlayerStats &p)
+    {
+        return std::to_string(p.value) + " (supply " + std::to_string(p.supplyUsed) + ", " + std::to_string(p.units)
+               + " units, " + std::to_string(p.buildings) + " buildings)";
+    };
+    if (beaten(me) != beaten(opponent))
+    {
+        auto &loser = beaten(me) ? me : opponent;
+        why = loser.name + " was down to " + std::to_string(loser.buildings) + " building(s) and "
+              + std::to_string(loser.units) + " unit(s)";
+        return beaten(me) ? "LOST" : "WON";
+    }
+    why = "units and buildings worth " + worth(me) + " against " + worth(opponent);
+    int high = std::max(me.value, opponent.value), low = std::min(me.value, opponent.value);
+    if (high >= low * 1.25 && high - low >= 500) return me.value > opponent.value ? "WON" : "LOST";
+    return "DRAW";
 }
 
 std::string ObserveUnitCounts(BW::Game game, const std::string &characterName, const std::string &name)
@@ -329,11 +358,12 @@ void LiveStats::update(BW::Game game, int frame, const PlayerStats &me, const Pl
     write();
 }
 
-void LiveStats::finish(int frame, const std::string &result)
+void LiveStats::finish(int frame, const std::string &result, const std::string &decided)
 {
     if (path.empty() || document.empty()) return;
     current = frame;
     this->result = result;
+    this->decided = decided;
     write();
 }
 
@@ -354,8 +384,9 @@ void LiveStats::write()
     std::ostringstream text;
     text << document << ",\"frame\":" << current << ",\"wallSeconds\":" << std::fixed << std::setprecision(1)
          << seconds << ",\"state\":\"" << (!result.empty() ? "over" : paused ? "paused" : "playing")
-         << "\",\"result\":\"" << result
-         << "\",\"updated\":" << std::chrono::duration_cast<std::chrono::milliseconds>(
+         << "\",\"result\":\"" << result << "\""
+         << (decided.empty() ? "" : ",\"decided\":" + nlohmann::json(decided).dump())
+         << ",\"updated\":" << std::chrono::duration_cast<std::chrono::milliseconds>(
                  std::chrono::system_clock::now().time_since_epoch()).count() << "}\n";
     auto temporary = path + ".tmp";
     {
