@@ -32,13 +32,9 @@ class FakeGames:
     def run(self, jobs: list[tuple[str, str, str]], fill: Any, lost: Any = None) -> dict[tuple[str, str], list[str]]:
         if fill:
             jobs = jobs + [fill() for _ in range(5)]  # the slots beside self-play keep playing
-        jobs = sorted(jobs, key=lambda job: job[2] != "self")  # self-play first, so it can stop the round early
         results: dict[tuple[str, str], list[str]] = {}
-        self_left = sum(1 for job in jobs if job[2] == "self")
-        for us, opponent, lane in jobs:
-            if lane == "self":
-                self_left -= 1
-            elif lost and lost(selfplay.candidate_view(results), self_left):
+        for n, (us, opponent, _) in enumerate(jobs):
+            if lost and lost(results, jobs[n:]):
                 break
             self.played += 1
             mine = strength(self.weights[us])
@@ -290,10 +286,11 @@ def test_a_candidate_that_cannot_pass_stops_the_round(tmp_path: Path, monkeypatc
     issues: list[str] = []
     runner = selfplay.make_runner("build", 3, log.append, lambda kind, job, output: issues.append(kind))
     jobs = [(selfplay.CANDIDATE, selfplay.BEST, "self") if n % 2 == 0 else (selfplay.BEST, selfplay.CANDIDATE, "self")
-            for n in range(20)] + [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 10
-    played = runner(jobs, None, selfplay.cannot_pass)
-    assert len(selfplay.candidate_view(played)) == 8  # 8 losses of 20: 13 wins are out of reach
-    assert any("round stops here" in line for line in log)
+            for n in range(20)]
+    played = runner(jobs, None, selfplay.self_play_lost)
+    # 8 losses of 20 put 13 wins out of reach; games finishing alongside the 8th may be counted too
+    assert 8 <= len(selfplay.candidate_view(played)) <= 10
+    assert any("stage stops here" in line for line in log)
     assert not issues  # the games stopped aren't reported as missing
 
 
@@ -353,3 +350,25 @@ def test_self_play_uses_several_slots(tmp_path: Path, monkeypatch: Any) -> None:
     played = runner(jobs, None)
     assert len(played[(selfplay.CANDIDATE, selfplay.BEST)]) == 6 and len(played[(selfplay.CANDIDATE, "Stone")]) == 2
     assert time.time() - started < 4.5  # 6 self-play games 3 at a time beside the others; one at a time takes 6 s
+
+
+def test_a_candidate_goes_through_the_stages_only_while_it_improves(tmp_path: Path) -> None:
+    t = trainer(tmp_path, FakeGames(7))
+    t.state.best = {**selfplay.defaults(), "first_attack_army": 6, "retreat_ratio": 0.8, "terran_opening": 0}
+    t.state.best_gauntlet = {o: ["WON", "WON"] for o in selfplay.TRAINING}  # a perfect record to match
+    for _ in range(30):
+        t.generation()
+    entries = [e for e in map(json.loads, (tmp_path / "history.jsonl").read_text().splitlines()) if "candidate" in e]
+    assert any("gauntlet" in e for e in entries), "some candidate should have passed self-play"
+    assert any("gauntlet" not in e for e in entries), "some candidate should have failed it"
+    for e in entries:
+        if not selfplay.beats_old_version(e["selfplay"]):
+            assert "gauntlet" not in e and "test" not in e  # discarded after stage 1
+        if "test" in e:  # stage 3 only after doing as well as the best against the training bots
+            assert selfplay.gauntlet_score(e["gauntlet"]) >= 1.0
+
+
+def test_stage_2_stops_once_the_best_is_out_of_reach() -> None:
+    lost = selfplay.training_bots_lost(1.0, 10)
+    assert lost({(selfplay.CANDIDATE, "Stone"): ["LOST"]}, [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 9)
+    assert not lost({(selfplay.CANDIDATE, "Stone"): ["WON"]}, [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 9)

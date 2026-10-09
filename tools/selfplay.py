@@ -11,10 +11,12 @@ Each generation:
 1. Mutate the best parameters: change one to three of them (numbers by a step that adapts to how often candidates
    pass, choices by switching), within the bounds below.
 2. Self-play: the candidate (ClaudeOpus55RLCandidate) against the best (ClaudeOpus55RL), --games games, each
-   playing half of them as "us". It needs a 55% score, as in Leela Zero.
-3. Gauntlet, at the same time: the candidate against the 5 training bots, the middle of tools/ladder.py's Tier 2
+   playing half of them as "us", on every slot. It needs a 55% score, as in Leela Zero, clear of 50% by a standard
+   error.
+3. Then, only if it passed, the candidate against the 5 training bots, the middle of tools/ladder.py's Tier 2
    (PylonPuller, the three UAlbertaBots, Stone; BunkerBoxer, the weakest, is dropped). It must score at least as well
-   as the best did, less 5%.
+   as the best did. Then, only if it did, --test-games against the held-out test bot, as a measure. Each stage stops
+   as soon as its outcome is certain.
 4. Approval: a candidate that passed is shown with its results, and promoted only once approved, at the terminal
    (y/n), by --approver (a command given the report's path; exit status 0 approves) or with --auto-approve.
 5. Promotion: the Elo of the new best is the old one plus the self-play margin (400 log10(score / (1 - score))),
@@ -26,9 +28,10 @@ Tier 2, which is never trained against. Then the first iteration of training has
 test is tried again with the next generation. It also stops after --hours.
 
 Games run headless at full speed, --parallel at once (default 6, one per core), each as its own test harness
-process. --self-slots of them (default 4) play the old version (best) against the new one (candidate); the other
-slots play the new version against the 5 training bots, at least --gauntlet-games each, and keep going round them
-for as long as self-play lasts, so no core waits and the record against them grows.
+process, in three stages: first every slot plays the old version (best) against the new one (candidate); a candidate
+that passes then plays the 5 training bots, --gauntlet-games each, and must score at least what the best did; one that
+does then plays --test-games against the held-out test bot, as a measure. Each stage stops as soon as its outcome is
+certain, and a candidate that fails a stage is discarded there.
 
 Everything is saved as it happens, in bots/ClaudeOpus55RL/training/: state.json (the best parameters, generation,
 Elo), history.jsonl (every candidate and its results) and selfplay.log. Stopping and re-running resumes; a generation
@@ -69,7 +72,7 @@ TEST = TIER2[-1]
 DROPPED = TIER2[0]
 
 GATE = 0.55  # the self-play score a candidate needs, as in Leela Zero
-GAUNTLET_TOLERANCE = 0.05  # how much worse than the best a candidate may score against the training bots
+GAUNTLET_TOLERANCE = 0.0  # how much worse than the best a candidate may score against the training bots
 SECONDS_PER_GAME = 90  # for estimates, before any game has been timed
 
 
@@ -196,14 +199,14 @@ class State:
         tmp.replace(path)
 
 
-# One game: (us, opponent, lane). Self-play games ("self" lane) run in their own slots (--self-slots); the others fill
+# One game: (us, opponent, lane). Self-play games ("self" lane) take every slot unless other games wait; the others fill
 # the remaining slots
 Job = tuple[str, str, str]
 # Plays the games, and while self-play games remain, more games from `fill` in the slots self-play doesn't use.
 # Returns {(us, opponent): results for "us"} (WON, LOST or DRAW)
-# `lost` (optional) is asked after each self-play game, with the candidate's self-play results so far and the number
-# of self-play games still to finish; once it answers True the round is stopped, as nothing it plays can matter.
-Lost = Callable[[list[str], int], bool]
+# `lost` (optional) is asked after each game, with the results so far and the games not finished yet; once it answers
+# True the rest is stopped, as nothing they could show would change the decision.
+Lost = Callable[[dict[tuple[str, str], list[str]], list[Job]], bool]
 
 
 class Runner(Protocol):
@@ -215,6 +218,19 @@ def candidate_view(played: dict[tuple[str, str], list[str]]) -> list[str]:
     """Self-play results from the candidate's side, whichever side it played as."""
     flipped = {"WON": "LOST", "LOST": "WON"}
     return played.get((CANDIDATE, BEST), []) + [flipped.get(r, r) for r in played.get((BEST, CANDIDATE), [])]
+
+
+def self_play_lost(played: dict[tuple[str, str], list[str]], left: list[Job]) -> bool:
+    return cannot_pass(candidate_view(played), sum(1 for job in left if job[2] == "self"))
+
+
+def training_bots_lost(bar: float, games: int) -> Lost:
+    """Stage 2 stops once the candidate can't reach the best's score against the training bots even winning every
+    game left."""
+    def lost(played: dict[tuple[str, str], list[str]], left: list[Job]) -> bool:
+        results = [r for (us, opponent), rs in played.items() if us == CANDIDATE and opponent in TRAINING for r in rs]
+        return (score(results) * len(results) + len(left)) / max(1, games) < bar
+    return lost
 
 
 def cannot_pass(results: list[str], remaining: int) -> bool:
@@ -319,27 +335,33 @@ class Trainer:
         self.log(f"Candidate {trial} (generation {self.state.generation} is best): {changes}")
         self.install(best, candidate)
 
-        # One slot plays the old version against the new, taking turns at being "us"; the others play the new version
-        # against the 5 training bots, round and round them for as long as self-play lasts
-        jobs: list[Job] = [(CANDIDATE, BEST, "self") if n % 2 == 0 else (BEST, CANDIDATE, "self")
-                           for n in range(self.games)]
-        jobs += self.gauntlet_jobs(CANDIDATE)
-        extra = iter(int(n) for n in range(10 ** 9))
-
-        def fill() -> Job:
-            return (CANDIDATE, TRAINING[next(extra) % len(TRAINING)], "gauntlet")
-
-        played = self.runner(jobs, fill, cannot_pass)
-        selfplay = candidate_view(played)
+        # Stage 1, self-play: every slot plays the old version against the new, taking turns at being "us". Stops as
+        # soon as the candidate can't pass. Stage 2, only for a candidate that passed: the training bots, where it must
+        # do at least as well as the best. Stage 3, only for one that did: the held-out test bot, to gauge it.
+        self_jobs: list[Job] = [(CANDIDATE, BEST, "self") if n % 2 == 0 else (BEST, CANDIDATE, "self")
+                                for n in range(self.games)]
+        selfplay = candidate_view(self.runner(self_jobs, None, self_play_lost))
         selfplay_score = score(selfplay)
-        self.log(f"  self-play against the old version: {selfplay.count('WON')}/{len(selfplay)} won, "
-                 f"score {selfplay_score:.0%} (needs {GATE:.0%}, clear of 50% by a standard error)")
-        gauntlet = self.gauntlet_results(CANDIDATE, played)
-        bar = gauntlet_score(self.state.best_gauntlet or {}) - GAUNTLET_TOLERANCE
-        self.log(f"  training bots: score {gauntlet_score(gauntlet):.0%} (needs {max(0.0, bar):.0%})")
+        self.log(f"  stage 1, self-play against the old version: {selfplay.count('WON')}/{len(selfplay)} won, "
+                 f"score {selfplay_score:.0%} (needs 13 of {self.games}: {GATE:.0%}, clear of 50% by a standard error)")
         entry: dict[str, Any] = {"time": time.time(), "candidate": trial, "generation": self.state.generation,
-                                 "params": candidate, "changed": changed, "selfplay": selfplay, "gauntlet": gauntlet}
-        passed = beats_old_version(selfplay) and gauntlet_score(gauntlet) >= bar
+                                 "params": candidate, "changed": changed, "selfplay": selfplay}
+        gauntlet: dict[str, list[str]] = {}
+        test: list[str] = []
+        bar = gauntlet_score(self.state.best_gauntlet or {}) - GAUNTLET_TOLERANCE
+        passed = beats_old_version(selfplay)
+        if passed:
+            gauntlet_jobs = self.gauntlet_jobs(CANDIDATE)
+            gauntlet = self.gauntlet_results(CANDIDATE, self.runner(gauntlet_jobs, None,
+                                                                    training_bots_lost(bar, len(gauntlet_jobs))))
+            entry["gauntlet"] = gauntlet
+            self.log(f"  stage 2, training bots: score {gauntlet_score(gauntlet):.0%} "
+                     f"(needs the best's {max(0.0, bar):.0%})")
+            passed = gauntlet_score(gauntlet) >= bar and sum(map(len, gauntlet.values())) > 0
+        if passed and self.test_games:
+            test = self.runner([(CANDIDATE, TEST, "gauntlet")] * self.test_games, None).get((CANDIDATE, TEST), [])
+            entry["test"] = {TEST: test}
+            self.log(f"  stage 3, the held-out {TEST}: {test.count('WON')}/{len(test)} won (a measure, not a gate)")
         approved = False
         if passed:
             report = {"candidate": trial, "generation": self.state.generation + 1, "changed": changes,
@@ -347,7 +369,8 @@ class Trainer:
                       "elo": round(self.state.elo + elo_margin(selfplay_score), 1),
                       "tier2_score": gauntlet_score(entry["gauntlet"]),
                       "best_tier2_score": gauntlet_score(self.state.best_gauntlet or {}),
-                      "tier2": {o: f"{r.count('WON')}/{len(r)}" for o, r in entry["gauntlet"].items()}}
+                      "tier2": {o: f"{r.count('WON')}/{len(r)}" for o, r in entry["gauntlet"].items()},
+                      "test": f"{test.count('WON')}/{len(test)} against {TEST}"}
             approved = self.approve(report)
             entry["approved"] = approved
         entry["promoted"] = passed and approved
@@ -697,7 +720,10 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
             while (queue or running) and not decided:
                 # Self-play slots first (up to self_slots, always leaving one for the training bots when there are
                 # two or more slots), then the others, keeping the self-play slots while self-play has games left
-                slots_for_self = 1 if cap[0] <= 1 else max(1, min(self_slots, cap[0] - 1))
+                others_waiting = fill is not None or any(job[2] != "self" for job in queue) or any(
+                    job[2] != "self" for _, _, job in running.values())
+                slots_for_self = (cap[0] if not others_waiting or cap[0] <= 1
+                                  else max(1, min(self_slots, cap[0] - 1)))
                 self_running = sum(1 for _, _, job in running.values() if job[2] == "self")
                 self_queued = sum(1 for job in queue if job[2] == "self")
                 self_left = self_running + self_queued > 0
@@ -775,7 +801,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                             log(f"  stopped {job[0]} vs {job[1]} to free memory")
                     elif used > memory_limit:
                         log(f"  the games use {used / 1e9:.1f} GB, over {memory_limit / 1e9:g} GB, already one at a time")
-                self_before = sum(1 for _, _, job in running.values() if job[2] == "self")
+                ended_before = ended[0]
                 for slot, (process, started, job) in list(running.items()):
                     output = test_dir / "parallel" / str(slot) / "selfplay.log"
                     if process.poll() is None:
@@ -798,14 +824,11 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                                    if any(m in line for m in ERROR_MARKERS)), None)
                     if marker:
                         issue(f"error in the output, though the game finished: {marker[:200]}", job, output)
-                self_after = sum(1 for _, _, job in running.values() if job[2] == "self")
-                if lost and self_after < self_before:
-                    remaining = sum(1 for job in queue if job[2] == "self") + self_after
-                    so_far = candidate_view(read_results(before))
-                    if lost(so_far, remaining):
+                if lost and ended[0] > ended_before:
+                    left = queue + [job for _, _, job in running.values()]
+                    if lost(read_results(before), left):
                         decided = True
-                        log(f"  self-play {so_far.count('WON')}/{len(so_far)} won: it can't pass now even winning the "
-                            f"{remaining} game(s) left, so the round stops here")
+                        log(f"  it can't pass now even winning the {len(left)} game(s) left, so this stage stops here")
         finally:
             PROGRESS.done()
             for process, _, _ in running.values():
@@ -893,10 +916,6 @@ def main() -> int:
     parser.add_argument("--test-games", type=int, default=4,
                         help=f"games against the held-out bot, {TEST}, all of which must be won (default 4)")
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
-    parser.add_argument("--self-slots", type=int, default=4,
-                        help="self-play games (old version against new) played at once (default 4 of 6, which "
-                             "finishes 20 self-play games and 10 against the training bots in about 5 games' time; "
-                             "the other slots play the training bots)")
     parser.add_argument("--game-memory-gb", type=float, default=None,
                         help="the most memory one game (harness and opponent) may use before it is stopped and "
                              "reported (default: 3 times what games against that opponent usually use, measured "
@@ -955,13 +974,14 @@ def main() -> int:
                      f"cmake --build {args.build} -j 4 --target tests")
 
     parallel = max(2, args.parallel)
-    self_slots = max(1, min(args.self_slots, parallel - 1))
     per_generation = args.games
-    minutes = max(math.ceil(args.games / self_slots),
-                  math.ceil(len(TRAINING) * args.gauntlet_games / (parallel - self_slots))) * SECONDS_PER_GAME / 60
-    log(f"START self-play training of ClaudeOpus55RL: generation {state.generation}, Elo {state.elo:+.0f}; up to "
-        f"{per_generation} self-play games per candidate, {self_slots} at a time beside {parallel - self_slots} games "
-        f"against the training bots, at most roughly "
+    waves = (math.ceil(args.games / parallel) + math.ceil(len(TRAINING) * args.gauntlet_games / parallel)
+             + math.ceil(args.test_games / parallel))
+    minutes = waves * SECONDS_PER_GAME / 60
+    log(f"START self-play training of ClaudeOpus55RL: generation {state.generation}, Elo {state.elo:+.0f}. Each "
+        f"candidate: {per_generation} self-play games {parallel} at a time, then, if it passed, "
+        f"{len(TRAINING) * args.gauntlet_games} against the training bots, then, if it did as well as the best, "
+        f"{args.test_games} against {TEST}: at most roughly "
         f"{minutes:.0f} minutes each"
         + (f"; stopping after {args.hours:g} h" if args.hours else "; until the goal")
         + f". Goal: win every game against the {len(TRAINING)} training bots, then every test game against {TEST}.")
@@ -980,7 +1000,7 @@ def main() -> int:
            "usually use, at most 2 GB"))
     log(profile.summary())
     runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit,
-                         profile, self_slots)
+                         profile)
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()
