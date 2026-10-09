@@ -342,3 +342,14 @@ def test_finished_games_are_measured(tmp_path: Path, monkeypatch: Any) -> None:
     runner = selfplay.make_runner("build", 2, lambda message: None, profile=profile, usage=busy(2e8))
     runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
     assert profile.peaks == {"Stone": [2e8]}
+
+
+def test_self_play_uses_several_slots(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path, f"sleep 1\n{RECORD_A_WIN}")
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    runner = selfplay.make_runner("build", 4, lambda message: None, self_slots=3)
+    jobs = [(selfplay.CANDIDATE, selfplay.BEST, "self")] * 6 + [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 2
+    started = time.time()
+    played = runner(jobs, None)
+    assert len(played[(selfplay.CANDIDATE, selfplay.BEST)]) == 6 and len(played[(selfplay.CANDIDATE, "Stone")]) == 2
+    assert time.time() - started < 4.5  # 6 self-play games 3 at a time beside the others; one at a time takes 6 s

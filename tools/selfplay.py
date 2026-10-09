@@ -26,7 +26,7 @@ Tier 2, which is never trained against. Then the first iteration of training has
 test is tried again with the next generation. It also stops after --hours.
 
 Games run headless at full speed, --parallel at once (default 6, one per core), each as its own test harness
-process. One slot always plays the old version (best) against the new one (candidate), game after game; the other
+process. --self-slots of them (default 4) play the old version (best) against the new one (candidate); the other
 slots play the new version against the 5 training bots, at least --gauntlet-games each, and keep going round them
 for as long as self-play lasts, so no core waits and the record against them grows.
 
@@ -196,7 +196,7 @@ class State:
         tmp.replace(path)
 
 
-# One game: (us, opponent, lane). Self-play games ("self" lane) run one at a time, in their own slot; the others fill
+# One game: (us, opponent, lane). Self-play games ("self" lane) run in their own slots (--self-slots); the others fill
 # the remaining slots
 Job = tuple[str, str, str]
 # Plays the games, and while self-play games remain, more games from `fill` in the slots self-play doesn't use.
@@ -612,6 +612,7 @@ def step_down(cap: int) -> int:
 def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
                 memory_limit: float = DEFAULT_MEMORY_LIMIT, profile: MemoryProfile | None = None,
+                self_slots: int = 1,
                 usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
@@ -694,16 +695,19 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
 
         try:
             while (queue or running) and not decided:
-                self_running = any(job[2] == "self" for _, _, job in running.values())
-                self_left = self_running or any(job[2] == "self" for job in queue)
-                # The self-play slot first, then the others, keeping a slot for self-play while it has games left
-                if free and not self_running:
-                    for job in queue:
-                        if job[2] == "self":
-                            queue.remove(job)
-                            start(job)
-                            break
-                others_allowed = cap[0] - (1 if self_left else 0)
+                # Self-play slots first (up to self_slots, always leaving one for the training bots when there are
+                # two or more slots), then the others, keeping the self-play slots while self-play has games left
+                slots_for_self = 1 if cap[0] <= 1 else max(1, min(self_slots, cap[0] - 1))
+                self_running = sum(1 for _, _, job in running.values() if job[2] == "self")
+                self_queued = sum(1 for job in queue if job[2] == "self")
+                self_left = self_running + self_queued > 0
+                while free and self_queued and self_running < slots_for_self:
+                    job = next(job for job in queue if job[2] == "self")
+                    queue.remove(job)
+                    start(job)
+                    self_running += 1
+                    self_queued -= 1
+                others_allowed = cap[0] - min(slots_for_self, self_running + self_queued)
                 while free and sum(1 for _, _, job in running.values() if job[2] != "self") < others_allowed:
                     queued = next((job for job in queue if job[2] != "self"), None)
                     if queued is not None:
@@ -889,6 +893,10 @@ def main() -> int:
     parser.add_argument("--test-games", type=int, default=4,
                         help=f"games against the held-out bot, {TEST}, all of which must be won (default 4)")
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
+    parser.add_argument("--self-slots", type=int, default=4,
+                        help="self-play games (old version against new) played at once (default 4 of 6, which "
+                             "finishes 20 self-play games and 10 against the training bots in about 5 games' time; "
+                             "the other slots play the training bots)")
     parser.add_argument("--game-memory-gb", type=float, default=None,
                         help="the most memory one game (harness and opponent) may use before it is stopped and "
                              "reported (default: 3 times what games against that opponent usually use, measured "
@@ -947,10 +955,13 @@ def main() -> int:
                      f"cmake --build {args.build} -j 4 --target tests")
 
     parallel = max(2, args.parallel)
+    self_slots = max(1, min(args.self_slots, parallel - 1))
     per_generation = args.games
-    minutes = max(args.games, math.ceil(len(TRAINING) * args.gauntlet_games / (parallel - 1))) * SECONDS_PER_GAME / 60
+    minutes = max(math.ceil(args.games / self_slots),
+                  math.ceil(len(TRAINING) * args.gauntlet_games / (parallel - self_slots))) * SECONDS_PER_GAME / 60
     log(f"START self-play training of ClaudeOpus55RL: generation {state.generation}, Elo {state.elo:+.0f}; up to "
-        f"{per_generation} self-play games per candidate, one at a time beside {parallel - 1} games against the training bots, roughly "
+        f"{per_generation} self-play games per candidate, {self_slots} at a time beside {parallel - self_slots} games "
+        f"against the training bots, at most roughly "
         f"{minutes:.0f} minutes each"
         + (f"; stopping after {args.hours:g} h" if args.hours else "; until the goal")
         + f". Goal: win every game against the {len(TRAINING)} training bots, then every test game against {TEST}.")
@@ -969,7 +980,7 @@ def main() -> int:
            "usually use, at most 2 GB"))
     log(profile.summary())
     runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit,
-                         profile)
+                         profile, self_slots)
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()
