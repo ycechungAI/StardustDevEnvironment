@@ -649,8 +649,9 @@ def main() -> int:
     if missing:
         recipes = sorted({"UAlbertaBot" if name.startswith("UAlbertaBot") else name for name in missing
                           if name not in (BEST, CANDIDATE)})
-        parser.error(f"not built: {', '.join(missing)}. Fetch the recipe bots ({' '.join(recipes)}) with "
-                     f"tools/fetch_bot.py, then re-run CMake and build {args.build}")
+        fetch = f"fetch the recipe bots ({' '.join(recipes)}) with tools/fetch_bot.py, then " if recipes else ""
+        parser.error(f"not built: {', '.join(missing)}. To build them, {fetch}run: cmake -S . -B {args.build} && "
+                     f"cmake --build {args.build} -j 4 --target tests")
 
     parallel = max(2, args.parallel)
     per_generation = args.games
