@@ -70,12 +70,13 @@ def show_window(url: str) -> None:
     WINDOW_FILE.write_text(json.dumps(request))
     window = webview.create_window(WINDOW_TITLE, url, width=1200, height=820)
     assert window is not None
+    closed = threading.Event()
+    window.events.closed += closed.set
 
     def follow_requests() -> None:
-        """Shows each later run's page here (open_page writes it to WINDOW_FILE)."""
+        """Shows each later run's page here (open_page writes it to WINDOW_FILE), until the window is closed."""
         shown = request["opened"]
-        while True:
-            time.sleep(0.5)
+        while not closed.wait(0.5):
             try:
                 latest = json.loads(WINDOW_FILE.read_text())
             except (OSError, ValueError):
@@ -87,6 +88,9 @@ def show_window(url: str) -> None:
     webview.start(follow_requests)
     if window_pid() == os.getpid():
         WINDOW_FILE.unlink(missing_ok=True)
+    # Closing the window ends the process at once: nothing left running (pywebview's threads included) keeps it, and
+    # with it the Dock icon, alive, which would also make the next run think the window is still open
+    os._exit(0)
 
 
 class LiveGames:
