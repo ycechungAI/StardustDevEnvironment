@@ -1,6 +1,6 @@
-"""Improves ClaudeOpus55RL by self-play, in the way Leela Zero improves its network: propose a candidate, play it, and
+"""Improves RL_ClaudeOpus55 by self-play, in the way Leela Zero improves its network: propose a candidate, play it, and
 promote it to "best" only if it beats the current best through a gate. Instead of a neural network, the candidate is a
-set of parameters (bots/ClaudeOpus55RL reads them from a weights file at the start of each game): probe counts,
+set of parameters (bots/RL_ClaudeOpus55 reads them from a weights file at the start of each game): probe counts,
 attack and retreat thresholds, and opening choices.
 
 Usage: python tools/selfplay.py [--hours 12] [--games 20] [--gauntlet-games 2] [--parallel 6] [--build build]
@@ -10,7 +10,7 @@ Usage: python tools/selfplay.py [--hours 12] [--games 20] [--gauntlet-games 2] [
 Each generation:
 1. Mutate the best parameters: change one to three of them (numbers by a step that adapts to how often candidates
    pass, choices by switching), within the bounds below.
-2. Self-play: the candidate (ClaudeOpus55RLCandidate) against the best (ClaudeOpus55RL), --games games, each
+2. Self-play: the candidate (RL_ClaudeOpus55Candidate) against the best (RL_ClaudeOpus55), --games games, each
    playing half of them as "us", on every slot. It needs a 55% score, as in Leela Zero, clear of 50% by a standard
    error.
 3. Then, only if it passed, the candidate against the training bots, the middle of tools/ladder.py's Tier 2
@@ -34,7 +34,7 @@ that passes then plays the training bots, --gauntlet-games each, and must score 
 does then plays --test-games against the held-out test bot, as a measure. Each stage stops as soon as its outcome is
 certain, and a candidate that fails a stage is discarded there.
 
-Everything is saved as it happens, in bots/ClaudeOpus55RL/training/: state.json (the best parameters, generation,
+Everything is saved as it happens, in bots/RL_ClaudeOpus55/training/: state.json (the best parameters, generation,
 Elo), history.jsonl (every candidate and its results) and selfplay.log. Stopping and re-running resumes; a generation
 cut short is played again. Games are recorded by the test harness in <build>/test/replays/results.csv, which this reads.
 """
@@ -66,7 +66,7 @@ TIERS = ("Tier 2", "Tier 1")  # trained on in this order: Tier 1 once Tier 2's g
 TIER2 = next(names for rung, names in LADDER if rung == "Tier 2")  # weakest first
 
 
-def configure(bot: str = "ClaudeOpus55RL", tier: str = "Tier 2") -> None:
+def configure(bot: str = "RL_ClaudeOpus55", tier: str = "Tier 2") -> None:
     """Which bot learns and which tier it learns against. The bot is built twice, as <bot> (the best) and
     <bot>Candidate, reading bwapi-data/AI/<bot>-best.json and <bot>-candidate.json. In each tier, the strongest
     opponent is held out as the test, never trained against; the weakest is dropped as too easy to teach anything;
@@ -949,8 +949,9 @@ def make_approve(approver: str | None, auto: bool, training: Path,
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--bot", default="ClaudeOpus55RL",
-                        help="the bot that learns (default ClaudeOpus55RL); it must be built as <bot> and "
+    parser.add_argument("--bot", default="RL_ClaudeOpus55",
+                        help="the bot that learns (default RL_ClaudeOpus55; a bot trained this way is named RL_ + the "
+                             "bot it started from); it must be built as <bot> and "
                              "<bot>Candidate, reading bwapi-data/AI/<bot>-best.json and <bot>-candidate.json")
     parser.add_argument("--tier", default="auto",
                         help="opponents: 2 (Tier 2), 1 (Tier 1), or auto (default): Tier 2 until its goal is "

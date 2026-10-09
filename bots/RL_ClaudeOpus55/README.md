@@ -1,6 +1,8 @@
-# ClaudeOpus55RL
+# RL_ClaudeOpus55
 
 ClaudeOpus55 (`bots/ClaudeOpus55`, the AI-written bot) taught by self-play. It started from ClaudeOpus55's code of 9 October 2026. ClaudeOpus55 itself stays unchanged, as the record of its experiment.
+
+Naming: a bot trained by reinforcement learning is named `RL_` + the bot it started from, so `RL_ClaudeOpus55` (it was `ClaudeOpus55RL` before 9 October 2026; `tools/rename_bot.py ClaudeOpus55RL RL_ClaudeOpus55` renames it in old results, replays, settings and training).
 
 The approach follows [Leela Zero](https://github.com/ycechungAI/leela-zero), with a set of parameters in place of a neural network: a StarCraft network would need far more games than one computer can play. The parameters are the bot's key numbers and choices, read from a weights file at the start of each game:
 
@@ -36,7 +38,7 @@ Against Zerg the cannon opening stays as it is: its comments in the code record 
 Each round, `tools/selfplay.py`:
 1. **Proposes a candidate:** the best parameters with one to three changed, by steps that grow while candidates keep passing and shrink while they don't.
 2. **Plays it in stages**, 6 games at a time, headless at full speed. A candidate that fails a stage is discarded there:
-   1. **Self-play:** every slot plays the old version (`ClaudeOpus55RL`) against the new one (`ClaudeOpus55RLCandidate`), 20 games, taking turns at being "us". It must score 55%, as in Leela Zero, by more than luck (a standard error clear of 50%: 13 of 20).
+   1. **Self-play:** every slot plays the old version (`RL_ClaudeOpus55`) against the new one (`RL_ClaudeOpus55Candidate`), 20 games, taking turns at being "us". It must score 55%, as in Leela Zero, by more than luck (a standard error clear of 50%: 13 of 20).
    2. **Training bots:** the new version plays PylonPuller, UAlbertaBot (Terran, Zerg, Protoss) and Stone, 2 games each, and must score at least what the best did.
    3. **Test bot:** it plays the held-out ZZZKBot, 4 games. This is a measure of how it is doing, shown when you approve, not a gate: ZZZKBot is never trained against.
 
@@ -75,7 +77,7 @@ Everything is saved as it happens, in `training/`:
 
 A pairing that fails 3 times in a row is skipped until training restarts, so one broken bot can't stall a run. Games left running by an earlier run that didn't get to stop them are cleared at start.
 
-Each issue is a JSON line in `training/issues.log` with the bot, the opponent, the weights it played with and the last 30 lines of the game's output; the whole output is kept in `training/issues/`. `--issues` sums the log up, most frequent first. Parameters can't fix a bug in the code: give `issues.log` to a Claude session to find and fix the cause in `ClaudeOpus55RL.cpp` (or work around an opponent's), then rebuild and carry on training.
+Each issue is a JSON line in `training/issues.log` with the bot, the opponent, the weights it played with and the last 30 lines of the game's output; the whole output is kept in `training/issues/`. `--issues` sums the log up, most frequent first. Parameters can't fix a bug in the code: give `issues.log` to a Claude session to find and fix the cause in `RL_ClaudeOpus55.cpp` (or work around an opponent's), then rebuild and carry on training.
 
 While games run, a line at the bottom of the terminal shows a spinner and moving dots (it is working), a bar of the round's games, self-play games done, games playing now and the time the round has taken. Log lines print above it.
 
