@@ -46,6 +46,10 @@ Each round, `tools/selfplay.py`:
 
 Of Tier 2 (`tools/ladder.py`), BunkerBoxer, the weakest, is left out as too easy to teach anything. ZZZKBot, the strongest, is held out as the test: it is never trained against.
 
+**Tiers.** By default (`--tier auto`) training is against Tier 2 until its goal is reached, then moves on to Tier 1 by itself, starting from Tier 2's best parameters. Every tier is split the same way: the weakest is dropped, the strongest is held out as the test, and the rest are trained against. In Tier 1 that is 7 training bots, with Stardust2025 held out and Steamhammer2025 dropped. Each tier keeps its own folder: `training/` for Tier 2, `training-tier1/` for Tier 1. `--tier 2` or `--tier 1` picks one.
+
+**Another bot.** `--bot NAME` trains a different bot, if it is built the way this one is: registered twice, as `NAME` and `NAMECandidate` (see `bot.cmake`), and reading the parameters from `bwapi-data/AI/NAME-best.json` and `NAME-candidate.json`. Its training lives in `bots/NAME/training/`.
+
 **The goal**, after which the first iteration has succeeded and training stops:
 1. The best wins every game against the 5 training bots, twice in a row (a confirming gauntlet follows a perfect one).
 2. It then wins every test game against ZZZKBot (4 by default).

@@ -13,7 +13,7 @@ Each generation:
 2. Self-play: the candidate (ClaudeOpus55RLCandidate) against the best (ClaudeOpus55RL), --games games, each
    playing half of them as "us", on every slot. It needs a 55% score, as in Leela Zero, clear of 50% by a standard
    error.
-3. Then, only if it passed, the candidate against the 5 training bots, the middle of tools/ladder.py's Tier 2
+3. Then, only if it passed, the candidate against the training bots, the middle of tools/ladder.py's Tier 2
    (PylonPuller, the three UAlbertaBots, Stone; BunkerBoxer, the weakest, is dropped). It must score at least as well
    as the best did. Then, only if it did, --test-games against the held-out test bot, as a measure. Each stage stops
    as soon as its outcome is certain.
@@ -22,14 +22,15 @@ Each generation:
 5. Promotion: the Elo of the new best is the old one plus the self-play margin (400 log10(score / (1 - score))),
    so generation 0, ClaudeOpus55's own parameters, is 0 Elo.
 
-The goal: the best wins every game against the 5 training bots, twice in a row (a confirming gauntlet is played when
-the first is perfect), and then every --test-games game against the held-out test bot, ZZZKBot, the strongest of
-Tier 2, which is never trained against. Then the first iteration of training has succeeded and the run stops. A failed
-test is tried again with the next generation. It also stops after --hours.
+The goal: the best wins every game against the training bots, twice in a row (a confirming gauntlet is played when
+the first is perfect), and then every --test-games game against the held-out test bot, ZZZKBot for Tier 2, the
+strongest of the tier, which is never trained against. A failed test is tried again with the next generation. With
+--tier auto (the default) training then moves on to Tier 1 (Stardust2025 held out, Steamhammer2025 dropped), starting
+from Tier 2's best; it stops at Tier 1's goal or after --hours. --bot trains another bot built the same way.
 
 Games run headless at full speed, --parallel at once (default 6, one per core), each as its own test harness
 process, in three stages: first every slot plays the old version (best) against the new one (candidate); a candidate
-that passes then plays the 5 training bots, --gauntlet-games each, and must score at least what the best did; one that
+that passes then plays the training bots, --gauntlet-games each, and must score at least what the best did; one that
 does then plays --test-games against the held-out test bot, as a measure. Each stage stops as soon as its outcome is
 certain, and a candidate that fails a stage is discarded there.
 
@@ -61,15 +62,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ladder import LADDER  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-TRAINING_DIR = ROOT / "bots" / "ClaudeOpus55RL" / "training"
-BEST = "ClaudeOpus55RL"
-CANDIDATE = "ClaudeOpus55RLCandidate"
+TIERS = ("Tier 2", "Tier 1")  # trained on in this order: Tier 1 once Tier 2's goal is reached
 TIER2 = next(names for rung, names in LADDER if rung == "Tier 2")  # weakest first
-# Trained against: the 5 in the middle. The weakest is dropped as too easy to teach anything; the strongest is held
-# out, never trained against, to test the best once it beats the 5 in every game
-TRAINING = TIER2[1:-1]
-TEST = TIER2[-1]
-DROPPED = TIER2[0]
+
+
+def configure(bot: str = "ClaudeOpus55RL", tier: str = "Tier 2") -> None:
+    """Which bot learns and which tier it learns against. The bot is built twice, as <bot> (the best) and
+    <bot>Candidate, reading bwapi-data/AI/<bot>-best.json and <bot>-candidate.json. In each tier, the strongest
+    opponent is held out as the test, never trained against; the weakest is dropped as too easy to teach anything;
+    the ones in between are trained against. Each bot and tier keeps its own training folder."""
+    global BEST, CANDIDATE, TIER, TRAINING, TEST, DROPPED, TRAINING_DIR
+    names = next(names for rung, names in LADDER if rung == tier)  # weakest first
+    BEST, CANDIDATE, TIER = bot, bot + "Candidate", tier
+    TRAINING, TEST, DROPPED = names[1:-1], names[-1], names[0]
+    folder = "training" if tier == "Tier 2" else "training-" + tier.lower().replace(" ", "")
+    TRAINING_DIR = ROOT / "bots" / bot / folder
+
+
+BEST = CANDIDATE = TIER = TEST = DROPPED = ""
+TRAINING: list[str] = []
+TRAINING_DIR = ROOT
+configure()
 
 GATE = 0.55  # the self-play score a candidate needs, as in Leela Zero
 GAUNTLET_TOLERANCE = 0.0  # how much worse than the best a candidate may score against the training bots
@@ -166,9 +179,10 @@ def gauntlet_score(gauntlet: dict[str, list[str]]) -> float:
     return score([r for results in gauntlet.values() for r in results])
 
 
-def perfect(gauntlet: dict[str, list[str]], games: int, opponents: list[str] = TRAINING) -> bool:
-    """Beat each of these opponents in every game, at least `games` games each."""
-    return all(len(gauntlet.get(o, [])) >= games and all(r == "WON" for r in gauntlet[o]) for o in opponents)
+def perfect(gauntlet: dict[str, list[str]], games: int, opponents: list[str] | None = None) -> bool:
+    """Beat each of these opponents (by default the training bots) in every game, at least `games` games each."""
+    return all(len(gauntlet.get(o, [])) >= games and all(r == "WON" for r in gauntlet[o])
+               for o in (TRAINING if opponents is None else opponents))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -275,7 +289,7 @@ class Trainer:
 
     def gauntlet_results(self, bot: str, played: dict[tuple[str, str], list[str]]) -> dict[str, list[str]]:
         results = {opponent: played.get((bot, opponent), []) for opponent in TRAINING}
-        self.log(f"  {bot} vs the 5 training bots: " + ", ".join(f"{o} {r.count('WON')}/{len(r)}" for o, r in results.items()))
+        self.log(f"  {bot} vs the {len(TRAINING)} training bots: " + ", ".join(f"{o} {r.count('WON')}/{len(r)}" for o, r in results.items()))
         return results
 
     def gauntlet(self, bot: str) -> dict[str, list[str]]:
@@ -291,14 +305,14 @@ class Trainer:
             self.save()
 
     def check_goal(self) -> bool:
-        """The stop goal: every game won against the 5 training bots, twice in a row (a confirming gauntlet), then every
+        """The stop goal: every game won against the training bots, twice in a row (a confirming gauntlet), then every
         test game against the held-out bot. A failed test waits for a new generation before it is tried again."""
         gauntlet = self.state.best_gauntlet or {}
         if self.state.tested_generation == self.state.generation or not perfect(gauntlet, self.gauntlet_games):
             return False
         best = self.state.best or defaults()
         self.install(best, best)
-        self.log("The best won every game against the 5 training bots: playing a confirming gauntlet")
+        self.log(f"The best won every game against the {len(TRAINING)} training bots: playing a confirming gauntlet")
         confirm = self.gauntlet(BEST)
         self.record({"time": time.time(), "generation": self.state.generation, "confirming_gauntlet": confirm})
         self.state.best_gauntlet = {o: gauntlet.get(o, []) + confirm.get(o, []) for o in TRAINING}
@@ -877,8 +891,8 @@ def make_install(build: str) -> Callable[[dict[str, float], dict[str, float]], N
 
     def install(best: dict[str, float], candidate: dict[str, float]) -> None:
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / "ClaudeOpus55RL-best.json").write_text(json.dumps(best, indent=2) + "\n")
-        (directory / "ClaudeOpus55RL-candidate.json").write_text(json.dumps(candidate, indent=2) + "\n")
+        (directory / f"{BEST}-best.json").write_text(json.dumps(best, indent=2) + "\n")
+        (directory / f"{BEST}-candidate.json").write_text(json.dumps(candidate, indent=2) + "\n")
 
     return install
 
@@ -909,12 +923,18 @@ def make_approve(approver: str | None, auto: bool, training: Path,
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--bot", default="ClaudeOpus55RL",
+                        help="the bot that learns (default ClaudeOpus55RL); it must be built as <bot> and "
+                             "<bot>Candidate, reading bwapi-data/AI/<bot>-best.json and <bot>-candidate.json")
+    parser.add_argument("--tier", default="auto",
+                        help="opponents: 2 (Tier 2), 1 (Tier 1), or auto (default): Tier 2 until its goal is "
+                             "reached, then Tier 1")
     parser.add_argument("--hours", type=float, default=0, help="stop after this long (default: only at the goal)")
     parser.add_argument("--games", type=int, default=20, help="self-play games per candidate (default 20)")
     parser.add_argument("--gauntlet-games", type=int, default=2,
                         help="games at least against each training bot per candidate (default 2)")
     parser.add_argument("--test-games", type=int, default=4,
-                        help=f"games against the held-out bot, {TEST}, all of which must be won (default 4)")
+                        help="games against the tier's held-out test bot (default 4)")
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
     parser.add_argument("--game-memory-gb", type=float, default=None,
                         help="the most memory one game (harness and opponent) may use before it is stopped and "
@@ -930,7 +950,31 @@ def main() -> int:
     parser.add_argument("--status", action="store_true", help="show where training stands and exit")
     parser.add_argument("--issues", action="store_true", help="sum up training/issues.log and exit")
     args = parser.parse_args()
+    if args.tier == "auto":
+        tier = TIERS[0]
+        for following in TIERS[1:]:  # past every tier whose goal is reached already
+            configure(args.bot, tier)
+            if not State.load(TRAINING_DIR / "state.json").goal_reached:
+                break
+            tier = following
+    else:
+        tier = "Tier " + args.tier.removeprefix("Tier ").removeprefix("tier").strip()
+        if tier not in TIERS:
+            parser.error(f"--tier: one of auto, 2, 1 (not {args.tier})")
+    started = time.time()
+    while True:
+        hours_left = args.hours - (time.time() - started) / 3600 if args.hours else 0.0
+        result = train(args, parser, tier, hours_left)
+        nxt = TIERS.index(tier) + 1
+        if result != "goal" or args.tier != "auto" or nxt >= len(TIERS) or (args.hours and hours_left <= 0):
+            return 0 if result in ("goal", "done") else int(result)
+        tier = TIERS[nxt]
 
+
+def train(args: argparse.Namespace, parser: argparse.ArgumentParser, tier: str, hours: float) -> str:
+    """Trains against one tier. Returns "goal" when its goal is reached, "done" when the time is up, or an exit
+    status."""
+    configure(args.bot, tier)
     TRAINING_DIR.mkdir(parents=True, exist_ok=True)
     log_file = TRAINING_DIR / "selfplay.log"
 
@@ -943,26 +987,38 @@ def main() -> int:
             f.write(line + "\n")
 
     state = State.load(TRAINING_DIR / "state.json")
+    if not (TRAINING_DIR / "state.json").exists() and TIERS.index(tier) > 0:
+        # A new tier starts from the best of the tier before it
+        configure(args.bot, TIERS[TIERS.index(tier) - 1])
+        before = State.load(TRAINING_DIR / "state.json")
+        configure(args.bot, tier)
+        state.best, state.generation, state.elo = before.best, before.generation, before.elo
+        state.save(TRAINING_DIR / "state.json")
+        if before.best:
+            log(f"{tier}: starting from the best of {TIERS[TIERS.index(tier) - 1]} (generation {before.generation})")
     if args.issues:
         print(summarize_issues(TRAINING_DIR / "issues.log"))
-        return 0
+        return "0"
     if args.status:
-        print(f"Generation {state.generation}, Elo {state.elo:+.0f} over ClaudeOpus55, {state.candidates_tried} "
-              f"candidate(s) tried, step scale {state.scale:.2f}, goal {'reached' if state.goal_reached else 'not yet'}")
+        print(f"{BEST} against {tier}: generation {state.generation}, Elo {state.elo:+.0f} over its start, "
+              f"{state.candidates_tried} candidate(s) tried, step scale {state.scale:.2f}, goal "
+              f"{'reached' if state.goal_reached else 'not yet'}")
+        print(f"Training bots: {', '.join(TRAINING)}; held out to test: {TEST}; dropped: {DROPPED}")
         if state.best_gauntlet:
-            print(f"Best against the 5 training bots: {gauntlet_score(state.best_gauntlet):.0%}: " + ", ".join(
-                f"{o} {r.count('WON')}/{len(r)}" for o, r in state.best_gauntlet.items()))
+            print(f"Best against the {len(TRAINING)} training bots: {gauntlet_score(state.best_gauntlet):.0%}: "
+                  + ", ".join(f"{o} {r.count('WON')}/{len(r)}" for o, r in state.best_gauntlet.items()))
         print("Best parameters: " + json.dumps(state.best))
         print(MemoryProfile(TRAINING_DIR / "memory.json").summary())
-        return 0
+        return "0"
     if state.goal_reached:
-        print(f"The goal was reached already: the best beat the 5 training bots in every game twice, then {TEST}. "
-              "Delete bots/ClaudeOpus55RL/training/state.json to start over.")
-        return 0
+        print(f"{tier}'s goal was reached already: the best beat the {len(TRAINING)} training bots in every game "
+              f"twice, then {TEST}. Delete {TRAINING_DIR / 'state.json'} to start over"
+              + (", or run with --tier auto to go on to the next tier." if tier != TIERS[-1] else "."))
+        return "goal"
 
     tests = ROOT / args.build / "test" / "tests"
     if not tests.exists():
-        parser.error(f"no test harness at {tests}: build it first (cmake --build {args.build} -j)")
+        parser.error(f"no test harness at {tests}: build it first (cmake --build {args.build} -j 4 --target tests)")
     listing = subprocess.run([str(tests), "--gtest_filter=Bots.List"], cwd=tests.parent, capture_output=True,
                              text=True).stdout
     missing = [bot for bot in [BEST, CANDIDATE, *TRAINING, TEST] if f"  {bot} (" not in listing]
@@ -974,16 +1030,14 @@ def main() -> int:
                      f"cmake --build {args.build} -j 4 --target tests")
 
     parallel = max(2, args.parallel)
-    per_generation = args.games
     waves = (math.ceil(args.games / parallel) + math.ceil(len(TRAINING) * args.gauntlet_games / parallel)
              + math.ceil(args.test_games / parallel))
-    minutes = waves * SECONDS_PER_GAME / 60
-    log(f"START self-play training of ClaudeOpus55RL: generation {state.generation}, Elo {state.elo:+.0f}. Each "
-        f"candidate: {per_generation} self-play games {parallel} at a time, then, if it passed, "
-        f"{len(TRAINING) * args.gauntlet_games} against the training bots, then, if it did as well as the best, "
-        f"{args.test_games} against {TEST}: at most roughly "
-        f"{minutes:.0f} minutes each"
-        + (f"; stopping after {args.hours:g} h" if args.hours else "; until the goal")
+    log(f"START self-play training of {BEST} against {tier}: generation {state.generation}, Elo {state.elo:+.0f}. "
+        f"Training bots: {', '.join(TRAINING)}; test: {TEST}. Each candidate: {args.games} self-play games "
+        f"{parallel} at a time, then, if it passed, {len(TRAINING) * args.gauntlet_games} against the training bots, "
+        f"then, if it did as well as the best, {args.test_games} against {TEST}: at most roughly "
+        f"{waves * SECONDS_PER_GAME / 60:.0f} minutes each"
+        + (f"; stopping after {hours:.1f} h" if hours else "; until the goal")
         + f". Goal: win every game against the {len(TRAINING)} training bots, then every test game against {TEST}.")
 
     approve = make_approve(args.approver, args.auto_approve, TRAINING_DIR, log)
@@ -1005,20 +1059,19 @@ def main() -> int:
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()
     try:
-        while not args.hours or time.time() - start < args.hours * 3600:
+        while not hours or time.time() - start < hours * 3600:
             if trainer.generation():
-                log(f"GOAL REACHED at generation {trainer.state.generation} (Elo {trainer.state.elo:+.0f}): the best "
-                    f"beat the 5 training bots in every game twice in a row, and the held-out {TEST} in every test "
-                    f"game. The first iteration of RL succeeded.")
-                return 0
+                log(f"GOAL REACHED against {tier} at generation {trainer.state.generation} "
+                    f"(Elo {trainer.state.elo:+.0f}): the best beat the {len(TRAINING)} training bots in every game "
+                    f"twice in a row, and the held-out {TEST} in every test game.")
+                return "goal"
             log(f"Elapsed {(time.time() - start) / 3600:.1f} h; generation {trainer.state.generation}, "
-                f"Elo {trainer.state.elo:+.0f}, Tier 2 {gauntlet_score(trainer.state.best_gauntlet or {}):.0%}")
+                f"Elo {trainer.state.elo:+.0f}, {tier} {gauntlet_score(trainer.state.best_gauntlet or {}):.0%}")
     except KeyboardInterrupt:
         log("Stopped; re-run to resume.")
-        return 130
-    log(f"Time is up after {args.hours:g} h at generation {trainer.state.generation}; re-run to continue.")
-    return 0
-
+        return "130"
+    log(f"Time is up after {hours:.1f} h at generation {trainer.state.generation}; re-run to continue.")
+    return "done"
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -372,3 +372,32 @@ def test_stage_2_stops_once_the_best_is_out_of_reach() -> None:
     lost = selfplay.training_bots_lost(1.0, 10)
     assert lost({(selfplay.CANDIDATE, "Stone"): ["LOST"]}, [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 9)
     assert not lost({(selfplay.CANDIDATE, "Stone"): ["WON"]}, [(selfplay.CANDIDATE, "Stone", "gauntlet")] * 9)
+
+
+def test_tiers_split_into_training_bots_and_a_held_out_test() -> None:
+    try:
+        selfplay.configure("SomeBot", "Tier 1")
+        assert (selfplay.BEST, selfplay.CANDIDATE) == ("SomeBot", "SomeBotCandidate")
+        assert selfplay.TEST == "Stardust2025" and selfplay.DROPPED == "Steamhammer2025"
+        assert len(selfplay.TRAINING) == 7 and selfplay.TEST not in selfplay.TRAINING
+        assert selfplay.TRAINING_DIR.parts[-2:] == ("SomeBot", "training-tier1")
+        assert not selfplay.perfect({o: ["WON"] for o in selfplay.TIER2[1:-1]}, 1)  # Tier 1's bots now
+    finally:
+        selfplay.configure()
+    assert selfplay.TEST == "ZZZKBot" and selfplay.TRAINING_DIR.parts[-2:] == ("ClaudeOpus55RL", "training")
+
+
+def test_auto_moves_on_to_tier_1_from_tier_2s_best(tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    tier2 = selfplay.State(generation=7, elo=300.0, best={**selfplay.defaults(), "retreat_ratio": 1.7},
+                           goal_reached=True)
+    (tmp_path / "bots" / "ClaudeOpus55RL" / "training").mkdir(parents=True)
+    tier2.save(tmp_path / "bots" / "ClaudeOpus55RL" / "training" / "state.json")
+    monkeypatch.setattr(sys, "argv", ["selfplay.py", "--status"])
+    try:
+        assert selfplay.main() == 0
+    finally:
+        selfplay.configure()
+    assert "against Tier 1: generation 7" in capsys.readouterr().out
+    tier1 = selfplay.State.load(tmp_path / "bots" / "ClaudeOpus55RL" / "training-tier1" / "state.json")
+    assert tier1.best == tier2.best and tier1.elo == 300.0 and not tier1.goal_reached
