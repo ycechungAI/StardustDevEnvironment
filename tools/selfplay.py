@@ -44,6 +44,7 @@ import random
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -370,14 +371,76 @@ def make_issue_log(training: Path, build: str, log: Callable[[str], None]) -> Ca
     return issue
 
 
+PARALLEL_STEPS = (6, 4, 2, 1)  # games at once, stepping down when the games use too much memory
+MEMORY_CHECK_SECONDS = 2
+GAME_MEMORY_LIMIT = 4e9  # a single game using more than this is a bot leaking memory: it is stopped and reported
+
+
+def physical_memory() -> float:
+    """Bytes of RAM in this computer (macOS or Linux), or 16 GB if it can't be told."""
+    try:
+        return float(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True,
+                                    check=True).stdout)
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        pass
+    try:
+        return float(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (OSError, ValueError, AttributeError):
+        return 16e9
+
+
+def tree_memory(pids: list[int]) -> dict[int, int]:
+    """Bytes of memory (resident) used by each of these processes with all its descendants: each game is the
+    harness plus the opponent it forks. Uses ps, so it works on macOS and Linux without extra packages."""
+    try:
+        listing = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,rss="], capture_output=True, text=True,
+                                 check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    children: dict[int, list[int]] = {}
+    rss: dict[int, int] = {}
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 3 and all(f.isdigit() for f in fields):
+            pid, ppid, kilobytes = map(int, fields)
+            children.setdefault(ppid, []).append(pid)
+            rss[pid] = kilobytes
+    totals = {}
+    for root in pids:
+        total, todo, seen = 0, [root], set()
+        while todo:
+            pid = todo.pop()
+            if pid in seen:
+                continue
+            seen.add(pid)
+            total += rss.get(pid, 0) * 1024
+            todo += children.get(pid, [])
+        totals[root] = total
+    return totals
+
+
+def stop(process: subprocess.Popen[bytes]) -> None:
+    """Kills a game: the harness and the opponent it forked, which share the harness's process group."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        process.kill()
+
+
+def step_down(cap: int) -> int:
+    return next((step for step in PARALLEL_STEPS if step < cap), 1)
+
+
 def make_runner(build: str, parallel: int, log: Callable[[str], None],
-                issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None) -> Runner:
+                issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
+                memory_limit: float = 12e9, memory: Callable[[list[int]], dict[int, int]] = tree_memory) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
     from run_games import prepare_worker_directory  # noqa: E402
 
     test_dir = ROOT / build / "test"
     results_file = test_dir / "replays" / "results.csv"
+    cap = [parallel]  # games at once; lowered for the rest of the run when the games use more than memory_limit
 
     def run(jobs: list[Job], fill: Callable[[], Job] | None) -> dict[tuple[str, str], list[str]]:
         queue = list(jobs)
@@ -388,6 +451,8 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
         socket_root = Path(tempfile.mkdtemp(prefix="ob", dir="/tmp"))
         running: dict[int, tuple[subprocess.Popen[bytes], float, Job]] = {}
         free = list(range(parallel))
+        last_memory_check = time.time()
+        extras: set[int] = set()  # slots playing a fill() game, which isn't replayed if it has to be stopped
 
         def start(job: Job) -> None:
             slot = free.pop(0)
@@ -399,7 +464,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
             env.pop("OPENBW_GAME_SPEED", None)  # as fast as the bots allow
             with (directory / "selfplay.log").open("w") as output:
                 process = subprocess.Popen([str(test_dir / "tests"), "--gtest_filter=Bots.Play"], cwd=directory,
-                                           env=env, stdout=output, stderr=subprocess.STDOUT)
+                                           env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             running[slot] = (process, time.time(), job)
 
         try:
@@ -413,7 +478,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                             queue.remove(job)
                             start(job)
                             break
-                others_allowed = parallel - (1 if self_left else 0)
+                others_allowed = cap[0] - (1 if self_left else 0)
                 while free and sum(1 for _, _, job in running.values() if job[2] != "self") < others_allowed:
                     queued = next((job for job in queue if job[2] != "self"), None)
                     if queued is not None:
@@ -422,27 +487,62 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                     elif fill and self_left:
                         extra = fill()
                         wanted[(extra[0], extra[1])] = wanted.get((extra[0], extra[1]), 0) + 1
+                        extras.add(free[0])
                         start(extra)
                     else:
                         break
                 time.sleep(0.5)
+                if running and time.time() - last_memory_check >= MEMORY_CHECK_SECONDS:
+                    last_memory_check = time.time()
+                    per_game = memory([process.pid for process, _, _ in running.values()])
+                    for slot, (process, _, job) in list(running.items()):
+                        if per_game.get(process.pid, 0) > GAME_MEMORY_LIMIT:
+                            stop(process)
+                            process.wait()
+                            del running[slot]
+                            free.append(slot)
+                            extras.discard(slot)
+                            issue(f"memory: the game used {per_game[process.pid] / 1e9:.1f} GB and was stopped",
+                                  job, test_dir / "parallel" / str(slot) / "selfplay.log")
+                    used = sum(per_game.get(process.pid, 0) for process, _, _ in running.values())
+                    if used > memory_limit and cap[0] > 1:
+                        cap[0] = step_down(cap[0])
+                        log(f"  the games use {used / 1e9:.1f} GB, over {memory_limit / 1e9:g} GB: "
+                            f"down to {cap[0]} at once")
+                        # Stop the newest games beyond the new cap (never the self-play game) and play them again later
+                        newest = sorted((item for item in running.items() if item[1][2][2] != "self"),
+                                        key=lambda item: item[1][1], reverse=True)
+                        for slot, (process, _, job) in newest[:max(0, len(running) - cap[0])]:
+                            stop(process)
+                            process.wait()
+                            del running[slot]
+                            free.append(slot)
+                            if slot in extras:
+                                wanted[(job[0], job[1])] -= 1
+                            else:
+                                queue.append(job)
+                            log(f"  stopped {job[0]} vs {job[1]} to free memory")
+                    elif used > memory_limit:
+                        log(f"  the games use {used / 1e9:.1f} GB, over {memory_limit / 1e9:g} GB, already one at a time")
                 for slot, (process, started, job) in list(running.items()):
                     output = test_dir / "parallel" / str(slot) / "selfplay.log"
                     if process.poll() is None:
                         if time.time() - started > HANG_SECONDS:
-                            process.kill()
+                            stop(process)
                             process.wait()
                             issue(f"hang: killed after {HANG_SECONDS} s", job, output)
                             del running[slot]
                             free.append(slot)
+                            extras.discard(slot)
                         continue
                     del running[slot]
                     free.append(slot)
+                    extras.discard(slot)
                     if process.returncode not in (0, 1):
                         issue(f"crash: exit code {process.returncode} after {time.time() - started:.0f} s", job, output)
         finally:
             for process, _, _ in running.values():
-                process.kill()
+                stop(process)
             shutil.rmtree(socket_root, ignore_errors=True)
 
         results: dict[tuple[str, str], list[str]] = {}
@@ -507,6 +607,9 @@ def main() -> int:
     parser.add_argument("--test-games", type=int, default=4,
                         help=f"games against the held-out bot, {TEST}, all of which must be won (default 4)")
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
+    parser.add_argument("--memory-limit-gb", type=float, default=None,
+                        help="the most memory the games may use together before stepping down to 4, 2, then 1 "
+                             "game at once (default: three quarters of this computer's RAM)")
     parser.add_argument("--build", default="build", help="headless build directory (default: build)")
     parser.add_argument("--approver", help="command that approves a promotion (exit 0), given the report's path")
     parser.add_argument("--auto-approve", action="store_true", help="promote every candidate that passes the gate")
@@ -559,7 +662,12 @@ def main() -> int:
         + f". Goal: win every game against the {len(TRAINING)} training bots, then every test game against {TEST}.")
 
     approve = make_approve(args.approver, args.auto_approve, TRAINING_DIR, log)
-    runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log))
+    # Games run in their own process groups, so closing the terminal doesn't reach them: stop them on the way out
+    for hangup in (signal.SIGHUP, signal.SIGTERM):
+        signal.signal(hangup, lambda number, frame: sys.exit(1))
+    memory_limit = args.memory_limit_gb * 1e9 if args.memory_limit_gb else 0.75 * physical_memory()
+    log(f"Memory: the games may use {memory_limit / 1e9:.1f} GB together, {GAME_MEMORY_LIMIT / 1e9:g} GB each")
+    runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit)
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()

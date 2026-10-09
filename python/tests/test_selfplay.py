@@ -166,3 +166,38 @@ def test_issues_are_logged_with_the_weights(tmp_path: Path) -> None:
     assert entry["issue"].startswith("crash") and entry["opponent"] == "Stone"
     assert entry["weights"] == {"retreat_ratio": 1.4}
     assert Path(entry["output"]).read_text() == "Segmentation fault"
+
+
+def fake_harness(tmp_path: Path) -> None:
+    """A test harness stand-in: each game takes 3 seconds, then records a win, as the real one does."""
+    test = tmp_path / "build" / "test"
+    for folder in ("maps", "replays", "bwapi-data/AI"):
+        (test / folder).mkdir(parents=True, exist_ok=True)
+    (test / "replays" / "results.csv").write_text("time,player,opponent,result,frames,map\n")
+    harness = test / "tests"
+    harness.write_text('#!/bin/sh\nsleep 3\necho "t,$STARDUST_BOT,$STARDUST_OPPONENT,WON,100,map" >> replays/results.csv\n')
+    harness.chmod(0o755)
+
+
+def test_too_much_memory_steps_down_and_replays_the_stopped_games(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path)
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    log: list[str] = []
+    issues: list[str] = []
+    runner = selfplay.make_runner("build", 6, log.append, lambda kind, job, output: issues.append(kind),
+                                  memory_limit=12e9, memory=lambda pids: {pid: int(3e9) for pid in pids})
+    jobs = [(selfplay.CANDIDATE, bot, "gauntlet") for bot in selfplay.TRAINING] + [(selfplay.CANDIDATE, "Stone", "gauntlet")]
+    results = runner(jobs, None)
+    assert any("down to 4 at once" in line for line in log)  # 6 games of 3 GB is over 12 GB; 4 isn't
+    assert sum(len(r) for r in results.values()) == 6  # the 2 stopped games were played again
+    assert not issues
+
+
+def test_a_game_leaking_memory_is_stopped_and_reported(tmp_path: Path, monkeypatch: Any) -> None:
+    fake_harness(tmp_path)
+    monkeypatch.setattr(selfplay, "ROOT", tmp_path)
+    issues: list[str] = []
+    runner = selfplay.make_runner("build", 2, lambda message: None, lambda kind, job, output: issues.append(kind),
+                                  memory=lambda pids: {pid: int(5e9) for pid in pids})
+    runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
+    assert any(kind.startswith("memory:") for kind in issues)

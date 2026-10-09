@@ -57,6 +57,8 @@ Everything is saved as it happens, in `training/`:
 - `selfplay.log`: the run's log.
 - `issues.log` and `issues/`: the bug-finding log (above).
 
+**Memory.** Every 2 seconds the trainer adds up the memory its games use (each game is the harness plus the opponent it starts). Over the limit, three quarters of the computer's RAM by default (12 GB on a 16 GB Mac), it stops the newest games, plays them again later and steps down from 6 games at once to 4, then 2, then 1 for the rest of the run. A single game over 4 GB is a bot leaking memory: it is stopped and reported in `issues.log`. Closing the terminal or Ctrl+C stops every game.
+
 **Bug finding.** Every game that goes wrong is written to `training/issues.log`, one JSON line each: a crash (the game exits with an error), a hang (still running after 30 minutes; it is killed), a draw (the game hit the frame or time limit, usually a bot that stops attacking or can't finish off the enemy), or results that never arrived. Each line has the bot, the opponent, the weights it played with and, for crashes and hangs, a copy of the game's output in `training/issues/`. Parameters can't fix a bug in the code: give `issues.log` to a Claude session to find and fix the cause in `ClaudeOpus55RL.cpp`, then rebuild and carry on training.
 
 Stopping (Ctrl+C) and running again resumes. `--status` shows where training stands.
@@ -66,6 +68,7 @@ Useful options:
 - `--gauntlet-games`: games at least against each training bot (default 2).
 - `--test-games`: games against ZZZKBot (default 4).
 - `--parallel`: games at once (default 6).
+- `--memory-limit-gb`: the most memory the games may use together (default: three quarters of the RAM).
 - `--hours`: stop after this long.
 - `--seed`: random seed for the candidates.
 
