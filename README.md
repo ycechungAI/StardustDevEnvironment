@@ -46,6 +46,8 @@ You need:
 - Python 3.12+; [uv](https://docs.astral.sh/uv/) is recommended.
 - The three Brood War data files from StarCraft 1.16.1: `STARDAT.MPQ`, `BROODAT.MPQ` and `Patch_rt.mpq`.
 
+`./build.sh` does all of the steps below, and also downloads the opponent bots that are only recipes (`JOBS=8 ./build.sh` for 8 build jobs instead of 4). Or by hand:
+
 ```bash
 uv sync
 ```
