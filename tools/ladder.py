@@ -17,12 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Weakest first within each rung; see bots/README.md for what each one plays
+# Weakest first within each rung; see bots/README.md for what each one plays. SAIDA is left out: it is incomplete
+# here (some of its games hang), see bots/README.md
 LADDER = [
     ("Computer", ["ComputerZerg", "ComputerProtoss", "ComputerTerran"]),
     ("Tier 2", ["BunkerBoxer", "PylonPuller", "UAlbertaBotTerran", "UAlbertaBotZerg", "UAlbertaBotProtoss", "Stone",
                 "ZZZKBot"]),
-    ("Tier 1", ["Steamhammer2025", "Microwave", "McRaveZ", "Iron", "WillyT", "Dragon", "SAIDA", "Locutus",
+    ("Tier 1", ["Steamhammer2025", "Microwave", "McRaveZ", "Iron", "WillyT", "Dragon", "Locutus",
                 "BananaBrain", "Stardust2025"]),
 ]
 

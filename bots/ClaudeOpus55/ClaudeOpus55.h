@@ -130,6 +130,7 @@ private:
     // to matter, else two (a third that could not be placed held up the gateway until 3:30)
     int openingCannons() const { return rushSeen && BWAPI::Broodwar->getFrameCount() < 3000 ? 3 : 2; }
     void buildMineralLineCannons();
+    BWAPI::UpgradeType nextForgeUpgrade() const;
     bool cannonsNear(BWAPI::Position spot, int wanted);
     std::vector<BWAPI::Unit> nexuses(bool completedOnly) const;
     BWAPI::Unit nexusNeedingWorkers() const;
@@ -141,6 +142,9 @@ private:
     void fight(BWAPI::Unit unit, BWAPI::Position goal);
     void controlObservers(const BWAPI::Unitset &army);
     void controlCorsairs(const BWAPI::Unitset &army);
+    // High templar: storm on clumps of enemies, else stay behind the army
+    void controlTemplar(const BWAPI::Unitset &army);
+    std::vector<std::pair<BWAPI::Position, int>> recentStorms;  // where and when, so two templar don't storm one spot
     BWAPI::Unitset threatsNearHome() const;
     static double strength(BWAPI::Unit unit);
     // Fighting power of a group: (total durability) x (total damage per frame), which values concentration

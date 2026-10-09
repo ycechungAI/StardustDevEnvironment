@@ -36,7 +36,7 @@ These are included only as recipes (`bots/recipes/<Name>/`), either because thei
 
 | Bot | Race | Notes |
 |-----|------|-------|
-| `SAIDA` | Terran | AIIDE 2018 champion. States no licence. Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that. |
+| `SAIDA` | Terran | AIIDE 2018 champion. States no licence. Its patch also makes its managers' singletons hand back an object still under construction, as MSVC does; SAIDA depends on that. **Incomplete:** some of its games hang and never finish (2 of 6 against UAlbertaBotProtoss, and the whole UAlbertaBotTerran pairing once), so it is left out of the ladder's Tier 1. It still builds and can be played directly. |
 | `Dragon` | Terran | AIIDE 2021, built on Facebook's CherryPi (MIT). 37 MB download. It thinks on its own thread and waits up to 30 ms a frame for it, so its games don't repeat exactly from a seed. Set `DRAGON_LOG=1` for its (very long) logs. |
 | `WillyT` | Terran | AIIDE 2021. States no licence. Learns openings per opponent in `bwapi-data/write/WillyT_<opponent>.txt`. |
 
@@ -64,7 +64,7 @@ A new bot learns little from losing every game to Stardust, so the opponents for
 
 1. **Computer**: `ComputerZerg`, `ComputerProtoss` and `ComputerTerran` (`bots/ComputerAI/`, in the repository). OpenBW has no built-in computer players, so these stand in for them. They follow a fixed build for their race, keep making workers and supply, expand at set times, and attack in growing waves with no micro.
 2. **Tier 2**: bots that weren't tournament winners in their time, or are now well behind the best, but are known for an unusual or single-minded strategy. Each one tests one thing: holding a rush, finding cannons, or surviving workers in the base. They are recipes only. The two Protoss bots, PylonPuller and UAlbertaBotProtoss, are the hardest of them, closer to Tier 1 than Tier 2: PylonPuller's dark templar and UAlbertaBotProtoss's zealot rush held off every opening ClaudeOpus55 tried.
-3. **Tier 1**: the tournament bots above, plus the built-in Steamhammer, Locutus and Iron.
+3. **Tier 1**: the tournament bots above, plus the built-in Steamhammer, Locutus and Iron, except SAIDA (incomplete; see above).
 
 ```bash
 .venv/bin/python tools/fetch_bot.py BunkerBoxer PylonPuller UAlbertaBot Stone ZZZKBot

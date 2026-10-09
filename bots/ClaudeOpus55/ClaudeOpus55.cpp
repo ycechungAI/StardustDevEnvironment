@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 using namespace BWAPI;
 using namespace Filter;
@@ -371,6 +372,32 @@ void ClaudeOpus55::onFrame()
                self->allUnitCount(UnitTypes::Protoss_Nexus), self->allUnitCount(UnitTypes::Protoss_Probe),
                self->allUnitCount(UnitTypes::Protoss_Gateway), self->allUnitCount(UnitTypes::Protoss_Zealot),
                self->allUnitCount(UnitTypes::Protoss_Dragoon), attacking, wave);
+        // Income over the last 500 frames, army compositions, and the largest army each side has had (the user's
+        // advice: monitor all of these)
+        static int lastMinerals = 0, lastGas = 0, ourMax = 0, theirMax = 0;
+        std::map<std::string, int> ours, theirs;
+        int ourSupply = 0, theirSupply = 0;
+        for (auto unit : self->getUnits())
+        {
+            if (unit->getType().isWorker() || unit->getType().isBuilding() || !unit->isCompleted()) continue;
+            ours[unit->getType().getName().substr(8)]++;
+            ourSupply += unit->getType().supplyRequired() / 2;
+        }
+        for (auto &[id, seen] : enemyArmy)
+        {
+            theirs[seen.type.getName().substr(seen.type.getRace() == Races::Terran ? 7 : 5)]++;
+            theirSupply += seen.type.supplyRequired() / 2;
+        }
+        ourMax = std::max(ourMax, ourSupply);
+        theirMax = std::max(theirMax, theirSupply);
+        std::string ourList, theirList;
+        for (auto &[name, n] : ours) ourList += " " + std::to_string(n) + " " + name;
+        for (auto &[name, n] : theirs) theirList += " " + std::to_string(n) + " " + name;
+        printf("     income min %d gas %d | army %d (max %d):%s | enemy seen %d (max %d):%s\n",
+               self->gatheredMinerals() - lastMinerals, self->gatheredGas() - lastGas, ourSupply, ourMax,
+               ourList.c_str(), theirSupply, theirMax, theirList.c_str());
+        lastMinerals = self->gatheredMinerals();
+        lastGas = self->gatheredGas();
         printf("     natural %s expansionDue %d threats %zu rush %d cloak %d air %d ranged %d step %zu/%zu\n",
                natural ? "yes" : "no", expansionDue, threatsNearHome().size(), rushSeen, cloakSeen, airSeen,
                rangedNeeded, buildOrderStep, buildOrder.size());
@@ -548,12 +575,14 @@ void ClaudeOpus55::manageWorkers()
         ++it;
     }
 
-    // Three on each finished assimilator
+    // Three on each finished assimilator, but two to start (the user's advice): until the core is done there is
+    // nothing to spend gas on, and the third probe's minerals go to the gateways
     for (auto gas : Broodwar->self()->getUnits())
     {
         if (gas->getType() != UnitTypes::Protoss_Assimilator || !gas->isCompleted()) continue;
         auto self = Broodwar->self();
         int wantOnGas = self->gas() > 300 ? 1 : self->gas() > 100 ? 2 : 3;  // don't bank much more than 100 gas
+        if (self->completedUnitCount(UnitTypes::Protoss_Cybernetics_Core) == 0) wantOnGas = std::min(wantOnGas, 2);
         auto gasWorkers = gas->getUnitsInRadius(320, IsOwned && IsWorker && IsGatheringGas && !IsCarryingGas);
         int onGas = (int) gas->getUnitsInRadius(320, IsOwned && IsWorker && IsGatheringGas).size();
         for (auto probe : gasWorkers)
@@ -865,6 +894,7 @@ void ClaudeOpus55::chooseBuildOrder()
         // Two gateways of zealots, then the core. No early natural: marine, bunker and SCV rushes punish it, so the
         // natural waits for an army like against the other races. With one gateway and the core first, 13 marines met
         // 4 army supply at 4:28, beat it twice, and the game was won too late to finish
+        // (Locutus's forge and cannons first, copied here, won 2 of 10 against UAlbertaBot's marines)
         buildOrder = {{8, Protoss_Pylon}, {9, Protoss_Gateway}, {11, Protoss_Gateway}, {14, Protoss_Pylon},
                       {15, Protoss_Assimilator}, {16, Protoss_Cybernetics_Core}, {20, Protoss_Pylon},
                       {24, Protoss_Gateway}};
@@ -1090,9 +1120,10 @@ void ClaudeOpus55::buildStructures()
         {
             // The cannons by the minerals come first
         }
-        else if (rushMode() && (step.type.isRefinery() || step.type.isResourceDepot()))
+        else if (rushMode() && (step.type.isResourceDepot() || (step.type.isRefinery() && !cannonOpening)))
         {
-            // During a rush, gas and the natural wait until a few zealots are out
+            // During a rush, gas and the natural wait until a few zealots are out; with the cannon opening the cannons
+            // hold the rush and gas goes on (it waited until 6:15 with one zealot and 2,500 minerals banked)
         }
         else if (secondGatewayWaits(step))
         {
@@ -1151,6 +1182,20 @@ void ClaudeOpus55::buildStructures()
     {
         build(UnitTypes::Protoss_Nexus, base->depot);
     }
+    // More than 400 minerals banked with no nexus to save for: another gateway to turn them into units (the user's
+    // rule), past the usual cap and without waiting for the core
+    // Which one depends on both armies: a robotics facility for reavers against tanks, static defence or a heavy ground
+    // army, a stargate for corsairs against air, else a gateway
+    else if (!wantBase && self->minerals() > 400 && freeMinerals >= 150 && gateways < 12
+             && pendingCount(UnitTypes::Protoss_Gateway) == 0)
+    {
+        if (coreDone && reaversWanted && count(UnitTypes::Protoss_Robotics_Facility) < 1 && self->gas() >= 200)
+            build(UnitTypes::Protoss_Robotics_Facility, nearPylon);
+        else if (coreDone && airSeen && count(UnitTypes::Protoss_Stargate) < 1 && self->gas() >= 150)
+            build(UnitTypes::Protoss_Stargate, nearPylon);
+        else
+            build(UnitTypes::Protoss_Gateway, nearPylon);
+    }
     else if (coreDone && gateways < gatewayCap && freeMinerals >= (wantBase ? 550 : 250))
     {
         build(UnitTypes::Protoss_Gateway, nearPylon);
@@ -1172,6 +1217,13 @@ void ClaudeOpus55::buildStructures()
     {
         build(UnitTypes::Protoss_Citadel_of_Adun, nearPylon);
     }
+    // Templar archives with the gas that banks after that (the user's advice: Protoss gas goes on upgrades and templar,
+    // and storm turns battles against mass units): 1,600 gas sat unused while 94 supply traded with 90 marines
+    else if (self->completedUnitCount(UnitTypes::Protoss_Citadel_of_Adun) > 0
+             && count(UnitTypes::Protoss_Templar_Archives) < 1 && self->gas() >= 200)
+    {
+        build(UnitTypes::Protoss_Templar_Archives, nearPylon);
+    }
 
     // Upgrades: dragoon range first, then ground weapons and armor from the forge
     for (auto building : self->getUnits())
@@ -1189,20 +1241,38 @@ void ClaudeOpus55::buildStructures()
         {
             building->upgrade(UpgradeTypes::Leg_Enhancements);
         }
-        if (building->getType() == UnitTypes::Protoss_Forge && freeMinerals >= 200)
+        // The forge's upgrades go ahead of units (the user's rule: keep producing unless saving for a nexus or an
+        // upgrade); with 200 spare minerals required they never started while the gateways spent everything
+        if (building->getType() == UnitTypes::Protoss_Forge)
         {
-            if (!self->isUpgrading(UpgradeTypes::Protoss_Ground_Weapons)
-                && self->getUpgradeLevel(UpgradeTypes::Protoss_Ground_Weapons) == 0)
+            auto upgrade = nextForgeUpgrade();
+            if (upgrade != UpgradeTypes::None && self->minerals() >= upgrade.mineralPrice(self->getUpgradeLevel(upgrade) + 1)
+                && self->gas() >= upgrade.gasPrice(self->getUpgradeLevel(upgrade) + 1))
             {
-                building->upgrade(UpgradeTypes::Protoss_Ground_Weapons);
-            }
-            else if (!self->isUpgrading(UpgradeTypes::Protoss_Ground_Armor)
-                     && self->getUpgradeLevel(UpgradeTypes::Protoss_Ground_Armor) == 0)
-            {
-                building->upgrade(UpgradeTypes::Protoss_Ground_Armor);
+                building->upgrade(upgrade);
             }
         }
+        if (building->getType() == UnitTypes::Protoss_Templar_Archives && !self->hasResearched(TechTypes::Psionic_Storm)
+            && !self->isResearching(TechTypes::Psionic_Storm) && self->minerals() >= 200 && self->gas() >= 200)
+        {
+            building->research(TechTypes::Psionic_Storm);
+        }
     }
+}
+
+// The forge's next upgrade: weapons and armor in turn, the lower first, level 1 only until the templar archives allow 2
+// and 3; None when both are at the limit or one is in progress
+UpgradeType ClaudeOpus55::nextForgeUpgrade() const
+{
+    auto self = Broodwar->self();
+    if (self->isUpgrading(UpgradeTypes::Protoss_Ground_Weapons) || self->isUpgrading(UpgradeTypes::Protoss_Ground_Armor))
+        return UpgradeTypes::None;
+    int limit = self->completedUnitCount(UnitTypes::Protoss_Templar_Archives) > 0 ? 3 : 1;
+    int weapons = self->getUpgradeLevel(UpgradeTypes::Protoss_Ground_Weapons);
+    int armor = self->getUpgradeLevel(UpgradeTypes::Protoss_Ground_Armor);
+    if (weapons <= armor && weapons < limit) return UpgradeTypes::Protoss_Ground_Weapons;
+    if (armor < limit) return UpgradeTypes::Protoss_Ground_Armor;
+    return UpgradeTypes::None;
 }
 
 // Two cannons between each completed nexus and its minerals (with a pylon there first), against air harassment
@@ -1353,8 +1423,8 @@ void ClaudeOpus55::trainUnits()
             freeGas -= step.type.gasPrice();
         }
     }
-    if (count(UnitTypes::Protoss_Cybernetics_Core) == 0
-        && self->allUnitCount(UnitTypes::Protoss_Zealot) >= zealotsBeforeCore && threatsNearHome().empty()) return;
+    // No pause for the core once those zealots are out: the gateways keep producing, and only a nexus or an upgrade is
+    // saved for (the user's rule; the pause left 2,500 minerals banked with one zealot against Terran)
 
     // Dragoon range as soon as possible, even during the opening
     for (auto core : self->getUnits())
@@ -1418,6 +1488,28 @@ void ClaudeOpus55::trainUnits()
         }
     }
 
+    // An idle forge with an upgrade it can afford in gas keeps its minerals from the gateways
+    for (auto forge : self->getUnits())
+    {
+        if (forge->getType() != UnitTypes::Protoss_Forge || !forge->isCompleted() || !forge->isIdle()) continue;
+        auto upgrade = nextForgeUpgrade();
+        if (upgrade != UpgradeTypes::None && self->gas() >= upgrade.gasPrice(self->getUpgradeLevel(upgrade) + 1))
+        {
+            freeMinerals -= upgrade.mineralPrice(self->getUpgradeLevel(upgrade) + 1);
+            freeGas -= upgrade.gasPrice(self->getUpgradeLevel(upgrade) + 1);
+        }
+        break;
+    }
+
+    // High templar once storm is researched or on its way: about one per 25 supply of army, up to 8
+    int templarWanted = 0;
+    if (self->completedUnitCount(UnitTypes::Protoss_Templar_Archives) > 0
+        && (self->hasResearched(TechTypes::Psionic_Storm) || self->isResearching(TechTypes::Psionic_Storm)))
+    {
+        templarWanted = std::min(8, 2 + self->supplyUsed() / 2 / 25);
+    }
+    int templar = self->allUnitCount(UnitTypes::Protoss_High_Templar);
+
     // Against zerglings, mostly zealots with a few dragoons; against hydralisks, lurkers or mutalisks, dragoons only
     bool canMakeDragoons = self->completedUnitCount(UnitTypes::Protoss_Cybernetics_Core) > 0;
     int zealots = self->allUnitCount(UnitTypes::Protoss_Zealot), dragoons = self->allUnitCount(UnitTypes::Protoss_Dragoon);
@@ -1438,7 +1530,14 @@ void ClaudeOpus55::trainUnits()
         bool wantZealot = enemyRace == Races::Zerg && !rangedNeeded && zealots < 2 * dragoons + 2
                           || enemyRace == Races::Protoss && rushSeen && zealots < dragoons + 1
                           || marineArmy && zealots < dragoons + 2;
-        if (wantZealot && freeMinerals >= 100)
+        if (templar < templarWanted && freeMinerals >= 50 && freeGas >= 150)
+        {
+            gateway->train(UnitTypes::Protoss_High_Templar);
+            freeMinerals -= 50;
+            freeGas -= 150;
+            templar++;
+        }
+        else if (wantZealot && freeMinerals >= 100)
         {
             gateway->train(UnitTypes::Protoss_Zealot);
             freeMinerals -= 100;
@@ -1887,6 +1986,7 @@ void ClaudeOpus55::controlArmy()
 
     controlObservers(army);
     controlCorsairs(army);
+    controlTemplar(army);
 
     // Once the natural is ours, the army waits in front of it rather than at the top of the main ramp
     // (or as soon as it is due, to clear the spot and cover the new nexus)
@@ -2324,6 +2424,60 @@ void ClaudeOpus55::controlCorsairs(const Unitset &army)
 }
 
 // The first observer stays with the army (or over the base while it is home); the second watches the mineral line
+// Storm where it catches at least four enemies and at most one of ours, nothing already storming there; otherwise the
+// templar keep a little behind the army (they have no weapon), or at home while there is no army
+void ClaudeOpus55::controlTemplar(const Unitset &army)
+{
+    int frame = Broodwar->getFrameCount();
+    recentStorms.erase(std::remove_if(recentStorms.begin(), recentStorms.end(),
+                                      [frame](auto &storm) { return frame - storm.second > 72; }),
+                       recentStorms.end());
+    bool stormReady = Broodwar->self()->hasResearched(TechTypes::Psionic_Storm);
+    for (auto templar : Broodwar->self()->getUnits())
+    {
+        if (templar->getType() != UnitTypes::Protoss_High_Templar || !templar->isCompleted()) continue;
+        if (templar->getOrder() == Orders::CastPsionicStorm) continue;
+
+        if (stormReady && templar->getEnergy() >= 75)
+        {
+            Position best = Positions::Invalid;
+            int bestScore = 0;
+            for (auto enemy : templar->getUnitsInRadius(320, IsEnemy && IsVisible && !IsBuilding && !IsUnderStorm))
+            {
+                auto spot = enemy->getPosition();
+                bool stormed = false;
+                for (auto &storm : recentStorms) stormed = stormed || storm.first.getApproxDistance(spot) < 96;
+                if (stormed) continue;
+                int enemies = 0, ours = 0;
+                for (auto unit : Broodwar->getUnitsInRadius(spot, 48))
+                {
+                    if (unit->getType().isBuilding() || unit->isFlying() && unit->getType() != UnitTypes::Zerg_Mutalisk) continue;
+                    if (unit->getPlayer() == Broodwar->enemy() && !unit->isUnderStorm()) enemies++;
+                    else if (unit->getPlayer() == Broodwar->self() && unit != templar) ours++;
+                }
+                int score = enemies - 2 * ours;
+                if (enemies >= 4 && ours <= 1 && score > bestScore)
+                {
+                    best = spot;
+                    bestScore = score;
+                }
+            }
+            if (best.isValid())
+            {
+                templar->useTech(TechTypes::Psionic_Storm, best);
+                recentStorms.emplace_back(best, frame);
+                continue;
+            }
+        }
+
+        // Out of danger: behind the army, away from the nearest enemy
+        Position goal = army.empty() ? rally : towards(army.getPosition(), home, 96);
+        auto threat = templar->getClosestUnit(IsEnemy && IsVisible && CanAttack && !IsWorker && !IsBuilding, 160);
+        if (threat && (templar->getEnergy() < 75 || !stormReady)) goal = towards(templar->getPosition(), home, 192);
+        if (templar->getDistance(goal) > 64 && frame % 12 == 0) templar->move(goal);
+    }
+}
+
 void ClaudeOpus55::controlObservers(const Unitset &army)
 {
     std::vector<Unit> observers;
