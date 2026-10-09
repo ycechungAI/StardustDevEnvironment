@@ -201,7 +201,7 @@ def test_too_much_memory_steps_down_and_replays_the_stopped_games(tmp_path: Path
     log: list[str] = []
     issues: list[str] = []
     runner = selfplay.make_runner("build", 6, log.append, lambda kind, job, output: issues.append(kind),
-                                  memory_limit=12e9, usage=busy(3e9))
+                                  memory_limit=12e9, game_memory_limit=4e9, usage=busy(3e9))
     jobs = [(selfplay.CANDIDATE, bot, "gauntlet") for bot in selfplay.TRAINING] + [(selfplay.CANDIDATE, "Stone", "gauntlet")]
     results = runner(jobs, None)
     assert any("down to 4 at once" in line for line in log)  # 6 games of 3 GB is over 12 GB; 4 isn't
@@ -214,7 +214,7 @@ def test_a_game_leaking_memory_is_stopped_and_reported(tmp_path: Path, monkeypat
     monkeypatch.setattr(selfplay, "ROOT", tmp_path)
     issues: list[str] = []
     runner = selfplay.make_runner("build", 2, lambda message: None, lambda kind, job, output: issues.append(kind),
-                                  usage=busy(5e9))
+                                  usage=busy(2e9))
     runner([(selfplay.CANDIDATE, "Stone", "gauntlet")], None)
     assert any(kind.startswith("memory:") for kind in issues)
 

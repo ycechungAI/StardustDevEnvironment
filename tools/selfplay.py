@@ -409,7 +409,7 @@ SKIP_AFTER = 3  # a pairing that fails this many times in a row is skipped for t
 ERROR_MARKERS = ("Segmentation fault", "Assertion failed", "assertion failed", "terminate called", "Abort trap",
                  "Traceback (most recent call last)", "Unhandled exception", "AddressSanitizer", "std::bad_alloc")
 DEFAULT_MEMORY_LIMIT = 6e9  # leaves the rest of the computer usable, even on an 8 GB machine
-GAME_MEMORY_LIMIT = 4e9  # a single game using more than this is a bot leaking memory: it is stopped and reported
+GAME_MEMORY_LIMIT = 1e9  # a single game using more than this is stopped and reported (--game-memory-gb)
 
 
 class Progress:
@@ -537,7 +537,7 @@ def step_down(cap: int) -> int:
 
 def make_runner(build: str, parallel: int, log: Callable[[str], None],
                 issue: Callable[[str, Job, Path | None], None] = lambda kind, job, output: None,
-                memory_limit: float = DEFAULT_MEMORY_LIMIT,
+                memory_limit: float = DEFAULT_MEMORY_LIMIT, game_memory_limit: float = GAME_MEMORY_LIMIT,
                 usage: Callable[[list[int]], dict[int, tuple[int, float]]] = tree_usage) -> Runner:
     """Runs each game as its own headless test harness process, up to `parallel` at once, each in its own folder (as
     tools/run_games.py does), and reads the results the harness appends to replays/results.csv."""
@@ -659,7 +659,7 @@ def make_runner(build: str, parallel: int, log: Callable[[str], None],
                         if process.pid not in measured or process.poll() is not None:
                             continue
                         memory_used, cpu = measured[process.pid]
-                        if memory_used > GAME_MEMORY_LIMIT:
+                        if memory_used > game_memory_limit:
                             failed(slot, f"memory: the game used {memory_used / 1e9:.1f} GB and was stopped")
                             continue
                         last_cpu, since = progress.get(slot, (-1.0, now))
@@ -804,6 +804,9 @@ def main() -> int:
     parser.add_argument("--test-games", type=int, default=4,
                         help=f"games against the held-out bot, {TEST}, all of which must be won (default 4)")
     parser.add_argument("--parallel", type=int, default=6, help="games at once, one per core (default 6)")
+    parser.add_argument("--game-memory-gb", type=float, default=GAME_MEMORY_LIMIT / 1e9,
+                        help="the most memory one game (harness and opponent) may use before it is stopped and "
+                             "reported (default 1)")
     parser.add_argument("--memory-limit-gb", type=float, default=None,
                         help="the most memory the games may use together before stepping down to 4, 2, then 1 "
                              "game at once (default: 6 GB, or three quarters of the RAM if that is less)")
@@ -872,8 +875,9 @@ def main() -> int:
         signal.signal(hangup, lambda number, frame: sys.exit(1))
     memory_limit = (args.memory_limit_gb * 1e9 if args.memory_limit_gb
                     else min(DEFAULT_MEMORY_LIMIT, 0.75 * physical_memory()))
-    log(f"Memory: the games may use {memory_limit / 1e9:.1f} GB together, {GAME_MEMORY_LIMIT / 1e9:g} GB each")
-    runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit)
+    log(f"Memory: the games may use {memory_limit / 1e9:.1f} GB together, {args.game_memory_gb:g} GB each")
+    runner = make_runner(args.build, parallel, log, make_issue_log(TRAINING_DIR, args.build, log), memory_limit,
+                         args.game_memory_gb * 1e9)
     trainer = Trainer(runner, make_install(args.build), approve, log, TRAINING_DIR,
                       args.games, args.gauntlet_games, random.Random(args.seed), args.test_games)
     start = time.time()
