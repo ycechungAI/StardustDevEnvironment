@@ -1,28 +1,36 @@
-"""Runs game tests with an up-front time estimate and periodic progress lines, several games at a time.
+"""Runs game tests several at a time, each in its own window unless --ui none is given, with a moving progress line,
+a time estimate and a live stats page.
 
-Usage: python tools/run_games.py <gtest filter> [--games N] [--parallel N] [--interval SECONDS] [--build DIR]
+Usage: python tools/run_games.py <gtest filter> [--games N] [--ui none|1-6] [--build DIR]
        python tools/run_games.py --opponent <bot> [--games N] ...   (plays Bots.Play against a bot from bots/)
        python tools/run_games.py --bot Stardust2025 --opponent <bot> ... (plays as that bot instead of the Python port)
 
-Headless games are as fast as the bots' own computation allows, so more games per minute comes from running several
-at once: by default up to 4 (--parallel), each in its own folder under <build>/test/parallel/<n>/ with its own
-bwapi-data/write and OpenBW connection directory, sharing the maps, data files and replays folder. The window build
-(--build build-ui) runs one game at a time.
+--ui N plays up to N games at once (1 to 6, default 6), each in its own 640x480 OpenBW window, tiled on the screen:
+6 as 3 columns x 2 rows, 4 as 2 x 2, 2 side by side, and smaller on a screen too small for them. The games come from
+the window build, build-ui (cmake -B build-ui -DOPENBW_ENABLE_UI=ON -DCMAKE_BUILD_TYPE=Release). --ui none plays them
+headless from build, as tools/selfplay.py always does; --parallel N sets how many then (default 6). Either way fewer
+games run at once when there isn't enough free memory for them all: 6, then 4, 2 or 1, both when starting and while
+playing (the newest games are then stopped and played again later).
 
-Each worker's test output goes to its run_games.log (<build>/test/run_games.log when running one at a time).
-Progress comes from the bot's log (bwapi-data/write/Stardust_log_*.txt), whose lines start with the frame number,
-and from the replays written when each game ends.
+Each game is its own test process, in its own folder <build>/test/parallel/<slot>/ with its own bwapi-data/write and
+OpenBW connection directory, sharing the maps, data files and replays folder; its output goes to run_games.log there.
+The harness writes the game's numbers to live.json in that folder twice a second. The line at the bottom of the
+terminal (a spinner, a bar and moving dots) and the live stats page (tools/live_stats.py: a tab per game and one with
+them all, opened in the browser when the games have windows) show them as the games play. PROGRESS lines are printed
+every --interval seconds as well, for output that isn't a terminal.
 """
 
 import argparse
+import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import elo  # tools/elo.py
@@ -34,7 +42,17 @@ TYPICAL_FRAMES = 13_700
 TYPICAL_SECONDS_PER_GAME = 150
 FRAME_LIMIT = 30_000  # BWTest's default frame limit
 TIME_LIMIT = 600  # BWTest's default wall-time limit per game, in seconds
-DEFAULT_PARALLEL = 4
+HANG_LIMIT = TIME_LIMIT + 300  # a game still running after this long is stopped (the harness should have ended it)
+
+MAX_AT_ONCE = 6
+AT_ONCE_STEPS = (6, 4, 2, 1)  # games at once, stepping down when memory runs short
+GRIDS = {1: (1, 1), 2: (2, 1), 3: (3, 1), 4: (2, 2), 5: (3, 2), 6: (3, 2)}  # games at once: window columns, rows
+WINDOW_SIZE = "640x480"
+GAME_MEMORY = 0.5e9  # memory allowed per game when choosing how many to start (one uses about 0.15-0.3 GB)
+MEMORY_RESERVE = 2e9  # memory kept free for the rest of the computer
+MEMORY_CHECK_SECONDS = 2
+MEMORY_SETTLE_SECONDS = 10  # after stopping games, time for their memory to be freed before checking again
+GAME_MEMORY_LIMIT = 4e9  # one game using more than this is a bot leaking memory: it is stopped, not played again
 
 
 def fmt(seconds: float) -> str:
@@ -67,21 +85,135 @@ def created(path: Path) -> float:
     return getattr(stat, "st_birthtime", stat.st_mtime)
 
 
-@dataclass
-class Worker:
-    directory: Path
-    games: int
-    process: subprocess.Popen[bytes] | None = None
-    log_path: Path = field(default_factory=Path)
-    existing_logs: set[Path] = field(default_factory=set)
+class Progress:
+    """A status line at the bottom of the terminal, redrawn in place while games run so it never looks stuck: a
+    spinner, a progress bar, counts and moving dots. Other lines print above it. Off when not a terminal."""
 
-    def current_game(self) -> tuple[int, float] | None:
-        """(frame, seconds since it started) of the game this worker is playing, from its newest bot log."""
-        logs = set((self.directory / "bwapi-data" / "write").glob("Stardust_log_*.txt")) - self.existing_logs
-        if not logs:
+    SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self) -> None:
+        self.line = ""
+        self.tick = 0
+        self.enabled = sys.stdout.isatty()
+
+    def show(self, done: int, total: int, details: str) -> None:
+        if not self.enabled:
+            return
+        self.tick += 1
+        width = 24
+        filled = round(width * done / total) if total else 0
+        bar = "█" * filled + "░" * (width - filled)
+        dots = "." * (self.tick // 2 % 4)
+        text = f"{self.SPINNER[self.tick % len(self.SPINNER)]} [{bar}] {done}/{total} games · {details}{dots:<3}"
+        self.line = text[:shutil.get_terminal_size((100, 20)).columns - 1]
+        sys.stdout.write("\r\033[K" + self.line)
+        sys.stdout.flush()
+
+    def print(self, text: str) -> None:
+        """A line above the status line."""
+        if self.enabled and self.line:
+            sys.stdout.write("\r\033[K")
+        print(text, flush=True)
+        if self.enabled and self.line:
+            sys.stdout.write(self.line)
+            sys.stdout.flush()
+
+    def done(self) -> None:
+        if self.enabled and self.line:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+        self.line = ""
+
+
+PROGRESS = Progress()
+log = PROGRESS.print
+
+
+def physical_memory() -> float:
+    """Bytes of RAM in this computer (macOS or Linux), or 16 GB if it can't be told."""
+    try:
+        return float(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True,
+                                    check=True).stdout)
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        pass
+    try:
+        return float(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (OSError, ValueError, AttributeError):
+        return 16e9
+
+
+def available_memory() -> float | None:
+    """Bytes of memory free for more programs, counting memory the system can reclaim: macOS's memory status level
+    (the percentage available) or Linux's MemAvailable. None if it can't be told."""
+    if sys.platform == "darwin":
+        try:
+            level = float(subprocess.run(["sysctl", "-n", "kern.memorystatus_level"], capture_output=True, text=True,
+                                         check=True).stdout)
+            return level / 100 * physical_memory()
+        except (OSError, ValueError, subprocess.CalledProcessError):
             return None
-        newest = max(logs, key=created)
-        return last_frame(newest), max(0.0, time.time() - created(newest))
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return float(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def games_memory(pids: list[int]) -> dict[int, int]:
+    """Resident bytes used by each of these processes with all its descendants: each game is the harness plus the
+    opponent it forks."""
+    try:
+        listing = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,rss="], capture_output=True, text=True,
+                                 check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    children: dict[int, list[int]] = {}
+    own: dict[int, int] = {}
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) != 3 or not all(f.isdigit() for f in fields):
+            continue
+        pid, ppid, kilobytes = map(int, fields)
+        children.setdefault(ppid, []).append(pid)
+        own[pid] = kilobytes * 1024
+    totals = {}
+    for root in pids:
+        memory, todo, seen = 0, [root], set()
+        while todo:
+            pid = todo.pop()
+            if pid in seen:
+                continue
+            seen.add(pid)
+            memory += own.get(pid, 0)
+            todo += children.get(pid, [])
+        totals[root] = memory
+    return totals
+
+
+def step_down(at_once: int) -> int:
+    return next((step for step in AT_ONCE_STEPS if step < at_once), 1)
+
+
+def fit_in_memory(wanted: int) -> tuple[int, float | None]:
+    """How many of the wanted games at once fit in the free memory (6, 4, 2 or 1 when not all of them do), and the
+    free memory."""
+    free = available_memory()
+    if free is None:
+        return wanted, None
+    fits = int((free - MEMORY_RESERVE) // GAME_MEMORY)
+    if fits >= wanted:
+        return wanted, free
+    return next((step for step in AT_ONCE_STEPS if step <= fits), 1), free
+
+
+def has_window(build: Path) -> bool:
+    """Whether this build shows its games in a window (configured with -DOPENBW_ENABLE_UI=ON)."""
+    try:
+        return "OPENBW_ENABLE_UI:BOOL=ON" in (build / "CMakeCache.txt").read_text(errors="replace")
+    except OSError:
+        return build.name.endswith("-ui")
 
 
 def prepare_worker_directory(test_dir: Path, index: int) -> Path:
@@ -104,21 +236,83 @@ def prepare_worker_directory(test_dir: Path, index: int) -> Path:
     return directory
 
 
+def stop(process: subprocess.Popen[bytes]) -> None:
+    """Kills a game: the harness and the opponent it forked, which share the harness's process group."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        process.kill()
+    process.wait()
+
+
+@dataclass
+class Game:
+    """One test process playing in a slot: one game, or all of a test that loops over several."""
+    number: int  # which of the run's games it plays (from 1)
+    slot: int
+    directory: Path
+    process: subprocess.Popen[bytes]
+    started: float
+    log_start: int  # where its output starts in the slot's run_games.log
+    read_to: int  # how far its output has been read for finished games
+    existing_logs: set[Path]
+
+    def live(self) -> dict | None:
+        """The numbers the harness writes to live.json as the game plays."""
+        try:
+            return json.loads((self.directory / "live.json").read_text())
+        except (OSError, ValueError):
+            return None
+
+    def position(self) -> tuple[int, float] | None:
+        """(frame, seconds playing) of the game: from live.json, or for older builds the Stardust bot's own log."""
+        live = self.live()
+        if live is not None:
+            return int(live.get("frame", 0)), float(live.get("wallSeconds", time.time() - self.started))
+        logs = set((self.directory / "bwapi-data" / "write").glob("Stardust_log_*.txt")) - self.existing_logs
+        if not logs:
+            return None
+        newest = max(logs, key=created)
+        return last_frame(newest), max(0.0, time.time() - created(newest))
+
+    def output(self, start: int | None = None) -> str:
+        """Its output from `start` (default: all of it)."""
+        try:
+            with (self.directory / "run_games.log").open("rb") as f:
+                f.seek(self.log_start if start is None else start)
+                return f.read().decode(errors="replace")
+        except OSError:
+            return ""
+
+    def new_output(self) -> str:
+        """Its whole lines written since the last call."""
+        text = self.output(self.read_to)
+        end = text.rfind("\n") + 1
+        self.read_to += len(text[:end].encode(errors="replace"))
+        return text[:end]
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("filter", nargs="?", help="gtest filter (default Bots.Play with --opponent)")
     parser.add_argument("--opponent", help="bot to play with Bots.Play (see bots/README.md)")
     parser.add_argument("--bot", help="bot to play as with --opponent, instead of the Python port "
                                       "(e.g. Stardust2025, the original C++ Stardust)")
     parser.add_argument("--games", type=int, default=0,
                         help="number of games (default: 20 for *RunTwenty, else 1)")
+    parser.add_argument("--ui", "--UI", default=str(MAX_AT_ONCE), metavar="none|1-6",
+                        help=f"games at once, each in its own window (default {MAX_AT_ONCE}); none plays them "
+                             "headless")
     parser.add_argument("--parallel", type=int, default=0,
-                        help=f"games to run at once (default: up to {DEFAULT_PARALLEL}; 1 for the window build)")
-    parser.add_argument("--interval", type=float, default=30)
-    parser.add_argument("--build", default="build",
-                        help="build directory, e.g. build-ui for the one with the live game window")
+                        help=f"games at once with --ui none (default {MAX_AT_ONCE})")
+    parser.add_argument("--window-size", default=WINDOW_SIZE,
+                        help=f"each game window's size (default {WINDOW_SIZE}; smaller when the screen is)")
+    parser.add_argument("--interval", type=float, default=30, help="seconds between PROGRESS lines (default 30)")
+    parser.add_argument("--build", help="build directory (default build-ui with windows, build with --ui none)")
+    parser.add_argument("--live", action="store_true",
+                        help="open the live stats page in the browser (it opens by itself when games have windows)")
+    parser.add_argument("--no-live", action="store_true", help="no live stats page")
     args = parser.parse_args()
-    test_dir = ROOT / args.build / "test"
 
     if args.bot and not args.opponent:
         parser.error("--bot needs --opponent")
@@ -126,127 +320,279 @@ def main() -> int:
         args.filter = args.filter or "Bots.Play"
     if not args.filter:
         parser.error("give a gtest filter or --opponent")
+    ui = args.ui.strip().lower()
+    if ui in ("none", "off", "0"):
+        windows, wanted = False, args.parallel or MAX_AT_ONCE
+    elif ui.isdigit() and 1 <= int(ui) <= MAX_AT_ONCE:
+        windows, wanted = True, min(args.parallel or int(ui), MAX_AT_ONCE)
+    else:
+        parser.error(f"--ui takes none or a number from 1 to {MAX_AT_ONCE}")
+    if not re.fullmatch(r"\d+x\d+", args.window_size):
+        parser.error("--window-size takes WIDTHxHEIGHT, e.g. 640x480")
+
+    # The build: the window build unless the games are headless, or the one given
+    if args.build:
+        build = ROOT / args.build
+    elif windows:
+        build = next((ROOT / name for name in ("build-ui", "build")
+                      if has_window(ROOT / name) and (ROOT / name / "test" / "tests").exists()), ROOT / "build")
+    else:
+        build = ROOT / "build"
+    if windows and not has_window(build):
+        print(f"NOTE {build.name} has no game window, so the games play headless (a window build: cmake -B build-ui "
+              "-DOPENBW_ENABLE_UI=ON -DCMAKE_BUILD_TYPE=Release, then cmake --build build-ui --target tests)",
+              flush=True)
+        windows = False
+    test_dir = build / "test"
+    if not (test_dir / "tests").exists():
+        parser.error(f"{test_dir / 'tests'} doesn't exist: build it first (cmake --build {build.name} --target tests)")
+
     games = max(1, args.games or (20 if "RunTwenty" in args.filter else 1))
-
-    # Tests that loop over many games internally can't be split between workers
+    # Tests that loop over many games themselves can't be split into a process per game
     splittable = args.opponent is not None or "RunTwenty" not in args.filter
-    window_build = Path(args.build).name.endswith("-ui")  # build-ui; a plain "in" would match "build" itself
-    parallel = args.parallel or (1 if window_build else DEFAULT_PARALLEL)
-    parallel = max(1, min(parallel, games if splittable else 1))
+    jobs = list(range(1, games + 1)) if splittable else [1]
+    wanted = max(1, min(wanted, len(jobs)))
+    at_once, free_memory = fit_in_memory(wanted)
+    columns, rows = GRIDS[at_once]
 
-    estimate = -(-games // parallel) * TYPICAL_SECONDS_PER_GAME
-    worst = -(-games // parallel) * TIME_LIMIT
-    print(f"START {args.filter}: {games} game(s), {parallel} at a time, estimated {fmt(estimate)} "
+    estimate = -(-games // at_once) * TYPICAL_SECONDS_PER_GAME
+    worst = -(-games // at_once) * TIME_LIMIT
+    print(f"START {args.filter}{' vs ' + args.opponent if args.opponent else ''}: {games} game(s), {at_once} at a "
+          f"time, {'each in its own window' if windows else 'headless'} ({build.name}), estimated {fmt(estimate)} "
           f"(at most {fmt(worst)} with the {TIME_LIMIT // 60}-minute limit per game)", flush=True)
+    if at_once < wanted:
+        print(f"MEMORY {free_memory / 1e9:.1f} GB free: {at_once} game(s) at once instead of {wanted}", flush=True)
+    if windows:
+        print(f"WINDOWS {columns} x {rows}, {args.window_size} each (smaller if the screen is)", flush=True)
 
-    # Split the games between the workers
-    workers: list[Worker] = []
-    for index in range(parallel):
-        share = games // parallel + (1 if index < games % parallel else 0)
-        directory = test_dir if parallel == 1 else prepare_worker_directory(test_dir, index)
-        workers.append(Worker(directory, share))
+    for slot in range(at_once):
+        directory = prepare_worker_directory(test_dir, slot)
+        (directory / "live.json").unlink(missing_ok=True)  # an earlier run's last game
+        (directory / "events.jsonl").unlink(missing_ok=True)
+    viewer = None
+    if not args.no_live:
+        try:
+            from live_stats import Viewer  # tools/live_stats.py
+            viewer = Viewer([test_dir / "parallel" / str(slot) / "live.json" for slot in range(at_once)])
+            print(f"LIVE stats at {viewer.start()} (a tab per game)", flush=True)
+            if windows or args.live:
+                viewer.open()
+        except OSError as error:
+            print(f"NOTE no live stats page: {error}", flush=True)
+            viewer = None
 
-    start = time.time()
     replays_dir = test_dir / "replays"
-    existing_replays = set(replays_dir.glob("*.rep"))
-    socket_root = Path(tempfile.mkdtemp(prefix="ob", dir="/tmp")) if parallel > 1 else None
-    for index, worker in enumerate(workers):
+    socket_root = Path(tempfile.mkdtemp(prefix="ob", dir="/tmp"))
+    queue = list(jobs)
+    running: dict[int, Game] = {}
+    free = list(range(at_once))
+    cap = at_once  # games at once: lowered for the rest of the run when memory runs short
+    memory_limit = 0.75 * physical_memory()  # for all the games together
+    used_slots: set[int] = set()
+    results = {"won": 0, "lost": 0, "draw": 0, "passed": 0, "failed": 0, "no result": 0}
+    done = 0  # games reported
+    durations: list[float] = []  # wall seconds of each finished game
+    outputs: list[str] = []  # each finished process's output, for the summary
+    exit_code = 0
+    start = time.time()
+    next_report = start + args.interval
+    next_memory_check = start + MEMORY_CHECK_SECONDS
+    me = args.bot or "StardustPy"
+
+    def launch(number: int) -> None:
+        slot = min(free)
+        free.remove(slot)
+        directory = prepare_worker_directory(test_dir, slot)
+        (directory / "live.json").unlink(missing_ok=True)
+        (directory / "events.jsonl").unlink(missing_ok=True)
         env = dict(os.environ)
         # A game making no progress for this long is a hang: the harness saves what led up to it to replays/unfinished/
         env.setdefault("STARDUST_HANG_SECONDS", "120")
+        # OpenBW finds the other player through sockets in this directory (default /tmp/openbw, shared by all games);
+        # each game's two processes need their own, or games connect to each other
+        env["OPENBW_LOCAL_AUTO_DIRECTORY"] = str(socket_root / str(slot))
         command = [str(test_dir / "tests"), f"--gtest_filter={args.filter}"]
         if args.opponent:
             env["STARDUST_OPPONENT"] = args.opponent
-            env["STARDUST_GAMES"] = str(worker.games)
+            env["STARDUST_GAMES"] = "1"
             if args.bot:
                 env["STARDUST_BOT"] = args.bot
-        elif splittable and worker.games > 1:
-            command.append(f"--gtest_repeat={worker.games}")
-        if socket_root is not None:
-            # OpenBW finds the other player through sockets in this directory (default /tmp/openbw, shared by all
-            # games); each worker's two processes need their own, or games connect to each other.
-            env["OPENBW_LOCAL_AUTO_DIRECTORY"] = str(socket_root / str(index))
-        worker.existing_logs = set((worker.directory / "bwapi-data" / "write").glob("Stardust_log_*.txt"))
-        worker.log_path = worker.directory / "run_games.log"
-        with worker.log_path.open("w") as output:
-            worker.process = subprocess.Popen(command, cwd=worker.directory, env=env, stdout=output,
-                                              stderr=subprocess.STDOUT)
+        if windows:
+            env["OPENBW_WINDOW_GRID"] = f"{slot},{columns},{rows}"
+            env["OPENBW_WINDOW_SIZE"] = args.window_size
+            env["OPENBW_WINDOW_TITLE"] = (f"Game {number}/{games}: {me} vs {args.opponent}" if args.opponent
+                                          else f"Game {number}/{games}: {args.filter}")
+        else:
+            env["OPENBW_ENABLE_UI"] = "0"
+        mode = "ab" if slot in used_slots else "wb"
+        used_slots.add(slot)
+        with (directory / "run_games.log").open(mode) as output:
+            output.write(f"===== game {number} of {games} =====\n".encode())
+            output.flush()
+            log_start = output.tell()
+            process = subprocess.Popen(command, cwd=directory, env=env, stdout=output, stderr=subprocess.STDOUT,
+                                       start_new_session=True)
+        existing_logs = set((directory / "bwapi-data" / "write").glob("Stardust_log_*.txt"))
+        running[slot] = Game(number, slot, directory, process, time.time(), log_start, log_start, existing_logs)
 
-    next_report = start + args.interval
-    reported_replays: set[Path] = set()
-    results = {"won": 0, "lost": 0, "passed": 0, "failed": 0}
-    while any(worker.process is not None and worker.process.poll() is None for worker in workers):
-        time.sleep(1)
-
-        for replay in sorted(set(replays_dir.glob("*.rep")) - existing_replays - reported_replays):
-            # Replays saved mid-game with [r] in the game window aren't finished games
-            if re.search(r"_frame\d+_", replay.name):
-                existing_replays.add(replay)
-                continue
-            reported_replays.add(replay)
-            if "_WON" in replay.name or "_LOST" in replay.name:
-                result = "won" if "_WON" in replay.name else "lost"
-            else:
-                result = "passed" if "_PASS" in replay.name else "failed"
-            results[result] += 1
-            print(f"GAME {len(reported_replays)}/{games} {result} at {fmt(time.time() - start)} elapsed "
-                  f"({replay.name})", flush=True)
-
+    def report(game: Game, replay: str | None, text: str) -> None:
+        """A finished game: its result, numbers and rating change."""
+        nonlocal done
+        done += 1
+        live = game.live() or {}
+        over = live.get("state") == "over"
+        if replay is None and over:
+            # Builds from before the harness printed REPLAY: the replay with this game's seed, saved since it started
+            replay = next((path.name for path in replays_dir.glob(f"*_{live.get('seed')}_*.rep")
+                           if created(path) >= game.started - 1), None)
+        if args.opponent and over and live.get("result") in ("WON", "LOST", "DRAW"):
+            result = live["result"].lower()
+        elif replay and ("_WON" in replay or "_LOST" in replay):
+            result = "won" if "_WON" in replay else "lost"
+        elif replay:
+            result = "passed" if "_PASS" in replay else "failed"
+        else:
+            result = "no result"
+        results[result] += 1
+        frame = int(live.get("frame", 0)) if over else 0
+        where = f", frame {frame} ({game_time(frame)})" if frame else ""
+        log(f"GAME {done}/{games} {result} at {fmt(time.time() - start)} elapsed{where} "
+            f"({replay or f'no replay; exit code {game.process.returncode}, see {game.directory / 'run_games.log'}'})")
+        for line in re.findall(r"^(?:STATS |HUNG |Python onFrame:).*", text, re.M):
+            log(f"  {line}")
+        if replay:
             # The harness records the game in replays/results.csv just before saving its replay
             _, rated = elo.update(replays_dir)
-            for game in rated:
-                if game.row.get("replay") == replay.name:
-                    print(f"  ELO {elo.game_line(game)}", flush=True)
+            for rated_game in rated:
+                if rated_game.row.get("replay") == replay:
+                    log(f"  ELO {elo.game_line(rated_game)}")
 
-        if time.time() < next_report:
-            continue
-        next_report += args.interval
+    def finish(slot: int) -> None:
+        """A process that has ended: report what it played and free its slot."""
+        nonlocal exit_code
+        game = running.pop(slot)
+        free.append(slot)
+        tail = game.new_output() + game.output(game.read_to)
+        replays = re.findall(r"^REPLAY (\S+)", tail, re.M)
+        for replay in replays:
+            report(game, replay, tail)
+        if splittable and not replays:
+            report(game, None, tail)
+        durations.append(time.time() - game.started)
+        outputs.append(game.output())
+        exit_code = max(exit_code, game.process.returncode or 0)
 
-        elapsed = time.time() - start
-        done = len(reported_replays)
-        running = [game for worker in workers
-                   if worker.process is not None and worker.process.poll() is None
-                   for game in [worker.current_game()] if game is not None]
+    def stopped(game: Game, why: str, again: bool) -> None:
+        """Stops a game that is still playing, to play it again later or not at all."""
+        stop(game.process)
+        del running[game.slot]
+        free.append(game.slot)
+        if again:
+            queue.insert(0, game.number)
+        else:
+            outputs.append(game.output())
+        log(f"STOPPED game {game.number} (slot {game.slot + 1}): {why}"
+            f"{'; it will be played again' if again else ''}")
 
-        # Each running game is assumed to reach the typical length at its pace so far (capped by the time limit);
-        # games not started yet take the average time of finished games (or the typical one), shared by the workers
-        per_game = elapsed * parallel / done if done else TYPICAL_SECONDS_PER_GAME
-        current_left = 0.0
-        for frame, game_elapsed in running:
-            rate = frame / game_elapsed if frame and game_elapsed > 0 else 0.0
-            game_left = max(0.0, TYPICAL_FRAMES - frame) / rate if rate > 0 else max(0.0, per_game - game_elapsed)
-            current_left = max(current_left, min(game_left, max(0.0, TIME_LIMIT - game_elapsed)))
-        not_started = max(0, games - done - len(running))
-        left = current_left + -(-not_started // parallel) * per_game
+    def on_signal(number: int, _frame: object) -> None:
+        raise SystemExit(128 + number)  # runs the clean-up below, so no game is left running
 
-        frames = ", ".join(f"{frame} ({game_time(frame)})" for frame, _ in running) or "starting"
-        long_game = any(frame > TYPICAL_FRAMES for frame, _ in running)
-        note = f", a game is longer than typical (frame limit {FRAME_LIMIT})" if long_game else ""
-        print(f"PROGRESS {fmt(elapsed)} elapsed | {done}/{games} done | playing at frame {frames} | "
-              f"~{fmt(left)} left{note}", flush=True)
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGHUP, on_signal)
+    interrupted = False
+    try:
+        while queue or running:
+            while queue and free and len(running) < cap:
+                launch(queue.pop(0))
+            time.sleep(0.5)
+            now = time.time()
+
+            for slot, game in list(running.items()):
+                if game.process.poll() is not None:
+                    finish(slot)
+                    continue
+                if not splittable:
+                    # A test looping over games: report each one as its replay is saved
+                    for replay in re.findall(r"^REPLAY (\S+)", game.new_output(), re.M):
+                        report(game, replay, "")
+                limit = HANG_LIMIT * (1 if splittable else games)
+                if now - game.started > limit:
+                    stopped(game, f"still running after {fmt(limit)}, so it has hung", again=False)
+
+            if running and now >= next_memory_check:
+                next_memory_check = now + MEMORY_CHECK_SECONDS
+                usage = games_memory([game.process.pid for game in running.values()])
+                for game in list(running.values()):
+                    if usage.get(game.process.pid, 0) > GAME_MEMORY_LIMIT:
+                        stopped(game, f"it used {usage[game.process.pid] / 1e9:.1f} GB, so a bot is leaking memory",
+                                again=False)
+                used = sum(usage.get(game.process.pid, 0) for game in running.values())
+                available = available_memory()
+                short = (f"only {available / 1e9:.1f} GB of memory free" if available is not None
+                         and available < MEMORY_RESERVE else
+                         f"the games use {used / 1e9:.1f} GB" if used > memory_limit else "")
+                if short and cap > 1:
+                    cap = step_down(cap)
+                    log(f"MEMORY {short}: down to {cap} game(s) at once")
+                    for game in sorted(running.values(), key=lambda g: g.started)[cap:]:  # the newest
+                        stopped(game, "to free memory", again=True)
+                    next_memory_check = now + MEMORY_SETTLE_SECONDS
+
+            # Each running game is assumed to reach the typical length at its pace so far (capped by the time limit);
+            # games not started yet take the average time of finished games (or the typical one), shared by the slots
+            positions = [(game, game.position()) for game in sorted(running.values(), key=lambda g: g.slot)]
+            per_game = sum(durations) / len(durations) if durations else TYPICAL_SECONDS_PER_GAME
+            lefts = []
+            for game, position in positions:
+                frame, seconds = position or (0, now - game.started)
+                rate = frame / seconds if frame and seconds > 0 else 0.0
+                game_left = max(0.0, TYPICAL_FRAMES - frame) / rate if rate > 0 else max(0.0, per_game - seconds)
+                lefts.append(min(game_left, max(0.0, TIME_LIMIT - seconds)))
+            left = max(max(lefts, default=0.0), (sum(lefts) + len(queue) * per_game) / max(1, cap))
+            elapsed = now - start
+            times = " ".join(game_time(position[0]) if position else "…" for _, position in positions)
+            PROGRESS.show(done, games, f"{len(running)} playing (max {cap}){' · ' + times if times else ''} · "
+                                       f"{fmt(elapsed)} elapsed · ~{fmt(left)} left")
+            if viewer is not None:
+                viewer.set_run(total=games, done=done, playing=len(running), cap=cap, elapsed=elapsed, left=left,
+                               results=dict(results), note="windows" if windows else "headless")
+
+            if now >= next_report:
+                next_report += args.interval
+                frames = ", ".join(f"{position[0]} ({game_time(position[0])})" for _, position in positions
+                                   if position) or "starting"
+                long_game = any(position and position[0] > TYPICAL_FRAMES for _, position in positions)
+                note = f", a game is longer than typical (frame limit {FRAME_LIMIT})" if long_game else ""
+                log(f"PROGRESS {fmt(elapsed)} elapsed | {done}/{games} done | {len(running)} playing (max {cap}) "
+                    f"at frame {frames} | ~{fmt(left)} left{note}")
+    except KeyboardInterrupt:
+        interrupted = True
+    finally:
+        PROGRESS.done()
+        for game in list(running.values()):
+            stop(game.process)
+            outputs.append(game.output())
+        shutil.rmtree(socket_root, ignore_errors=True)
+        if viewer is not None:
+            viewer.set_run(total=games, done=done, playing=0, cap=cap, elapsed=time.time() - start, left=0,
+                           results=results, note="stopped" if interrupted else "finished")
+            time.sleep(1.5)  # the page's last look at the finished games
+            viewer.stop()
 
     elapsed = time.time() - start
-    if socket_root is not None:
-        shutil.rmtree(socket_root, ignore_errors=True)
-
-    texts = [worker.log_path.read_text(errors="replace") for worker in workers]
-    python_errors = sum(text.count("Python error") for text in texts)
-    failed = [text for text in texts if re.search(r"\[  FAILED  \]", text)]
+    python_errors = sum(text.count("Python error") for text in outputs)
+    failed = sum(1 for text in outputs if re.search(r"\[  FAILED  \]", text))
     tally = ", ".join(f"{count} {name}" for name, count in results.items() if count)
-    exit_code = max((worker.process.returncode or 0) if worker.process else 1 for worker in workers)
-    print(f"DONE in {fmt(elapsed)} (exit {exit_code}): {len(reported_replays)} game(s): {tally or 'no replays'}; "
-          f"{len(failed)} worker(s) with failed tests; Python errors: {python_errors}", flush=True)
-    for text in texts:
-        for line in re.findall(r"HUNG .*", text):
-            print(f"  {line}", flush=True)
-    for text in texts:
-        for line in re.findall(r"STATS .*|Python onFrame:.*", text):
-            print(f"  {line}", flush=True)
+    if interrupted:
+        print(f"STOPPED with Ctrl-C after {fmt(elapsed)}: {done} of {games} game(s) played", flush=True)
+        exit_code = 130
+    print(f"DONE in {fmt(elapsed)} (exit {exit_code}): {done} game(s): {tally or 'no results'}; "
+          f"{failed} with failed tests; Python errors: {python_errors}", flush=True)
     records, _ = elo.update(replays_dir)
     if records:
         print("\n" + elo.leaderboard(records), flush=True)
-    if parallel > 1:
-        print(f"  logs: {', '.join(str(worker.log_path.relative_to(ROOT)) for worker in workers)}", flush=True)
+    print(f"  logs: {', '.join(str((test_dir / 'parallel' / str(slot) / 'run_games.log').relative_to(ROOT)) for slot in sorted(used_slots))}",
+          flush=True)
     return exit_code
 
 

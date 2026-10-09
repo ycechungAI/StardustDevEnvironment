@@ -1,0 +1,75 @@
+[  2%] Built target libzstd_static
+[  3%] Built target openbw_ui
+[  3%] Built target BWAPICore
+[  5%] Built target libzstd_shared
+[  5%] Creating pkg-config file
+[  5%] Copying manpage zstd.1
+[  5%] Copying manpage zstdgrep.1
+[  6%] Built target zstd
+[  6%] Built target libzstd.pc
+[  6%] Built target zstd.1
+[  6%] Built target zstdgrep.1
+[  8%] Built target BWAPILIB
+[  8%] Copying manpage zstdless.1
+[  9%] Creating zstdmt symlink
+[  9%] Built target zstdless.1
+[  9%] Built target zstd-frugal
+[ 10%] Built target gtest
+[ 10%] Built target replay_viewer
+[ 10%] Built target zstdmt
+[ 10%] Built target ExampleAIModule
+[ 10%] Creating zstdcat symlink
+[ 10%] Creating unzstd symlink
+[ 11%] Built target OpenBWData
+[ 11%] Built target zstdcat
+[ 11%] Creating zstdcat.1 symlink
+[ 11%] Built target unzstd
+[ 11%] Creating unzstd.1 symlink
+[ 11%] Built target zstdcat.1
+[ 11%] Built target unzstd.1
+[ 11%] Built target Instrumentation
+[ 14%] Built target TestAIModule
+[ 16%] Built target BWEM
+[ 16%] Built target bot_ClaudeOpus55
+[ 16%] Built target bot_ComputerTerran
+[ 16%] Built target bot_ComputerZerg
+[ 17%] Built target bot_ComputerProtoss
+[ 20%] Built target bot_BananaBrain
+[ 21%] Built target bot_Stardust2025_bwem
+[ 21%] Built target bot_WorkerRush
+[ 21%] Building CXX object 3rdparty/openbw/bwapi/bwapi/BWAPI/CMakeFiles/BWAPIObj.dir/Source/BWAPI/GameInternals.cpp.o
+[ 26%] Built target bot_Microwave
+[ 34%] Built target McRave
+[ 43%] Built target bot_Steamhammer2025
+[ 52%] Built target Steamhammer
+[ 52%] Built target gtest_main
+[ 52%] Built target replay_dump
+[ 61%] Built target bot_McRaveZ
+[ 61%] Built target NativeBindings
+[ 63%] Built target PythonBindings
+[ 63%] Built target bwem_offline
+[ 63%] Built target fap_offline
+[ 63%] Built target StardustAI
+[ 63%] Built target bwapi_offline
+[ 63%] Built target instrumentation_offline
+[ 74%] Built target Locutus
+[ 84%] Built target Iron
+[ 96%] Built target bot_Stardust2025
+[ 98%] Built target BWAPIObj
+[ 98%] Linking CXX shared library ../../../../../lib/libBWAPI.dylib
+[ 98%] Built target BWAPI
+[ 98%] Built target BWAPIClient
+[ 98%] Building CXX object 3rdparty/openbw/bwapi/bwapi/BWAPILauncher/CMakeFiles/BWAPILauncher.dir/Source/Main.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/tests.dir/BWTest.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/tests.dir/Maps.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/tests.dir/Bots.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/tests.dir/GameStats.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/tests.dir/Locutus.cpp.o
+[ 99%] Linking CXX executable ../../../../../bin/BWAPILauncher
+[ 99%] Built target BWAPILauncher
+[ 99%] Building CXX object test/CMakeFiles/tests.dir/RushDefense.cpp.o
+[100%] Building CXX object test/CMakeFiles/tests.dir/Steamhammer.cpp.o
+[100%] Building CXX object test/CMakeFiles/tests.dir/main.cpp.o
+[100%] Linking CXX executable tests
+[100%] Built target tests
+EXIT 0

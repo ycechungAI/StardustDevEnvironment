@@ -14,6 +14,7 @@
 #include "../../../Debug.h"
 
 #include "BW/BWData.h"
+#include "../Graphics.h"
 
 #include <chrono>
 #include <type_traits>
@@ -96,6 +97,17 @@ namespace BWAPI
 
     bwgame.setOnDraw([this](uint8_t*, size_t) {
       drawShapes();
+      // What the automatic observer camera shows, at the top right of the window
+      std::string label = this->bwgame.autoCameraLabel();
+      if (!label.empty()) {
+        // 6 pixels a character in the small font (see BW/FontUtils.h); the characters below space set the colour
+        int w = 0;
+        for (char c : label) if ((unsigned char)c >= ' ') w += 6;
+        int x = this->bwgame.screenWidth() - w - 8;
+        int y = 18;
+        bwDrawBox(x - 3, y - 2, w + 6, 13, 0, BWAPI::CoordinateType::Screen);
+        bwDrawText(x, y, label.c_str(), BWAPI::CoordinateType::Screen, 1);
+      }
     });
 
     this->initializeData();

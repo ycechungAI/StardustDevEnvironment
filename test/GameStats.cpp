@@ -5,12 +5,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <unistd.h>
 
 namespace
 {
@@ -254,4 +256,204 @@ void AppendResult(const PlayerStats &me, const PlayerStats &opponent, const std:
         std::fwrite(text.data(), 1, text.size(), file);
         std::fclose(file);
     }
+}
+
+LiveStats::LiveStats(int game, const std::string &mapName, int seed, int frameLimit)
+        : game(game), mapName(mapName), seed(seed), frameLimit(frameLimit), started(std::chrono::steady_clock::now())
+{
+    auto file = std::getenv("STARDUST_LIVE_FILE");
+    if (!file || !*file) path = "live.json";
+    else if (std::string(file) != "0") path = file;
+}
+
+void LiveStats::update(BW::Game game, int frame, const PlayerStats &me, const PlayerStats &opponent)
+{
+    if (path.empty()) return;
+    auto now = std::chrono::steady_clock::now();
+    if (now - lastWrite < std::chrono::milliseconds(500)) return;
+    lastWrite = now;
+
+    auto player = [&](const PlayerStats &stats, const char *characterName)
+    {
+        nlohmann::json out = {
+                {"name",             stats.name},
+                {"race",             stats.race.getName()},
+                {"minerals",         stats.minerals},
+                {"gas",              stats.gas},
+                {"supplyUsed",       stats.supplyUsed},
+                {"supplyMax",        stats.supplyMax},
+                {"workers",          stats.workers},
+                {"armySupply",       stats.armySupply},
+                {"mineralsGathered", stats.mineralsGathered},
+                {"gasGathered",      stats.gasGathered},
+                {"unitsKilled",      stats.unitsKilled},
+                {"unitsLost",        stats.unitsLost},
+                {"buildingsLost",    stats.buildingsLost},
+        };
+        // Every unit type the player has (made or in production), and the totals of units and buildings
+        int units = 0;
+        int buildings = 0;
+        nlohmann::json types = nlohmann::json::object();
+        for (int owner = 0; owner < 12; owner++)
+        {
+            auto bwPlayer = game.getPlayer(owner);
+            if (characterName != std::string(bwPlayer.szName())) continue;
+            for (auto type : BWAPI::UnitTypes::allUnitTypes())
+            {
+                if (type.getID() >= 228) continue;
+                int count = bwPlayer.unitCountsAll(type.getID());
+                if (count <= 0) continue;
+                types[type.getName()] = count;
+                (type.isBuilding() ? buildings : units) += count;
+            }
+            break;
+        }
+        out["units"] = units;
+        out["buildings"] = buildings;
+        out["unitTypes"] = types;
+        return out;
+    };
+
+    nlohmann::json doc = {
+            {"pid",         (int) getpid()},
+            {"game",        this->game},
+            {"map",         mapName},
+            {"seed",        seed},
+            {"frameLimit",  frameLimit},
+            {"window",      std::get<0>(game.GameScreenBuffer()) > 0},
+            {"players",     {player(me, "Tests"), player(opponent, "Opponent")}},
+    };
+    document = doc.dump();
+    document.pop_back();  // the closing brace
+    current = frame;
+    write();
+}
+
+void LiveStats::finish(int frame, const std::string &result)
+{
+    if (path.empty() || document.empty()) return;
+    current = frame;
+    this->result = result;
+    write();
+}
+
+void LiveStats::keepAlive(bool paused)
+{
+    if (path.empty() || document.empty()) return;
+    bool changed = paused != this->paused;
+    this->paused = paused;
+    auto now = std::chrono::steady_clock::now();
+    if (!changed && now - lastWrite < std::chrono::milliseconds(500)) return;
+    lastWrite = now;
+    write();
+}
+
+void LiveStats::write()
+{
+    auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    std::ostringstream text;
+    text << document << ",\"frame\":" << current << ",\"wallSeconds\":" << std::fixed << std::setprecision(1)
+         << seconds << ",\"state\":\"" << (!result.empty() ? "over" : paused ? "paused" : "playing")
+         << "\",\"result\":\"" << result
+         << "\",\"updated\":" << std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::system_clock::now().time_since_epoch()).count() << "}\n";
+    auto temporary = path + ".tmp";
+    {
+        std::ofstream file(temporary, std::ios::trunc);
+        if (!file.good()) return;
+        file << text.str();
+    }
+    std::error_code error;
+    std::filesystem::rename(temporary, path, error);
+}
+
+GameEvents::GameEvents(bool enabled, BW::Game game, int gameNumber, const std::string &mapName, int seed,
+                       const std::string &myName, const std::string &opponentName)
+        : game(game), gameNumber(gameNumber), mapName(mapName), seed(seed), myName(myName), opponentName(opponentName)
+{
+    if (!enabled) return;
+    auto file = std::getenv("STARDUST_EVENTS_FILE");
+    if (!file || !*file) path = "events.jsonl";
+    else if (std::string(file) != "0") path = file;
+    // The file is made at the first event; one left from an earlier game would be mistaken for this one's
+    if (!path.empty()) std::remove(path.c_str());
+}
+
+GameEvents::~GameEvents()
+{
+    if (file) std::fclose(file);
+}
+
+std::string GameEvents::playerName(int player)
+{
+    if (player < 0 || player >= 12) return "";
+    std::string name = game.getPlayer(player).szName();
+    if (name == "Tests") return myName;
+    if (name == "Opponent") return opponentName;
+    return name;
+}
+
+void GameEvents::writeLine(const std::string &line)
+{
+    if (path.empty()) return;
+    if (!file)
+    {
+        file = std::fopen(path.c_str(), "w");
+        if (!file)
+        {
+            path.clear();
+            return;
+        }
+        nlohmann::json players = nlohmann::json::object();
+        for (int i = 0; i < 8; i++)
+        {
+            auto player = game.getPlayer(i);
+            std::string name = player.szName();
+            if (name != "Tests" && name != "Opponent") continue;
+            players[std::to_string(i)] = {{"name", playerName(i)}, {"race", BWAPI::Race(player.nRace()).getName()}};
+        }
+        nlohmann::json start = {{"kind", "game_start"}, {"game", gameNumber}, {"map", mapName}, {"seed", seed},
+                                {"players", players}};
+        auto text = start.dump() + "\n";
+        std::fwrite(text.data(), 1, text.size(), file);
+    }
+    std::fwrite(line.data(), 1, line.size(), file);
+    std::fflush(file);
+}
+
+void GameEvents::write(const BW::CameraEvent &event)
+{
+    if (path.empty()) return;
+    nlohmann::json out = {
+            {"frame",   event.frame},
+            {"seconds", std::round(event.frame * 0.42) / 10},
+            {"kind",    event.kind},
+            {"x",       event.x},
+            {"y",       event.y},
+    };
+    if (event.player >= 0) out["player"] = playerName(event.player);
+    if (event.target >= 0) out["target"] = playerName(event.target);
+    if (event.id >= 0) out["id"] = event.id;
+    if (event.score != 0) out["score"] = event.score;
+    auto units = [&](const std::vector<std::array<int, 3>> &list)
+    {
+        nlohmann::json byPlayer = nlohmann::json::object();
+        for (auto &[player, type, count] : list)
+        {
+            byPlayer[playerName(player)][BWAPI::UnitType(type).getName()] = count;
+        }
+        return byPlayer;
+    };
+    if (!event.units.empty()) out["units"] = units(event.units);
+    if (!event.lost.empty()) out["lost"] = units(event.lost);
+    for (auto &[name, value] : event.values) out[name] = value;
+    for (auto &[name, text] : event.texts) out[name] = text;
+    writeLine(out.dump() + "\n");
+}
+
+void GameEvents::write(const std::string &kind, int frame)
+{
+    if (path.empty()) return;
+    nlohmann::json out = {{"frame", frame}, {"seconds", std::round(frame * 0.42) / 10}, {"kind", kind}};
+    writeLine(out.dump() + "\n");
 }

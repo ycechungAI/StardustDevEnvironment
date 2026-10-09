@@ -46,6 +46,9 @@ namespace native_window {
 		void update_surface();
 		explicit operator bool() const;
 	};
+
+	// The part of the main display that windows can use (without the menu bar and dock); false if unknown
+	bool get_usable_bounds(int* x, int* y, int* width, int* height);
 }
 
 #endif
