@@ -147,9 +147,9 @@ option6_leaderboard() {
     # elo.py ranks by rating; rewrite its rank column with the menu numbers
     # from the bot picker above so the two can be cross-referenced.
     local numbers
-    numbers="$(for i in "${!OPPONENTS[@]}"; do printf "%s:%d\n" "${OPPONENTS[$i]}" "$((i + 1))"; done)"
+    numbers="$(for i in "${!OPPONENTS[@]}"; do printf "%s:%d," "${OPPONENTS[$i]}" "$((i + 1))"; done)"
     "$PY" tools/elo.py | awk -v map="$numbers" '
-        BEGIN { n = split(map, pairs, "\n"); for (k = 1; k <= n; k++) { split(pairs[k], kv, ":"); num[kv[1]] = kv[2] } }
+        BEGIN { n = split(map, pairs, ","); for (k = 1; k <= n; k++) { split(pairs[k], kv, ":"); if (kv[1] != "") num[kv[1]] = kv[2] } }
         /^ *#  Player/ { sub(/^ *#/, " # Menu#"); print; next }
         $1 ~ /^[0-9]+$/ && NF >= 7 {
             name = $2
